@@ -1,0 +1,13 @@
+{
+  "name": "strike-pulse-relay",
+  "version": "1.0.0",
+  "description": "Strike Pulse NSE option chain relay",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "nse-data": "^1.0.0"
+  }
+}
