@@ -5,31 +5,19 @@ const PORT = process.env.PORT || 10000;
 
 app.use(express.json());
 
-/* ==============================
-   NSE REQUEST HELPER
-============================== */
+const USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36";
 
-async function nseRequest(url) {
-    const homepage = await fetch("https://www.nseindia.com/", {
-        headers: {
-            "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-            "Accept":
-                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-    });
-
-    const cookies = homepage.headers.get("set-cookie") || "";
+async function getYahooPrice(symbol) {
+    const url =
+        "https://query1.finance.yahoo.com/v8/finance/chart/" +
+        encodeURIComponent(symbol) +
+        "?range=1d&interval=1m";
 
     const response = await fetch(url, {
         headers: {
-            "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-            "Accept": "application/json,text/plain,*/*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.nseindia.com/",
-            "Cookie": cookies
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json,text/plain,*/*"
         }
     });
 
@@ -37,40 +25,81 @@ async function nseRequest(url) {
 
     if (!response.ok) {
         throw new Error(
-            "NSE HTTP " + response.status + ": " + text.substring(0, 200)
+            "Yahoo HTTP " + response.status + ": " + text.substring(0, 200)
         );
     }
 
+    let json;
+
     try {
-        return JSON.parse(text);
+        json = JSON.parse(text);
     } catch (error) {
-        throw new Error(
-            "NSE returned invalid JSON: " + text.substring(0, 200)
-        );
+        throw new Error("Yahoo returned invalid JSON");
     }
+
+    const meta = json?.chart?.result?.[0]?.meta;
+
+    if (!meta || typeof meta.regularMarketPrice !== "number") {
+        throw new Error("Live price not available for " + symbol);
+    }
+
+    return {
+        price: meta.regularMarketPrice,
+        change:
+            typeof meta.regularMarketChange === "number"
+                ? meta.regularMarketChange
+                : null,
+        changePercent:
+            typeof meta.regularMarketChangePercent === "number"
+                ? meta.regularMarketChangePercent
+                : null,
+        marketTime: meta.regularMarketTime || null
+    };
 }
 
+/* =========================
+   LIVE PRICES
+========================= */
 
-/* ==============================
-   MARKET DATA
-============================== */
+app.get("/api/prices", async (req, res) => {
 
-app.get("/api/market", async (req, res) => {
+    const symbols = {
+        nifty: "^NSEI",
+        banknifty: "^NSEBANK",
+        finnifty: "NIFTY_FIN_SERVICE.NS",
+        vix: "^INDIAVIX"
+    };
 
     try {
 
-        const data = await nseRequest(
-            "https://www.nseindia.com/api/marketStatus"
+        const entries = await Promise.all(
+            Object.entries(symbols).map(async ([key, symbol]) => {
+
+                try {
+                    return [key, await getYahooPrice(symbol)];
+                } catch (error) {
+                    console.error(
+                        key.toUpperCase() + " ERROR:",
+                        error.message
+                    );
+
+                    return [key, null];
+                }
+
+            })
         );
 
+        const data = Object.fromEntries(entries);
+
         res.json({
-            success: true,
+            success: Object.values(data).some(Boolean),
+            updatedAt: new Date().toISOString(),
             data: data
         });
 
     } catch (error) {
 
-        console.error("MARKET ERROR:", error.message);
+        console.error("PRICES ERROR:", error.message);
 
         res.status(500).json({
             success: false,
@@ -79,43 +108,9 @@ app.get("/api/market", async (req, res) => {
     }
 });
 
-
-/* ==============================
-   NIFTY OPTION CHAIN
-============================== */
-
-app.get("/api/option-chain", async (req, res) => {
-
-    try {
-
-        const symbol = req.query.symbol || "NIFTY";
-
-        const url =
-            "https://www.nseindia.com/api/option-chain-indices?symbol=" +
-            encodeURIComponent(symbol);
-
-        const data = await nseRequest(url);
-
-        res.json({
-            success: true,
-            data: data
-        });
-
-    } catch (error) {
-
-        console.error("OPTION CHAIN ERROR:", error.message);
-
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-
-/* ==============================
+/* =========================
    HEALTH CHECK
-============================== */
+========================= */
 
 app.get("/", (req, res) => {
 
@@ -126,10 +121,9 @@ app.get("/", (req, res) => {
 
 });
 
-
-/* ==============================
-   START SERVER
-============================== */
+/* =========================
+   START
+========================= */
 
 app.listen(PORT, () => {
 
