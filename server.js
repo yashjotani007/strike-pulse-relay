@@ -1,289 +1,115 @@
 const express = require("express");
 
 const app = express();
+const PORT = process.env.PORT || 10000;
 
-
-// ==========================================
-// STRIKE PULSE - CORS
-// ==========================================
-
-app.use(function (req, res, next) {
-
-    res.header(
-        "Access-Control-Allow-Origin",
-        "https://yashjotani.free.nf"
-    );
-
-    res.header(
-        "Access-Control-Allow-Methods",
-        "GET, OPTIONS"
-    );
-
-    res.header(
-        "Access-Control-Allow-Headers",
-        "Content-Type"
-    );
-
-    if (req.method === "OPTIONS") {
-        return res.sendStatus(204);
-    }
-
+app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     next();
-
 });
 
-app.use(express.json());
+async function getNSEData(url) {
 
-
-// ==========================================
-// SYMBOLS
-// ==========================================
-
-const SYMBOLS = {
-
-    nifty: "^NSEI",
-
-    banknifty: "^NSEBANK",
-
-    finnifty: "NIFTY_FIN_SERVICE.NS",
-
-    vix: "^INDIAVIX"
-
-};
-
-
-// ==========================================
-// GET YAHOO FINANCE PRICE
-// ==========================================
-
-async function getPrice(symbol) {
-
-    const url =
-        "https://query1.finance.yahoo.com/v8/finance/chart/" +
-        encodeURIComponent(symbol) +
-        "?range=1d&interval=1m";
-
-    const response = await fetch(url, {
-        headers: {
-            "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36"
-        }
-    });
-
-
-    if (!response.ok) {
-
-        throw new Error(
-            "Yahoo Finance HTTP " +
-            response.status +
-            " for " +
-            symbol
-        );
-
-    }
-
-
-    const json =
-        await response.json();
-
-
-    const result =
-        json &&
-        json.chart &&
-        json.chart.result &&
-        json.chart.result[0];
-
-
-    if (!result) {
-
-        throw new Error(
-            "No Yahoo Finance data for " +
-            symbol
-        );
-
-    }
-
-
-    const meta =
-        result.meta || {};
-
-
-    let price =
-        meta.regularMarketPrice;
-
-
-    /*
-     * Fallback:
-     * If regularMarketPrice is unavailable,
-     * use the latest chart close.
-     */
-
-    if (
-        price === null ||
-        price === undefined
-    ) {
-
-        const closes =
-            result.indicators &&
-            result.indicators.quote &&
-            result.indicators.quote[0] &&
-            result.indicators.quote[0].close;
-
-
-        if (Array.isArray(closes)) {
-
-            for (
-                let i = closes.length - 1;
-                i >= 0;
-                i--
-            ) {
-
-                if (
-                    closes[i] !== null &&
-                    closes[i] !== undefined
-                ) {
-
-                    price = closes[i];
-
-                    break;
-
-                }
-
-            }
-
-        }
-
-    }
-
-
-    if (
-        price === null ||
-        price === undefined ||
-        !Number.isFinite(Number(price))
-    ) {
-
-        throw new Error(
-            "Price unavailable for " +
-            symbol
-        );
-
-    }
-
-
-    return {
-
-        price: Number(price),
-
-        change:
-            meta.regularMarketChange !== undefined
-                ? Number(meta.regularMarketChange)
-                : null,
-
-        changePercent:
-            meta.regularMarketChangePercent !== undefined
-                ? Number(meta.regularMarketChangePercent)
-                : null,
-
-        marketTime:
-            meta.regularMarketTime ||
-            Math.floor(Date.now() / 1000)
-
+    const headers = {
+        "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+        "Accept":
+            "application/json, text/plain, */*",
+        "Accept-Language":
+            "en-US,en;q=0.9",
+        "Referer":
+            "https://www.nseindia.com/"
     };
 
+    // First request to establish NSE session
+    const homeResponse = await fetch(
+        "https://www.nseindia.com/",
+        {
+            headers: headers
+        }
+    );
+
+    const cookie = homeResponse.headers.get("set-cookie");
+
+    if (cookie) {
+        headers["Cookie"] = cookie;
+    }
+
+    // Actual API request
+    const response = await fetch(url, {
+        headers: headers
+    });
+
+    const text = await response.text();
+
+    console.log("NSE STATUS:", response.status);
+    console.log("NSE RESPONSE:", text.substring(0, 300));
+
+    if (!response.ok) {
+        throw new Error(
+            "NSE HTTP " +
+            response.status +
+            " - " +
+            text.substring(0, 200)
+        );
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        throw new Error(
+            "NSE returned invalid JSON"
+        );
+    }
 }
 
 
-// ==========================================
-// HEALTH CHECK
-// ==========================================
+/* =========================
+   HOME / HEALTH CHECK
+========================= */
 
-app.get("/", function (req, res) {
+app.get("/", (req, res) => {
 
     res.json({
-
         success: true,
-
-        message:
-            "Strike Pulse Relay is running",
-
-        endpoint:
-            "/api/prices"
-
+        service: "Strike Pulse NSE Relay",
+        status: "online"
     });
 
 });
 
 
-// ==========================================
-// LIVE MARKET API
-// ==========================================
+/* =========================
+   NIFTY OPTION CHAIN
+========================= */
 
-app.get("/api/prices", async function (req, res) {
+app.get("/api/nifty-option-chain", async (req, res) => {
 
     try {
 
-        const results =
-            await Promise.all([
+        const url =
+            "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY";
 
-                getPrice(SYMBOLS.nifty),
-
-                getPrice(SYMBOLS.banknifty),
-
-                getPrice(SYMBOLS.finnifty),
-
-                getPrice(SYMBOLS.vix)
-
-            ]);
-
-
-        const updatedAt =
-            new Date().toISOString();
-
+        const result =
+            await getNSEData(url);
 
         res.json({
-
             success: true,
-
-            updatedAt: updatedAt,
-
-            data: {
-
-                nifty: results[0],
-
-                banknifty: results[1],
-
-                finnifty: results[2],
-
-                vix: results[3]
-
-            }
-
+            data: result
         });
 
-    }
-
-
-    catch (error) {
+    } catch (error) {
 
         console.error(
-            "STRIKE PULSE API ERROR:",
-            error
+            "OPTION CHAIN ERROR:",
+            error.message
         );
 
-
         res.status(500).json({
-
             success: false,
-
-            error:
-                "Unable to fetch live market data",
-
-            message:
-                error.message,
-
-            updatedAt:
-                new Date().toISOString()
-
+            error: error.message
         });
 
     }
@@ -291,34 +117,19 @@ app.get("/api/prices", async function (req, res) {
 });
 
 
-// ==========================================
-// START SERVER
-// ==========================================
+/* =========================
+   SERVER
+========================= */
 
-const PORT =
-    process.env.PORT || 3000;
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
 
+        console.log(
+            "Strike Pulse Relay running on port " +
+            PORT
+        );
 
-app.listen(PORT, function () {
-
-    console.log(
-        "================================="
-    );
-
-    console.log(
-        "STRIKE PULSE RELAY SERVER"
-    );
-
-    console.log(
-        "Running on port " + PORT
-    );
-
-    console.log(
-        "CORS enabled for WordPress"
-    );
-
-    console.log(
-        "================================="
-    );
-
-});
+    }
+);
