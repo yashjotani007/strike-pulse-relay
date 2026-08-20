@@ -10,116 +10,118 @@ app.use((req, res, next) => {
     next();
 });
 
-async function getNSEData(url) {
 
-    const headers = {
-        "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-        "Accept":
-            "application/json, text/plain, */*",
-        "Accept-Language":
-            "en-US,en;q=0.9",
-        "Referer":
-            "https://www.nseindia.com/"
-    };
+// =====================================================
+// NSE PAGE REQUEST
+// =====================================================
 
-    // First request to establish NSE session
-    const homeResponse = await fetch(
-        "https://www.nseindia.com/",
+async function getNSEPage() {
+
+    const response = await fetch(
+        "https://www.nseindia.com/option-chain",
         {
-            headers: headers
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+
+                "Accept":
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+
+                "Accept-Language":
+                    "en-US,en;q=0.9",
+
+                "Cache-Control":
+                    "no-cache"
+            }
         }
     );
 
-    const cookie = homeResponse.headers.get("set-cookie");
-
-    if (cookie) {
-        headers["Cookie"] = cookie;
-    }
-
-    // Actual API request
-    const response = await fetch(url, {
-        headers: headers
-    });
-
     const text = await response.text();
 
-    console.log("NSE STATUS:", response.status);
-    console.log("NSE RESPONSE:", text.substring(0, 300));
+    console.log(
+        "NSE PAGE STATUS:",
+        response.status
+    );
+
+    console.log(
+        "NSE PAGE:",
+        text.substring(0, 500)
+    );
 
     if (!response.ok) {
+
         throw new Error(
-            "NSE HTTP " +
-            response.status +
-            " - " +
-            text.substring(0, 200)
+            "NSE page HTTP " +
+            response.status
         );
     }
 
-    try {
-        return JSON.parse(text);
-    } catch (error) {
-        throw new Error(
-            "NSE returned invalid JSON"
-        );
-    }
+    return text;
 }
 
 
-/* =========================
-   HOME / HEALTH CHECK
-========================= */
+// =====================================================
+// HEALTH CHECK
+// =====================================================
 
 app.get("/", (req, res) => {
 
     res.json({
         success: true,
-        service: "Strike Pulse NSE Relay",
-        status: "online"
+        message: "Strike Pulse Relay is running"
     });
 
 });
 
 
-/* =========================
-   NIFTY OPTION CHAIN
-========================= */
+// =====================================================
+// NSE OPTION PAGE TEST
+// =====================================================
 
-app.get("/api/nifty-option-chain", async (req, res) => {
+app.get(
+    "/api/nse-page",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const url =
-            "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY";
+            const html =
+                await getNSEPage();
 
-        const result =
-            await getNSEData(url);
+            res.json({
 
-        res.json({
-            success: true,
-            data: result
-        });
+                success: true,
 
-    } catch (error) {
+                length:
+                    html.length,
 
-        console.error(
-            "OPTION CHAIN ERROR:",
-            error.message
-        );
+                message:
+                    "NSE option-chain page received"
 
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+            });
 
+        } catch (error) {
+
+            console.error(
+                "NSE PAGE ERROR:",
+                error.message
+            );
+
+            res.status(500).json({
+
+                success: false,
+
+                error:
+                    error.message
+
+            });
+        }
     }
+);
 
-});
 
-
-/* =========================
-   SERVER
-========================= */
+// =====================================================
+// SERVER
+// =====================================================
 
 app.listen(
     PORT,
