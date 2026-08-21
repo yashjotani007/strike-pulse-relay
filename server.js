@@ -12,111 +12,93 @@ app.use((req, res, next) => {
 
 
 // =====================================================
-// NSE PAGE REQUEST
-// =====================================================
-
-async function getNSEPage() {
-
-    const response = await fetch(
-        "https://www.nseindia.com/option-chain",
-        {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-
-                "Accept":
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-
-                "Accept-Language":
-                    "en-US,en;q=0.9",
-
-                "Cache-Control":
-                    "no-cache"
-            }
-        }
-    );
-
-    const text = await response.text();
-
-    console.log(
-        "NSE PAGE STATUS:",
-        response.status
-    );
-
-    console.log(
-        "NSE PAGE:",
-        text.substring(0, 500)
-    );
-
-    if (!response.ok) {
-
-        throw new Error(
-            "NSE page HTTP " +
-            response.status
-        );
-    }
-
-    return text;
-}
-
-
-// =====================================================
 // HEALTH CHECK
 // =====================================================
 
 app.get("/", (req, res) => {
-
     res.json({
         success: true,
         message: "Strike Pulse Relay is running"
     });
-
 });
 
 
 // =====================================================
-// NSE OPTION PAGE TEST
+// LIVE PRICES
 // =====================================================
 
-app.get(
-    "/api/nse-page",
-    async (req, res) => {
+app.get("/api/prices", async (req, res) => {
 
-        try {
+    try {
 
-            const html =
-                await getNSEPage();
+        const response = await fetch(
+            "https://www.nseindia.com/api/allIndices",
+            {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
 
-            res.json({
+                    "Accept":
+                        "application/json,text/plain,*/*",
 
-                success: true,
+                    "Accept-Language":
+                        "en-US,en;q=0.9",
 
-                length:
-                    html.length,
+                    "Referer":
+                        "https://www.nseindia.com/"
+                }
+            }
+        );
 
-                message:
-                    "NSE option-chain page received"
-
-            });
-
-        } catch (error) {
-
-            console.error(
-                "NSE PAGE ERROR:",
-                error.message
+        if (!response.ok) {
+            throw new Error(
+                "NSE HTTP " + response.status
             );
-
-            res.status(500).json({
-
-                success: false,
-
-                error:
-                    error.message
-
-            });
         }
+
+        const data = await response.json();
+
+        const indices = data.data || [];
+
+        function findIndex(name) {
+            return indices.find(
+                item => item.index === name
+            );
+        }
+
+        const nifty = findIndex("NIFTY 50");
+        const banknifty = findIndex("NIFTY BANK");
+        const finnifty = findIndex("NIFTY FINANCIAL SERVICES");
+        const vix = findIndex("INDIA VIX");
+
+        res.json({
+            success: true,
+
+            nifty: nifty ? nifty.last : null,
+
+            banknifty: banknifty ? banknifty.last : null,
+
+            finnifty: finnifty ? finnifty.last : null,
+
+            vix: vix ? vix.last : null,
+
+            updated: new Date().toISOString()
+        });
+
+    } catch (error) {
+
+        console.error(
+            "PRICE API ERROR:",
+            error.message
+        );
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
-);
+
+});
 
 
 // =====================================================
