@@ -71,19 +71,23 @@ app.get("/api/prices", async (req, res) => {
         const finnifty = findIndex("NIFTY FINANCIAL SERVICES");
         const vix = findIndex("INDIA VIX");
 
-        res.json({
-            success: true,
+      res.json({
+    success: true,
 
-            nifty: nifty ? nifty.last : null,
+    nifty: nifty ? nifty.last : null,
+    niftyChange: nifty ? nifty.percentChange : null,
 
-            banknifty: banknifty ? banknifty.last : null,
+    banknifty: banknifty ? banknifty.last : null,
+    bankniftyChange: banknifty ? banknifty.percentChange : null,
 
-            finnifty: finnifty ? finnifty.last : null,
+    finnifty: finnifty ? finnifty.last : null,
+    finniftyChange: finnifty ? finnifty.percentChange : null,
 
-            vix: vix ? vix.last : null,
+    vix: vix ? vix.last : null,
+    vixChange: vix ? vix.percentChange : null,
 
-            updated: new Date().toISOString()
-        });
+    updated: new Date().toISOString()
+});
 
     } catch (error) {
 
