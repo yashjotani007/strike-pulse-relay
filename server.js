@@ -5,9 +5,6 @@ const { SmartAPI, WebSocketV2 } = require("smartapi-javascript");
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// =====================================================
-// CORS / NO CACHE
-// =====================================================
 app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -15,14 +12,10 @@ app.use((req, res, next) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-
     if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
 });
 
-// =====================================================
-// CONFIG
-// =====================================================
 const API_KEY = process.env.ANGEL_API_KEY;
 const CLIENT_CODE = process.env.ANGEL_CLIENT_CODE;
 const PIN = process.env.ANGEL_PIN;
@@ -64,16 +57,9 @@ let websocket = null;
 let reconnectTimer = null;
 let loginInProgress = false;
 
-// =====================================================
-// TOTP - RFC 6238 compatible
-// =====================================================
 function generateTOTP(secret) {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    const clean = String(secret || "")
-        .replace(/\s/g, "")
-        .replace(/=+$/g, "")
-        .toUpperCase();
-
+    const clean = String(secret || "").replace(/\s/g, "").replace(/=+$/g, "").toUpperCase();
     if (!clean) throw new Error("ANGEL_TOTP_SECRET is empty");
 
     let bits = "";
@@ -88,16 +74,11 @@ function generateTOTP(secret) {
         bytes.push(parseInt(bits.slice(i, i + 8), 2));
     }
 
-    const key = Buffer.from(bytes);
     const counter = Math.floor(Date.now() / 1000 / 30);
     const counterBuffer = Buffer.alloc(8);
     counterBuffer.writeBigUInt64BE(BigInt(counter));
 
-    const hmac = crypto
-        .createHmac("sha1", key)
-        .update(counterBuffer)
-        .digest();
-
+    const hmac = crypto.createHmac("sha1", Buffer.from(bytes)).update(counterBuffer).digest();
     const offset = hmac[hmac.length - 1] & 0x0f;
     const code = (
         ((hmac[offset] & 0x7f) << 24) |
@@ -109,9 +90,6 @@ function generateTOTP(secret) {
     return String(code).padStart(6, "0");
 }
 
-// =====================================================
-// HEALTH CHECK
-// =====================================================
 app.get("/", (req, res) => {
     res.json({
         success: true,
@@ -121,25 +99,31 @@ app.get("/", (req, res) => {
     });
 });
 
-// =====================================================
-// LIVE API
-// =====================================================
 app.get("/api/prices", (req, res) => {
-    res.json(liveData);
+    const payload = {
+        success: true,
+        nifty: liveData.nifty,
+        niftyChange: liveData.niftyChange,
+        banknifty: liveData.banknifty,
+        bankniftyChange: liveData.bankniftyChange,
+        finnifty: liveData.finnifty,
+        finniftyChange: liveData.finniftyChange,
+        vix: liveData.vix,
+        vixChange: liveData.vixChange,
+        updated: liveData.updated,
+        websocket: liveData.websocket
+    };
+
+    // Keep both formats so old and new WordPress JS work.
+    res.json({ ...payload, data: payload });
 });
 
-// =====================================================
-// LOGIN
-// =====================================================
 async function loginAngelOne() {
     if (!API_KEY || !CLIENT_CODE || !PIN || !TOTP_SECRET) {
-        throw new Error(
-            "Missing Angel One environment variables: ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN, ANGEL_TOTP_SECRET"
-        );
+        throw new Error("Missing Angel One environment variables");
     }
 
     console.log("[Angel] Logging in...");
-
     const smartApi = new SmartAPI({ api_key: API_KEY });
     const totp = generateTOTP(TOTP_SECRET);
     const session = await smartApi.generateSession(CLIENT_CODE, PIN, totp);
@@ -150,18 +134,14 @@ async function loginAngelOne() {
     }
 
     console.log("[Angel] Login successful");
-
     return {
         jwtToken: session.data.jwtToken,
         feedToken: session.data.feedToken
     };
 }
 
-// =====================================================
-// PRICE UPDATE
-// =====================================================
 function updatePrice(market, price) {
-    if (!Number.isFinite(price)) return;
+    if (!Number.isFinite(price) || price <= 0) return;
 
     const old = previous[market];
     let change = null;
@@ -175,15 +155,9 @@ function updatePrice(market, price) {
     liveData[`${market}Change`] = change;
     liveData.updated = new Date().toISOString();
 
-    console.log(
-        `[LIVE] ${market.toUpperCase()} ${price.toFixed(2)} ` +
-        (change === null ? "" : `(${change >= 0 ? "+" : ""}${change.toFixed(4)}%)`)
-    );
+    console.log(`[LIVE] ${market.toUpperCase()} ${price.toFixed(2)}${change === null ? "" : ` (${change >= 0 ? "+" : ""}${change.toFixed(4)}%)`}`);
 }
 
-// =====================================================
-// WEBSOCKET
-// =====================================================
 async function startWebSocket() {
     if (loginInProgress) return;
     loginInProgress = true;
@@ -198,23 +172,22 @@ async function startWebSocket() {
             feedtype: session.feedToken
         });
 
-        // Register listeners BEFORE connect.
         websocket.on("tick", (tick) => {
             try {
-                const token = String(tick.token || "").trim();
-                const market = TOKEN_TO_MARKET[token];
+                console.log("[Angel] RAW TICK:", tick);
 
-                if (!market) {
-                    console.log("[Angel] Tick for unknown token:", token);
-                    return;
-                }
+                const token = String(tick?.token || "")
+                    .replace(/^\"|\"$/g, "")
+                    .trim();
+
+                const market = TOKEN_TO_MARKET[token];
+                if (!market) return;
 
                 const raw = Number(tick.last_traded_price);
-                if (!Number.isFinite(raw)) return;
+                if (!Number.isFinite(raw) || raw <= 0) return;
 
-                // Angel One LTP is price * 100.
-                const price = raw / 100;
-                updatePrice(market, price);
+                // SmartAPI LTP is sent in paise.
+                updatePrice(market, raw / 100);
             } catch (error) {
                 console.error("[Angel] Tick processing error:", error.message);
             }
@@ -233,11 +206,9 @@ async function startWebSocket() {
 
         console.log("[Angel] Connecting WebSocket V2...");
         await websocket.connect();
-
         liveData.websocket = true;
         console.log("[Angel] WebSocket connected");
 
-        // NSE cash/index exchange = 1, LTP mode = 1.
         const subscription = {
             correlationID: "strikepulse01",
             action: 1,
@@ -260,16 +231,12 @@ async function startWebSocket() {
 
 function scheduleReconnect() {
     if (reconnectTimer) return;
-
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         startWebSocket();
     }, 10000);
 }
 
-// =====================================================
-// SERVER
-// =====================================================
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Strike Pulse Relay running on port ${PORT}`);
     startWebSocket();
