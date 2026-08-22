@@ -21,8 +21,7 @@ const CLIENT_CODE = process.env.ANGEL_CLIENT_CODE;
 const PIN = process.env.ANGEL_PIN;
 const TOTP_SECRET = process.env.ANGEL_TOTP_SECRET;
 
-// Current Angel One NSE index tokens.
-// Angel One moved the index symbols to the 999xxxxx token series.
+// Angel One index tokens.
 const TOKENS = {
     nifty: "99926000",
     banknifty: "99926009",
@@ -61,6 +60,7 @@ let smartApi = null;
 let reconnectTimer = null;
 let loginInProgress = false;
 let restTimer = null;
+let nseTimer = null;
 
 function generateTOTP(secret) {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -133,25 +133,25 @@ app.get("/api/prices", (req, res) => {
     });
 });
 
-function updatePrice(market, price, source) {
+function updatePrice(market, price, source, changeOverride = null) {
     if (!Number.isFinite(price) || price <= 0) return;
 
     const old = previous[market];
-    let change = null;
+    let change = changeOverride;
 
-    if (Number.isFinite(old) && old !== 0) {
+    if (change === null && Number.isFinite(old) && old !== 0) {
         change = ((price - old) / old) * 100;
     }
 
     previous[market] = price;
     liveData[market] = price;
-    liveData[`${market}Change`] = change;
+    liveData[`${market}Change`] = Number.isFinite(change) ? change : null;
     liveData.updated = new Date().toISOString();
     liveData.source = source;
 
     console.log(
         `[${source}] ${market.toUpperCase()} ${price.toFixed(2)}${
-            change === null ? "" : ` (${change >= 0 ? "+" : ""}${change.toFixed(4)}%)`
+            Number.isFinite(change) ? ` (${change >= 0 ? "+" : ""}${change.toFixed(4)}%)` : ""
         }`
     );
 }
@@ -173,7 +173,6 @@ async function loginAngelOne() {
     }
 
     smartApi = api;
-
     console.log("[Angel] Login successful");
 
     return {
@@ -182,17 +181,14 @@ async function loginAngelOne() {
     };
 }
 
-// REST LTP fallback using the same Angel One login.
+// Angel One REST LTP fallback.
 async function updateFromAngelREST() {
-    if (!smartApi || liveData.websocket) return;
+    if (!smartApi) return;
 
     try {
-        const response = await smartApi.getMarketData(
-            "LTP",
-            {
-                NSE: Object.values(TOKENS)
-            }
-        );
+        const response = await smartApi.getMarketData("LTP", {
+            NSE: Object.values(TOKENS)
+        });
 
         if (!response || response.status !== true) {
             throw new Error(response?.message || "Angel market-data request failed");
@@ -226,7 +222,85 @@ async function startAngelRESTFallback() {
 
     if (restTimer) clearInterval(restTimer);
     restTimer = setInterval(updateFromAngelREST, 2000);
-    console.log("[Angel REST] LTP fallback polling enabled (2s)");
+    console.log("[Angel REST] LTP polling enabled (2s)");
+}
+
+// -----------------------------------------------------
+// NSE FALLBACK / LAST CLOSED PRICE
+// -----------------------------------------------------
+// This is intentionally independent of the Angel WebSocket.
+// When the market is closed, there may be no WebSocket tick at all.
+// NSE still exposes the latest published index value, so the site
+// can show Friday's/last-session closing value instead of Loading...
+async function updateFromNSE() {
+    try {
+        const response = await fetch("https://www.nseindia.com/api/allIndices", {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "application/json,text/plain,*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.nseindia.com/",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`NSE HTTP ${response.status}`);
+        }
+
+        const body = await response.json();
+        const indices = Array.isArray(body?.data) ? body.data : [];
+
+        const findIndex = (name) =>
+            indices.find(item => String(item.index || "").trim() === name);
+
+        const found = {
+            nifty: findIndex("NIFTY 50"),
+            banknifty: findIndex("NIFTY BANK"),
+            finnifty: findIndex("NIFTY FINANCIAL SERVICES"),
+            vix: findIndex("INDIA VIX")
+        };
+
+        let updated = 0;
+
+        for (const [market, item] of Object.entries(found)) {
+            if (!item) {
+                console.warn(`[NSE] ${market} not found`);
+                continue;
+            }
+
+            const price = Number(item.last);
+            const change = Number(item.percentChange);
+
+            if (Number.isFinite(price) && price > 0) {
+                // Do not overwrite a working Angel WebSocket tick.
+                // NSE is primarily the closed-market/startup fallback.
+                if (!liveData.websocket || liveData[market] === null) {
+                    updatePrice(
+                        market,
+                        price,
+                        "nse-last",
+                        Number.isFinite(change) ? change : null
+                    );
+                    updated++;
+                }
+            }
+        }
+
+        console.log(`[NSE] fallback updated ${updated}/4 markets`);
+    } catch (error) {
+        console.error("[NSE] Fallback error:", error?.message || error);
+    }
+}
+
+function startNSEFallback() {
+    updateFromNSE();
+
+    if (nseTimer) clearInterval(nseTimer);
+    // Keeps closed-market values available after Render restarts/sleeps.
+    nseTimer = setInterval(updateFromNSE, 30000);
+    console.log("[NSE] Last-price fallback enabled (30s)");
 }
 
 async function startWebSocket() {
@@ -236,6 +310,9 @@ async function startWebSocket() {
     try {
         const session = await loginAngelOne();
 
+        // Get a value immediately, even before the first WebSocket tick.
+        await updateFromAngelREST();
+        await updateFromNSE();
         await startAngelRESTFallback();
 
         websocket = new WebSocketV2({
@@ -259,7 +336,7 @@ async function startWebSocket() {
 
                 updatePrice(market, raw / 100, "angelone");
             } catch (error) {
-                console.error("[Angel] Tick processing error:", error.message);
+                console.error("[Angel] Tick processing error:", error?.message || error);
             }
         });
 
@@ -271,7 +348,7 @@ async function startWebSocket() {
 
         websocket.on("close", () => {
             liveData.websocket = false;
-            console.log("[Angel] WebSocket closed; REST fallback remains active");
+            console.log("[Angel] WebSocket closed; fallback remains active");
             scheduleReconnect();
         });
 
@@ -293,11 +370,6 @@ async function startWebSocket() {
     } catch (error) {
         liveData.websocket = false;
         console.error("[Angel] Startup error:", error?.message || error);
-
-        if (smartApi) {
-            await startAngelRESTFallback();
-        }
-
         scheduleReconnect();
     } finally {
         loginInProgress = false;
@@ -315,6 +387,10 @@ function scheduleReconnect() {
 
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Strike Pulse Relay running on port ${PORT}`);
+
+    // Start this independently so closed-market prices are available
+    // even if Angel login/WebSocket is unavailable.
+    startNSEFallback();
 
     if (API_KEY && CLIENT_CODE && PIN && TOTP_SECRET) {
         console.log("[Angel] Credentials detected. Starting Angel One live feed...");
