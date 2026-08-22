@@ -1,8 +1,14 @@
 const express = require("express");
+const crypto = require("crypto");
+
+const {
+    SmartAPI,
+    WebSocketV2
+} = require("smartapi-javascript");
 
 const app = express();
-const PORT = process.env.PORT || 10000;
 
+const PORT = process.env.PORT || 10000;
 
 // =====================================================
 // CORS
@@ -25,8 +31,95 @@ app.use((req, res, next) => {
         "Content-Type"
     );
 
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(204);
+    }
+
     next();
 });
+
+
+// =====================================================
+// VARIABLES
+// =====================================================
+
+let liveData = {
+
+    success: true,
+
+    nifty: null,
+    niftyChange: null,
+
+    banknifty: null,
+    bankniftyChange: null,
+
+    finnifty: null,
+    finniftyChange: null,
+
+    vix: null,
+    vixChange: null,
+
+    updated: null
+};
+
+
+// Previous prices
+const previous = {
+    nifty: null,
+    banknifty: null,
+    finnifty: null,
+    vix: null
+};
+
+
+// =====================================================
+// ENVIRONMENT CHECK
+// =====================================================
+
+const API_KEY =
+    process.env.ANGEL_API_KEY;
+
+const CLIENT_CODE =
+    process.env.ANGEL_CLIENT_CODE;
+
+const PIN =
+    process.env.ANGEL_PIN;
+
+const TOTP_SECRET =
+    process.env.ANGEL_TOTP_SECRET;
+
+
+if (
+    !API_KEY ||
+    !CLIENT_CODE ||
+    !PIN ||
+    !TOTP_SECRET
+) {
+
+    console.error(
+        "ERROR: Angel One environment variables missing."
+    );
+
+    console.error(
+        "Required:"
+    );
+
+    console.error(
+        "ANGEL_API_KEY"
+    );
+
+    console.error(
+        "ANGEL_CLIENT_CODE"
+    );
+
+    console.error(
+        "ANGEL_PIN"
+    );
+
+    console.error(
+        "ANGEL_TOTP_SECRET"
+    );
+}
 
 
 // =====================================================
@@ -37,236 +130,574 @@ app.get("/", (req, res) => {
 
     res.json({
         success: true,
-        message: "Strike Pulse Relay is running"
+        message: "Strike Pulse Relay is running",
+        websocket: wsConnected,
+        lastUpdate: liveData.updated
     });
 
 });
 
 
 // =====================================================
-// LIVE NSE PRICES
+// LIVE PRICE API
 // =====================================================
 
-app.get("/api/prices", async (req, res) => {
+app.get("/api/prices", (req, res) => {
 
-    try {
+    res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
 
-        console.log(
-            "Fetching NSE live indices..."
+    res.setHeader(
+        "Pragma",
+        "no-cache"
+    );
+
+    res.setHeader(
+        "Expires",
+        "0"
+    );
+
+    res.json(liveData);
+
+});
+
+
+// =====================================================
+// WEBSOCKET STATE
+// =====================================================
+
+let wsConnected = false;
+let websocket = null;
+
+
+// =====================================================
+// TOTP
+// =====================================================
+
+function generateTOTP(secret) {
+
+    const base32chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    let bits = "";
+
+    let value = "";
+
+    secret =
+        secret
+            .replace(/\s/g, "")
+            .replace(/=+$/, "")
+            .toUpperCase();
+
+
+    for (const char of secret) {
+
+        const index =
+            base32chars.indexOf(char);
+
+        if (index === -1) {
+            throw new Error(
+                "Invalid TOTP secret"
+            );
+        }
+
+        bits += index
+            .toString(2)
+            .padStart(5, "0");
+    }
+
+
+    for (
+        let i = 0;
+        i + 8 <= bits.length;
+        i += 8
+    ) {
+
+        value += String.fromCharCode(
+            parseInt(
+                bits.substring(i, i + 8),
+                2
+            )
+        );
+    }
+
+
+    const counter =
+        Math.floor(
+            Date.now() / 1000 / 30
         );
 
 
-        // Cache-busting
-        const nseUrl =
-            "https://www.nseindia.com/api/allIndices?t=" +
-            Date.now();
+    const counterBuffer =
+        Buffer.alloc(8);
+
+    counterBuffer.writeBigUInt64BE(
+        BigInt(counter)
+    );
 
 
-        const response = await fetch(
-            nseUrl,
-            {
-                method: "GET",
+    const keyBuffer =
+        Buffer.from(value, "binary");
 
-                headers: {
 
-                    "User-Agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+    const hmac =
+        crypto
+            .createHmac(
+                "sha1",
+                keyBuffer
+            )
+            .update(counterBuffer)
+            .digest();
 
-                    "Accept":
-                        "application/json,text/plain,*/*",
 
-                    "Accept-Language":
-                        "en-US,en;q=0.9",
+    const offset =
+        hmac[hmac.length - 1] & 0x0f;
 
-                    "Referer":
-                        "https://www.nseindia.com/",
 
-                    "Cache-Control":
-                        "no-cache",
+    const code =
+        (
+            ((hmac[offset] & 0x7f) << 24) |
+            ((hmac[offset + 1] & 0xff) << 16) |
+            ((hmac[offset + 2] & 0xff) << 8) |
+            (hmac[offset + 3] & 0xff)
+        ) % 1000000;
 
-                    "Pragma":
-                        "no-cache"
+
+    return String(code).padStart(6, "0");
+}
+
+
+// =====================================================
+// LOGIN
+// =====================================================
+
+async function loginAngelOne() {
+
+    console.log(
+        "Connecting to Angel One..."
+    );
+
+
+    const smartApi =
+        new SmartAPI({
+            api_key: API_KEY
+        });
+
+
+    const totp =
+        generateTOTP(
+            TOTP_SECRET
+        );
+
+
+    console.log(
+        "Generating Angel One session..."
+    );
+
+
+    const session =
+        await smartApi.generateSession(
+            CLIENT_CODE,
+            PIN,
+            totp
+        );
+
+
+    if (
+        !session ||
+        session.status !== true ||
+        !session.data
+    ) {
+
+        console.error(
+            "Angel One login failed:"
+        );
+
+        console.error(session);
+
+        throw new Error(
+            "Angel One login failed"
+        );
+    }
+
+
+    console.log(
+        "Angel One login SUCCESS"
+    );
+
+
+    return {
+        smartApi: smartApi,
+
+        jwtToken:
+            session.data.jwtToken,
+
+        feedToken:
+            session.data.feedToken
+    };
+}
+
+
+// =====================================================
+// START WEBSOCKET
+// =====================================================
+
+async function startWebSocket() {
+
+    try {
+
+        const login =
+            await loginAngelOne();
+
+
+        websocket =
+            new WebSocketV2({
+
+                jwttoken:
+                    login.jwtToken,
+
+                apikey:
+                    API_KEY,
+
+                clientcode:
+                    CLIENT_CODE,
+
+                feedtype:
+                    login.feedToken
+
+            });
+
+
+        websocket.connect()
+            .then(() => {
+
+                console.log(
+                    "Angel One WebSocket CONNECTED"
+                );
+
+                wsConnected = true;
+
+
+                // =====================================
+                // SUBSCRIBE
+                // =====================================
+
+                const request = {
+
+                    correlationID:
+                        "strikepulse01",
+
+                    action: 1,
+
+                    mode: 1,
+
+                    exchangeType: 1,
+
+                    tokens: [
+
+                        // NIFTY 50
+                        "26000",
+
+                        // BANK NIFTY
+                        "26009",
+
+                        // FIN NIFTY
+                        "26037",
+
+                        // INDIA VIX
+                        "26017"
+
+                    ]
+
+                };
+
+
+                console.log(
+                    "Subscribing to live tokens..."
+                );
+
+                console.log(
+                    request
+                );
+
+
+                websocket.fetchData(
+                    request
+                );
+
+
+            })
+            .catch(error => {
+
+                console.error(
+                    "WebSocket connect error:",
+                    error
+                );
+
+                wsConnected = false;
+
+            });
+
+
+        // =====================================
+        // LIVE TICKS
+        // =====================================
+
+        websocket.on(
+            "tick",
+            (tick) => {
+
+                try {
+
+                    console.log(
+                        "LIVE TICK:",
+                        tick
+                    );
+
+
+                    const token =
+                        String(
+                            tick.token
+                        );
+
+
+                    const rawPrice =
+                        Number(
+                            tick.last_traded_price
+                        );
+
+
+                    if (
+                        !Number.isFinite(
+                            rawPrice
+                        )
+                    ) {
+
+                        return;
+                    }
+
+
+                    /*
+                     * Angel One WebSocket LTP
+                     * is returned in paise.
+                     */
+
+                    const price =
+                        rawPrice / 100;
+
+
+                    // =================================
+                    // NIFTY
+                    // =================================
+
+                    if (
+                        token === "26000"
+                    ) {
+
+                        updateLivePrice(
+                            "nifty",
+                            price
+                        );
+
+                    }
+
+
+                    // =================================
+                    // BANK NIFTY
+                    // =================================
+
+                    else if (
+                        token === "26009"
+                    ) {
+
+                        updateLivePrice(
+                            "banknifty",
+                            price
+                        );
+
+                    }
+
+
+                    // =================================
+                    // FIN NIFTY
+                    // =================================
+
+                    else if (
+                        token === "26037"
+                    ) {
+
+                        updateLivePrice(
+                            "finnifty",
+                            price
+                        );
+
+                    }
+
+
+                    // =================================
+                    // INDIA VIX
+                    // =================================
+
+                    else if (
+                        token === "26017"
+                    ) {
+
+                        updateLivePrice(
+                            "vix",
+                            price
+                        );
+
+                    }
+
                 }
+                catch (error) {
+
+                    console.error(
+                        "Tick processing error:",
+                        error
+                    );
+
+                }
+
             }
         );
 
 
-        console.log(
-            "NSE HTTP STATUS:",
-            response.status
+        // =====================================
+        // ERROR
+        // =====================================
+
+        websocket.on(
+            "error",
+            (error) => {
+
+                console.error(
+                    "Angel WebSocket ERROR:",
+                    error
+                );
+
+                wsConnected = false;
+
+            }
         );
 
 
-        if (!response.ok) {
+        // =====================================
+        // CLOSE
+        // =====================================
 
-            throw new Error(
-                "NSE HTTP " +
-                response.status
-            );
+        websocket.on(
+            "close",
+            () => {
 
-        }
+                console.log(
+                    "Angel WebSocket CLOSED"
+                );
 
-
-        const data =
-            await response.json();
-
-
-        const indices =
-            data.data || [];
+                wsConnected = false;
 
 
-        console.log(
-            "NSE INDICES COUNT:",
-            indices.length
+                // Reconnect after 10 sec
+
+                setTimeout(
+                    startWebSocket,
+                    10000
+                );
+
+            }
         );
 
-
-        // =====================================================
-        // FIND INDEX
-        // =====================================================
-
-        function findIndex(name) {
-
-            return indices.find(
-                item =>
-                    item.index === name
-            );
-
-        }
-
-
-        const nifty =
-            findIndex("NIFTY 50");
-
-
-        const banknifty =
-            findIndex("NIFTY BANK");
-
-
-        const finnifty =
-            findIndex(
-                "NIFTY FINANCIAL SERVICES"
-            );
-
-
-        const vix =
-            findIndex("INDIA VIX");
-
-
-        // =====================================================
-        // LOG VALUES
-        // =====================================================
-
-        console.log(
-            "NIFTY:",
-            nifty ? nifty.last : null
-        );
-
-        console.log(
-            "BANKNIFTY:",
-            banknifty ? banknifty.last : null
-        );
-
-        console.log(
-            "FINNIFTY:",
-            finnifty ? finnifty.last : null
-        );
-
-        console.log(
-            "VIX:",
-            vix ? vix.last : null
-        );
-
-
-        // =====================================================
-        // RESPONSE
-        // =====================================================
-
-        res.setHeader(
-            "Cache-Control",
-            "no-store, no-cache, must-revalidate, proxy-revalidate"
-        );
-
-
-        res.json({
-
-            success: true,
-
-            nifty:
-                nifty
-                    ? nifty.last
-                    : null,
-
-            niftyChange:
-                nifty
-                    ? nifty.percentChange
-                    : null,
-
-
-            banknifty:
-                banknifty
-                    ? banknifty.last
-                    : null,
-
-            bankniftyChange:
-                banknifty
-                    ? banknifty.percentChange
-                    : null,
-
-
-            finnifty:
-                finnifty
-                    ? finnifty.last
-                    : null,
-
-            finniftyChange:
-                finnifty
-                    ? finnifty.percentChange
-                    : null,
-
-
-            vix:
-                vix
-                    ? vix.last
-                    : null,
-
-            vixChange:
-                vix
-                    ? vix.percentChange
-                    : null,
-
-
-            updated:
-                new Date().toISOString()
-
-        });
 
     }
-
-
     catch (error) {
 
         console.error(
-            "PRICE API ERROR:",
-            error.message
+            "Angel WebSocket startup failed:",
+            error
         );
 
 
-        res.status(500).json({
+        wsConnected = false;
 
-            success: false,
 
-            error:
-                error.message,
-
-            updated:
-                new Date().toISOString()
-
-        });
+        setTimeout(
+            startWebSocket,
+            15000
+        );
 
     }
 
-});
+}
+
+
+// =====================================================
+// UPDATE PRICE
+// =====================================================
+
+function updateLivePrice(
+    market,
+    price
+) {
+
+    const oldPrice =
+        previous[market];
+
+
+    let percentChange = null;
+
+
+    /*
+     * This is the change between
+     * the previous received tick and
+     * the current tick.
+     */
+
+    if (
+        oldPrice !== null &&
+        oldPrice !== 0
+    ) {
+
+        percentChange =
+            (
+                (price - oldPrice) /
+                oldPrice
+            ) * 100;
+
+    }
+
+
+    previous[market] =
+        price;
+
+
+    liveData[market] =
+        price;
+
+
+    /*
+     * Current tick percentage.
+     */
+
+    liveData[
+        market + "Change"
+    ] =
+        percentChange;
+
+
+    liveData.updated =
+        new Date().toISOString();
+
+
+    console.log(
+        "UPDATED:",
+        market,
+        price,
+        percentChange
+    );
+
+}
 
 
 // =====================================================
@@ -282,6 +713,9 @@ app.listen(
             "Strike Pulse Relay running on port " +
             PORT
         );
+
+
+        startWebSocket();
 
     }
 );
