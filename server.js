@@ -1,69 +1,58 @@
 const express = require("express");
 const crypto = require("crypto");
-
-const {
-    SmartAPI,
-    WebSocketV2
-} = require("smartapi-javascript");
+const { SmartAPI, WebSocketV2 } = require("smartapi-javascript");
 
 const app = express();
-
 const PORT = process.env.PORT || 10000;
 
 // =====================================================
-// CORS
+// CORS / NO CACHE
 // =====================================================
-
 app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
 
-    res.setHeader(
-        "Access-Control-Allow-Origin",
-        "*"
-    );
-
-    res.setHeader(
-        "Access-Control-Allow-Methods",
-        "GET, OPTIONS"
-    );
-
-    res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Content-Type"
-    );
-
-    if (req.method === "OPTIONS") {
-        return res.sendStatus(204);
-    }
-
+    if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
 });
 
-
 // =====================================================
-// VARIABLES
+// CONFIG
 // =====================================================
+const API_KEY = process.env.ANGEL_API_KEY;
+const CLIENT_CODE = process.env.ANGEL_CLIENT_CODE;
+const PIN = process.env.ANGEL_PIN;
+const TOTP_SECRET = process.env.ANGEL_TOTP_SECRET;
 
-let liveData = {
-
-    success: true,
-
-    nifty: null,
-    niftyChange: null,
-
-    banknifty: null,
-    bankniftyChange: null,
-
-    finnifty: null,
-    finniftyChange: null,
-
-    vix: null,
-    vixChange: null,
-
-    updated: null
+const TOKENS = {
+    nifty: "26000",
+    banknifty: "26009",
+    finnifty: "26037",
+    vix: "26017"
 };
 
+const TOKEN_TO_MARKET = Object.fromEntries(
+    Object.entries(TOKENS).map(([market, token]) => [token, market])
+);
 
-// Previous prices
+const liveData = {
+    success: true,
+    nifty: null,
+    niftyChange: null,
+    banknifty: null,
+    bankniftyChange: null,
+    finnifty: null,
+    finniftyChange: null,
+    vix: null,
+    vixChange: null,
+    updated: null,
+    websocket: false
+};
+
 const previous = {
     nifty: null,
     banknifty: null,
@@ -71,651 +60,217 @@ const previous = {
     vix: null
 };
 
-
-// =====================================================
-// ENVIRONMENT CHECK
-// =====================================================
-
-const API_KEY =
-    process.env.ANGEL_API_KEY;
-
-const CLIENT_CODE =
-    process.env.ANGEL_CLIENT_CODE;
-
-const PIN =
-    process.env.ANGEL_PIN;
-
-const TOTP_SECRET =
-    process.env.ANGEL_TOTP_SECRET;
-
-
-if (
-    !API_KEY ||
-    !CLIENT_CODE ||
-    !PIN ||
-    !TOTP_SECRET
-) {
-
-    console.error(
-        "ERROR: Angel One environment variables missing."
-    );
-
-    console.error(
-        "Required:"
-    );
-
-    console.error(
-        "ANGEL_API_KEY"
-    );
-
-    console.error(
-        "ANGEL_CLIENT_CODE"
-    );
-
-    console.error(
-        "ANGEL_PIN"
-    );
-
-    console.error(
-        "ANGEL_TOTP_SECRET"
-    );
-}
-
-
-// =====================================================
-// HEALTH CHECK
-// =====================================================
-
-app.get("/", (req, res) => {
-
-    res.json({
-        success: true,
-        message: "Strike Pulse Relay is running",
-        websocket: wsConnected,
-        lastUpdate: liveData.updated
-    });
-
-});
-
-
-// =====================================================
-// LIVE PRICE API
-// =====================================================
-
-app.get("/api/prices", (req, res) => {
-
-    res.setHeader(
-        "Cache-Control",
-        "no-store, no-cache, must-revalidate, proxy-revalidate"
-    );
-
-    res.setHeader(
-        "Pragma",
-        "no-cache"
-    );
-
-    res.setHeader(
-        "Expires",
-        "0"
-    );
-
-    res.json(liveData);
-
-});
-
-
-// =====================================================
-// WEBSOCKET STATE
-// =====================================================
-
-let wsConnected = false;
 let websocket = null;
-
+let reconnectTimer = null;
+let loginInProgress = false;
 
 // =====================================================
-// TOTP
+// TOTP - RFC 6238 compatible
 // =====================================================
-
 function generateTOTP(secret) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    const clean = String(secret || "")
+        .replace(/\s/g, "")
+        .replace(/=+$/g, "")
+        .toUpperCase();
 
-    const base32chars =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    if (!clean) throw new Error("ANGEL_TOTP_SECRET is empty");
 
     let bits = "";
-
-    let value = "";
-
-    secret =
-        secret
-            .replace(/\s/g, "")
-            .replace(/=+$/, "")
-            .toUpperCase();
-
-
-    for (const char of secret) {
-
-        const index =
-            base32chars.indexOf(char);
-
-        if (index === -1) {
-            throw new Error(
-                "Invalid TOTP secret"
-            );
-        }
-
-        bits += index
-            .toString(2)
-            .padStart(5, "0");
+    for (const char of clean) {
+        const index = alphabet.indexOf(char);
+        if (index < 0) throw new Error("Invalid ANGEL_TOTP_SECRET");
+        bits += index.toString(2).padStart(5, "0");
     }
 
-
-    for (
-        let i = 0;
-        i + 8 <= bits.length;
-        i += 8
-    ) {
-
-        value += String.fromCharCode(
-            parseInt(
-                bits.substring(i, i + 8),
-                2
-            )
-        );
+    const bytes = [];
+    for (let i = 0; i + 8 <= bits.length; i += 8) {
+        bytes.push(parseInt(bits.slice(i, i + 8), 2));
     }
 
+    const key = Buffer.from(bytes);
+    const counter = Math.floor(Date.now() / 1000 / 30);
+    const counterBuffer = Buffer.alloc(8);
+    counterBuffer.writeBigUInt64BE(BigInt(counter));
 
-    const counter =
-        Math.floor(
-            Date.now() / 1000 / 30
-        );
+    const hmac = crypto
+        .createHmac("sha1", key)
+        .update(counterBuffer)
+        .digest();
 
-
-    const counterBuffer =
-        Buffer.alloc(8);
-
-    counterBuffer.writeBigUInt64BE(
-        BigInt(counter)
-    );
-
-
-    const keyBuffer =
-        Buffer.from(value, "binary");
-
-
-    const hmac =
-        crypto
-            .createHmac(
-                "sha1",
-                keyBuffer
-            )
-            .update(counterBuffer)
-            .digest();
-
-
-    const offset =
-        hmac[hmac.length - 1] & 0x0f;
-
-
-    const code =
-        (
-            ((hmac[offset] & 0x7f) << 24) |
-            ((hmac[offset + 1] & 0xff) << 16) |
-            ((hmac[offset + 2] & 0xff) << 8) |
-            (hmac[offset + 3] & 0xff)
-        ) % 1000000;
-
+    const offset = hmac[hmac.length - 1] & 0x0f;
+    const code = (
+        ((hmac[offset] & 0x7f) << 24) |
+        ((hmac[offset + 1] & 0xff) << 16) |
+        ((hmac[offset + 2] & 0xff) << 8) |
+        (hmac[offset + 3] & 0xff)
+    ) % 1000000;
 
     return String(code).padStart(6, "0");
 }
 
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+app.get("/", (req, res) => {
+    res.json({
+        success: true,
+        message: "Strike Pulse Relay is running",
+        websocket: liveData.websocket,
+        lastUpdate: liveData.updated
+    });
+});
+
+// =====================================================
+// LIVE API
+// =====================================================
+app.get("/api/prices", (req, res) => {
+    res.json(liveData);
+});
 
 // =====================================================
 // LOGIN
 // =====================================================
-
 async function loginAngelOne() {
-
-    console.log(
-        "Connecting to Angel One..."
-    );
-
-
-    const smartApi =
-        new SmartAPI({
-            api_key: API_KEY
-        });
-
-
-    const totp =
-        generateTOTP(
-            TOTP_SECRET
-        );
-
-
-    console.log(
-        "Generating Angel One session..."
-    );
-
-
-    const session =
-        await smartApi.generateSession(
-            CLIENT_CODE,
-            PIN,
-            totp
-        );
-
-
-    if (
-        !session ||
-        session.status !== true ||
-        !session.data
-    ) {
-
-        console.error(
-            "Angel One login failed:"
-        );
-
-        console.error(session);
-
+    if (!API_KEY || !CLIENT_CODE || !PIN || !TOTP_SECRET) {
         throw new Error(
-            "Angel One login failed"
+            "Missing Angel One environment variables: ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN, ANGEL_TOTP_SECRET"
         );
     }
 
+    console.log("[Angel] Logging in...");
 
-    console.log(
-        "Angel One login SUCCESS"
-    );
+    const smartApi = new SmartAPI({ api_key: API_KEY });
+    const totp = generateTOTP(TOTP_SECRET);
+    const session = await smartApi.generateSession(CLIENT_CODE, PIN, totp);
 
+    if (!session || session.status !== true || !session.data) {
+        console.error("[Angel] Login response:", session);
+        throw new Error("Angel One login failed");
+    }
+
+    console.log("[Angel] Login successful");
 
     return {
-        smartApi: smartApi,
-
-        jwtToken:
-            session.data.jwtToken,
-
-        feedToken:
-            session.data.feedToken
+        jwtToken: session.data.jwtToken,
+        feedToken: session.data.feedToken
     };
 }
 
-
 // =====================================================
-// START WEBSOCKET
+// PRICE UPDATE
 // =====================================================
+function updatePrice(market, price) {
+    if (!Number.isFinite(price)) return;
 
-async function startWebSocket() {
+    const old = previous[market];
+    let change = null;
 
-    try {
-
-        const login =
-            await loginAngelOne();
-
-
-        websocket =
-            new WebSocketV2({
-
-                jwttoken:
-                    login.jwtToken,
-
-                apikey:
-                    API_KEY,
-
-                clientcode:
-                    CLIENT_CODE,
-
-                feedtype:
-                    login.feedToken
-
-            });
-
-
-        websocket.connect()
-            .then(() => {
-
-                console.log(
-                    "Angel One WebSocket CONNECTED"
-                );
-
-                wsConnected = true;
-
-
-                // =====================================
-                // SUBSCRIBE
-                // =====================================
-
-                const request = {
-
-                    correlationID:
-                        "strikepulse01",
-
-                    action: 1,
-
-                    mode: 1,
-
-                    exchangeType: 1,
-
-                    tokens: [
-
-                        // NIFTY 50
-                        "26000",
-
-                        // BANK NIFTY
-                        "26009",
-
-                        // FIN NIFTY
-                        "26037",
-
-                        // INDIA VIX
-                        "26017"
-
-                    ]
-
-                };
-
-
-                console.log(
-                    "Subscribing to live tokens..."
-                );
-
-                console.log(
-                    request
-                );
-
-
-                websocket.fetchData(
-                    request
-                );
-
-
-            })
-            .catch(error => {
-
-                console.error(
-                    "WebSocket connect error:",
-                    error
-                );
-
-                wsConnected = false;
-
-            });
-
-
-        // =====================================
-        // LIVE TICKS
-        // =====================================
-
-        websocket.on(
-            "tick",
-            (tick) => {
-
-                try {
-
-                    console.log(
-                        "LIVE TICK:",
-                        tick
-                    );
-
-
-                    const token =
-                        String(
-                            tick.token
-                        );
-
-
-                    const rawPrice =
-                        Number(
-                            tick.last_traded_price
-                        );
-
-
-                    if (
-                        !Number.isFinite(
-                            rawPrice
-                        )
-                    ) {
-
-                        return;
-                    }
-
-
-                    /*
-                     * Angel One WebSocket LTP
-                     * is returned in paise.
-                     */
-
-                    const price =
-                        rawPrice / 100;
-
-
-                    // =================================
-                    // NIFTY
-                    // =================================
-
-                    if (
-                        token === "26000"
-                    ) {
-
-                        updateLivePrice(
-                            "nifty",
-                            price
-                        );
-
-                    }
-
-
-                    // =================================
-                    // BANK NIFTY
-                    // =================================
-
-                    else if (
-                        token === "26009"
-                    ) {
-
-                        updateLivePrice(
-                            "banknifty",
-                            price
-                        );
-
-                    }
-
-
-                    // =================================
-                    // FIN NIFTY
-                    // =================================
-
-                    else if (
-                        token === "26037"
-                    ) {
-
-                        updateLivePrice(
-                            "finnifty",
-                            price
-                        );
-
-                    }
-
-
-                    // =================================
-                    // INDIA VIX
-                    // =================================
-
-                    else if (
-                        token === "26017"
-                    ) {
-
-                        updateLivePrice(
-                            "vix",
-                            price
-                        );
-
-                    }
-
-                }
-                catch (error) {
-
-                    console.error(
-                        "Tick processing error:",
-                        error
-                    );
-
-                }
-
-            }
-        );
-
-
-        // =====================================
-        // ERROR
-        // =====================================
-
-        websocket.on(
-            "error",
-            (error) => {
-
-                console.error(
-                    "Angel WebSocket ERROR:",
-                    error
-                );
-
-                wsConnected = false;
-
-            }
-        );
-
-
-        // =====================================
-        // CLOSE
-        // =====================================
-
-        websocket.on(
-            "close",
-            () => {
-
-                console.log(
-                    "Angel WebSocket CLOSED"
-                );
-
-                wsConnected = false;
-
-
-                // Reconnect after 10 sec
-
-                setTimeout(
-                    startWebSocket,
-                    10000
-                );
-
-            }
-        );
-
-
-    }
-    catch (error) {
-
-        console.error(
-            "Angel WebSocket startup failed:",
-            error
-        );
-
-
-        wsConnected = false;
-
-
-        setTimeout(
-            startWebSocket,
-            15000
-        );
-
+    if (Number.isFinite(old) && old !== 0) {
+        change = ((price - old) / old) * 100;
     }
 
-}
-
-
-// =====================================================
-// UPDATE PRICE
-// =====================================================
-
-function updateLivePrice(
-    market,
-    price
-) {
-
-    const oldPrice =
-        previous[market];
-
-
-    let percentChange = null;
-
-
-    /*
-     * This is the change between
-     * the previous received tick and
-     * the current tick.
-     */
-
-    if (
-        oldPrice !== null &&
-        oldPrice !== 0
-    ) {
-
-        percentChange =
-            (
-                (price - oldPrice) /
-                oldPrice
-            ) * 100;
-
-    }
-
-
-    previous[market] =
-        price;
-
-
-    liveData[market] =
-        price;
-
-
-    /*
-     * Current tick percentage.
-     */
-
-    liveData[
-        market + "Change"
-    ] =
-        percentChange;
-
-
-    liveData.updated =
-        new Date().toISOString();
-
+    previous[market] = price;
+    liveData[market] = price;
+    liveData[`${market}Change`] = change;
+    liveData.updated = new Date().toISOString();
 
     console.log(
-        "UPDATED:",
-        market,
-        price,
-        percentChange
+        `[LIVE] ${market.toUpperCase()} ${price.toFixed(2)} ` +
+        (change === null ? "" : `(${change >= 0 ? "+" : ""}${change.toFixed(4)}%)`)
     );
-
 }
 
+// =====================================================
+// WEBSOCKET
+// =====================================================
+async function startWebSocket() {
+    if (loginInProgress) return;
+    loginInProgress = true;
+
+    try {
+        const session = await loginAngelOne();
+
+        websocket = new WebSocketV2({
+            clientcode: CLIENT_CODE,
+            jwttoken: session.jwtToken,
+            apikey: API_KEY,
+            feedtype: session.feedToken
+        });
+
+        // Register listeners BEFORE connect.
+        websocket.on("tick", (tick) => {
+            try {
+                const token = String(tick.token || "").trim();
+                const market = TOKEN_TO_MARKET[token];
+
+                if (!market) {
+                    console.log("[Angel] Tick for unknown token:", token);
+                    return;
+                }
+
+                const raw = Number(tick.last_traded_price);
+                if (!Number.isFinite(raw)) return;
+
+                // Angel One LTP is price * 100.
+                const price = raw / 100;
+                updatePrice(market, price);
+            } catch (error) {
+                console.error("[Angel] Tick processing error:", error.message);
+            }
+        });
+
+        websocket.on("error", (error) => {
+            liveData.websocket = false;
+            console.error("[Angel] WebSocket error:", error?.message || error);
+        });
+
+        websocket.on("close", () => {
+            liveData.websocket = false;
+            console.log("[Angel] WebSocket closed");
+            scheduleReconnect();
+        });
+
+        console.log("[Angel] Connecting WebSocket V2...");
+        await websocket.connect();
+
+        liveData.websocket = true;
+        console.log("[Angel] WebSocket connected");
+
+        // NSE cash/index exchange = 1, LTP mode = 1.
+        const subscription = {
+            correlationID: "strikepulse01",
+            action: 1,
+            mode: 1,
+            exchangeType: 1,
+            tokens: Object.values(TOKENS)
+        };
+
+        console.log("[Angel] Subscribing:", subscription.tokens.join(", "));
+        websocket.fetchData(subscription);
+
+    } catch (error) {
+        liveData.websocket = false;
+        console.error("[Angel] Startup error:", error?.message || error);
+        scheduleReconnect();
+    } finally {
+        loginInProgress = false;
+    }
+}
+
+function scheduleReconnect() {
+    if (reconnectTimer) return;
+
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        startWebSocket();
+    }, 10000);
+}
 
 // =====================================================
 // SERVER
 // =====================================================
-
-app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-
-        console.log(
-            "Strike Pulse Relay running on port " +
-            PORT
-        );
-
-
-        startWebSocket();
-
-    }
-);
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Strike Pulse Relay running on port ${PORT}`);
+    startWebSocket();
+});
