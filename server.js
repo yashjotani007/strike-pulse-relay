@@ -21,6 +21,7 @@ const CLIENT_CODE = process.env.ANGEL_CLIENT_CODE;
 const PIN = process.env.ANGEL_PIN;
 const TOTP_SECRET = process.env.ANGEL_TOTP_SECRET;
 
+// Angel One NSE index tokens.
 const TOKENS = {
     nifty: "26000",
     banknifty: "26009",
@@ -55,9 +56,10 @@ const previous = {
 };
 
 let websocket = null;
+let smartApi = null;
 let reconnectTimer = null;
 let loginInProgress = false;
-let yahooTimer = null;
+let restTimer = null;
 
 function generateTOTP(secret) {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -103,7 +105,7 @@ app.get("/", (req, res) => {
 });
 
 app.get("/api/prices", (req, res) => {
-    const payload = {
+    res.json({
         success: true,
         nifty: liveData.nifty,
         niftyChange: liveData.niftyChange,
@@ -115,10 +117,19 @@ app.get("/api/prices", (req, res) => {
         vixChange: liveData.vixChange,
         updated: liveData.updated,
         source: liveData.source,
-        websocket: liveData.websocket
-    };
-
-    res.json({ ...payload, data: payload });
+        websocket: liveData.websocket,
+        data: {
+            nifty: liveData.nifty,
+            niftyChange: liveData.niftyChange,
+            banknifty: liveData.banknifty,
+            bankniftyChange: liveData.bankniftyChange,
+            finnifty: liveData.finnifty,
+            finniftyChange: liveData.finniftyChange,
+            vix: liveData.vix,
+            vixChange: liveData.vixChange,
+            updated: liveData.updated
+        }
+    });
 });
 
 function updatePrice(market, price, source) {
@@ -137,29 +148,85 @@ function updatePrice(market, price, source) {
     liveData.updated = new Date().toISOString();
     liveData.source = source;
 
-    console.log(`[${source}] ${market.toUpperCase()} ${price.toFixed(2)}${change === null ? "" : ` (${change >= 0 ? "+" : ""}${change.toFixed(4)}%)`}`);
+    console.log(
+        `[${source}] ${market.toUpperCase()} ${price.toFixed(2)}${
+            change === null ? "" : ` (${change >= 0 ? "+" : ""}${change.toFixed(4)}%)`
+        }`
+    );
 }
 
 async function loginAngelOne() {
     if (!API_KEY || !CLIENT_CODE || !PIN || !TOTP_SECRET) {
-        throw new Error("Angel One credentials are not configured");
+        throw new Error("Angel One credentials are not configured in Render");
     }
 
     console.log("[Angel] Logging in...");
-    const smartApi = new SmartAPI({ api_key: API_KEY });
+
+    const api = new SmartAPI({ api_key: API_KEY });
     const totp = generateTOTP(TOTP_SECRET);
-    const session = await smartApi.generateSession(CLIENT_CODE, PIN, totp);
+    const session = await api.generateSession(CLIENT_CODE, PIN, totp);
 
     if (!session || session.status !== true || !session.data) {
         console.error("[Angel] Login response:", session);
         throw new Error("Angel One login failed");
     }
 
+    smartApi = api;
+
     console.log("[Angel] Login successful");
+
     return {
         jwtToken: session.data.jwtToken,
         feedToken: session.data.feedToken
     };
+}
+
+// REST LTP fallback using the SAME Angel One login/credentials.
+// This does not require any additional API key or paid data provider.
+async function updateFromAngelREST() {
+    if (!smartApi || liveData.websocket) return;
+
+    try {
+        const response = await smartApi.getMarketData(
+            "LTP",
+            {
+                NSE: Object.values(TOKENS)
+            }
+        );
+
+        if (!response || response.status !== true) {
+            throw new Error(response?.message || "Angel market-data request failed");
+        }
+
+        const fetched = response?.data?.fetched || [];
+
+        for (const item of fetched) {
+            const token = String(item.symbolToken ?? item.symboltoken ?? "").trim();
+            const market = TOKEN_TO_MARKET[token];
+            const price = Number(item.ltp);
+
+            if (market && Number.isFinite(price) && price > 0) {
+                updatePrice(market, price, "angel-rest");
+            }
+        }
+
+        if (!fetched.length) {
+            console.warn("[Angel REST] No index data returned", response);
+        }
+    } catch (error) {
+        console.error("[Angel REST] Market data error:", error?.message || error);
+    }
+}
+
+async function startAngelRESTFallback() {
+    if (!smartApi) return;
+
+    await updateFromAngelREST();
+
+    if (restTimer) clearInterval(restTimer);
+    // Angel's market-data API is rate limited; 2 seconds is intentionally conservative.
+    restTimer = setInterval(updateFromAngelREST, 2000);
+    console.log("[Angel REST] LTP fallback polling enabled (2s)");
 }
 
 async function startWebSocket() {
@@ -168,6 +235,8 @@ async function startWebSocket() {
 
     try {
         const session = await loginAngelOne();
+
+        await startAngelRESTFallback();
 
         websocket = new WebSocketV2({
             clientcode: CLIENT_CODE,
@@ -202,7 +271,7 @@ async function startWebSocket() {
 
         websocket.on("close", () => {
             liveData.websocket = false;
-            console.log("[Angel] WebSocket closed");
+            console.log("[Angel] WebSocket closed; REST fallback remains active");
             scheduleReconnect();
         });
 
@@ -211,6 +280,7 @@ async function startWebSocket() {
         liveData.websocket = true;
         console.log("[Angel] WebSocket connected");
 
+        // Keep the REST poller alive as a safety net. It only writes when WS is disconnected.
         const subscription = {
             correlationID: "strikepulse01",
             action: 1,
@@ -219,10 +289,16 @@ async function startWebSocket() {
             tokens: Object.values(TOKENS)
         };
 
+        console.log("[Angel] Subscribing:", subscription);
         websocket.fetchData(subscription);
     } catch (error) {
         liveData.websocket = false;
         console.error("[Angel] Startup error:", error?.message || error);
+
+        if (smartApi) {
+            await startAngelRESTFallback();
+        }
+
         scheduleReconnect();
     } finally {
         loginInProgress = false;
@@ -231,73 +307,20 @@ async function startWebSocket() {
 
 function scheduleReconnect() {
     if (reconnectTimer) return;
+
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         startWebSocket();
     }, 10000);
 }
 
-const YAHOO_SYMBOLS = {
-    nifty: ["^NSEI"],
-    banknifty: ["^NSEBANK"],
-    finnifty: ["^CNXFINANCE", "FINNIFTY.NS"],
-    vix: ["^INDIAVIX"]
-};
-
-async function fetchYahooSymbol(symbol) {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1m`;
-    const response = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        signal: AbortSignal.timeout(8000)
-    });
-
-    if (!response.ok) throw new Error(`Yahoo HTTP ${response.status}`);
-
-    const json = await response.json();
-    const result = json?.chart?.result?.[0];
-    const meta = result?.meta;
-    const price = Number(meta?.regularMarketPrice ?? meta?.previousClose);
-
-    if (!Number.isFinite(price) || price <= 0) throw new Error(`No price for ${symbol}`);
-    return price;
-}
-
-async function updateFromYahoo() {
-    if (liveData.websocket) return;
-
-    for (const market of Object.keys(YAHOO_SYMBOLS)) {
-        let found = false;
-
-        for (const symbol of YAHOO_SYMBOLS[market]) {
-            try {
-                const price = await fetchYahooSymbol(symbol);
-                updatePrice(market, price, "yahoo");
-                found = true;
-                break;
-            } catch (error) {
-                console.error(`[Yahoo] ${market} ${symbol}: ${error.message}`);
-            }
-        }
-
-        if (!found) console.error(`[Yahoo] Could not update ${market}`);
-    }
-}
-
-function startYahooFallback() {
-    updateFromYahoo();
-    yahooTimer = setInterval(updateFromYahoo, 10000);
-    console.log("[Yahoo] Fallback polling enabled (10s)");
-}
-
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Strike Pulse Relay running on port ${PORT}`);
 
-    // Angel One is used automatically when its credentials exist in Render.
-    // Otherwise the relay still supplies index prices through Yahoo fallback.
     if (API_KEY && CLIENT_CODE && PIN && TOTP_SECRET) {
+        console.log("[Angel] Credentials detected. Starting Angel One live feed...");
         startWebSocket();
     } else {
-        console.log("[Angel] Credentials not configured; using Yahoo fallback");
-        startYahooFallback();
+        console.error("[Angel] Credentials missing. Add ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_PIN and ANGEL_TOTP_SECRET in Render.");
     }
 });
