@@ -83,7 +83,6 @@ async function getNSECookies(force = false) {
 function parseJsonFromText(text) {
   const raw = String(text || "").trim();
   try { return JSON.parse(raw); } catch (_) {}
-
   const first = raw.indexOf("{");
   const last = raw.lastIndexOf("}");
   if (first >= 0 && last > first) {
@@ -92,27 +91,71 @@ function parseJsonFromText(text) {
   throw new Error(`Invalid JSON: ${raw.slice(0, 160)}`);
 }
 
-async function jinaJson(path) {
-  const target = `${NSE_BASE}${path}`;
-  const response = await fetch(`${JINA_BASE}${target}`, {
-    headers: {
-      Accept: "text/plain",
-      "X-No-Cache": "true",
-      "X-Engine": "curl"
-    },
-    redirect: "follow"
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Jina HTTP ${response.status}: ${text.slice(0, 120)}`);
-
-  // Reader may return either the target JSON directly or a wrapper whose
-  // content field contains the target response.
+async function fetchText(url, headers = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const wrapper = JSON.parse(text);
-    if (wrapper && typeof wrapper.content === "string") return parseJsonFromText(wrapper.content);
-    if (wrapper && (wrapper.records || wrapper.data || wrapper.filtered)) return wrapper;
-  } catch (_) {}
-  return parseJsonFromText(text);
+    const response = await fetch(url, { headers, redirect: "follow", signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 120)}`);
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function proxyJson(path) {
+  const target = `${NSE_BASE}${path}`;
+  const encoded = encodeURIComponent(target);
+  const attempts = [
+    {
+      name: "allorigins",
+      url: `https://api.allorigins.win/raw?url=${encoded}`,
+      headers: { Accept: "application/json, text/plain, */*" }
+    },
+    {
+      name: "corsproxy",
+      url: `https://corsproxy.io/?url=${encoded}`,
+      headers: { Accept: "application/json, text/plain, */*" }
+    },
+    {
+      name: "codetabs",
+      url: `https://api.codetabs.com/v1/proxy?quest=${encoded}`,
+      headers: { Accept: "application/json, text/plain, */*" }
+    },
+    {
+      name: "jina",
+      url: `${JINA_BASE}${target}`,
+      headers: { Accept: "text/plain", "X-No-Cache": "true", "X-Engine": "curl" }
+    }
+  ];
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      console.log(`[NSE] trying ${attempt.name} proxy for ${path}`);
+      const text = await fetchText(attempt.url, attempt.headers);
+      try {
+        const wrapper = JSON.parse(text);
+        if (wrapper && typeof wrapper.content === "string") {
+          const parsed = parseJsonFromText(wrapper.content);
+          console.log(`[NSE] ${attempt.name} proxy succeeded`);
+          return parsed;
+        }
+        if (wrapper && (wrapper.records || wrapper.data || wrapper.filtered || wrapper.optionChain)) {
+          console.log(`[NSE] ${attempt.name} proxy succeeded`);
+          return wrapper;
+        }
+      } catch (_) {}
+      const parsed = parseJsonFromText(text);
+      console.log(`[NSE] ${attempt.name} proxy succeeded`);
+      return parsed;
+    } catch (e) {
+      lastError = e;
+      console.log(`[NSE] ${attempt.name} proxy failed:`, e?.message || e);
+    }
+  }
+  throw new Error(`All NSE proxy fallbacks failed: ${lastError?.message || "unknown error"}`);
 }
 
 async function nseJson(path, retry = true) {
@@ -139,8 +182,7 @@ async function nseJson(path, retry = true) {
     return parseJsonFromText(text);
   } catch (directError) {
     console.log(`[NSE] direct failed for ${path}:`, directError?.message || directError);
-    console.log(`[NSE] using public reader fallback for ${path}`);
-    return jinaJson(path);
+    return proxyJson(path);
   }
 }
 
@@ -276,8 +318,6 @@ function buildOptionResponse(body) {
 }
 
 app.get("/api/nifty-option-chain", async (req, res) => {
-  // Keep the public fallback under its anonymous rate limit and avoid
-  // duplicate requests when the WordPress page polls repeatedly.
   if (optionCache && Date.now() - optionCacheTime < 12000) {
     return res.json(optionCache);
   }
