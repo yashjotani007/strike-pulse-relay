@@ -21,12 +21,13 @@ const CLIENT_CODE = process.env.ANGEL_CLIENT_CODE;
 const PIN = process.env.ANGEL_PIN;
 const TOTP_SECRET = process.env.ANGEL_TOTP_SECRET;
 
-// Angel One NSE index tokens.
+// Current Angel One NSE index tokens.
+// Angel One moved the index symbols to the 999xxxxx token series.
 const TOKENS = {
-    nifty: "26000",
-    banknifty: "26009",
-    finnifty: "26037",
-    vix: "26017"
+    nifty: "99926000",
+    banknifty: "99926009",
+    finnifty: "99926037",
+    vix: "99926017"
 };
 
 const TOKEN_TO_MARKET = Object.fromEntries(
@@ -181,8 +182,7 @@ async function loginAngelOne() {
     };
 }
 
-// REST LTP fallback using the SAME Angel One login/credentials.
-// This does not require any additional API key or paid data provider.
+// REST LTP fallback using the same Angel One login.
 async function updateFromAngelREST() {
     if (!smartApi || liveData.websocket) return;
 
@@ -210,9 +210,10 @@ async function updateFromAngelREST() {
             }
         }
 
-        if (!fetched.length) {
-            console.warn("[Angel REST] No index data returned", response);
-        }
+        console.log(
+            "[Angel REST] fetched:",
+            fetched.map(item => `${item.symbolToken}:${item.ltp}`).join(", ") || "none"
+        );
     } catch (error) {
         console.error("[Angel REST] Market data error:", error?.message || error);
     }
@@ -224,7 +225,6 @@ async function startAngelRESTFallback() {
     await updateFromAngelREST();
 
     if (restTimer) clearInterval(restTimer);
-    // Angel's market-data API is rate limited; 2 seconds is intentionally conservative.
     restTimer = setInterval(updateFromAngelREST, 2000);
     console.log("[Angel REST] LTP fallback polling enabled (2s)");
 }
@@ -280,7 +280,6 @@ async function startWebSocket() {
         liveData.websocket = true;
         console.log("[Angel] WebSocket connected");
 
-        // Keep the REST poller alive as a safety net. It only writes when WS is disconnected.
         const subscription = {
             correlationID: "strikepulse01",
             action: 1,
