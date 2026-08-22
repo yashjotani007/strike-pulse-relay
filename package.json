@@ -1,13 +1,16 @@
 {
   "name": "strike-pulse-relay",
-  "version": "1.0.0",
-  "description": "Strike Pulse NSE option chain relay",
+  "version": "1.1.0",
+  "description": "Strike Pulse live market relay using Angel One SmartAPI WebSocket V2",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "express": "^5.1.0",
-    "nse-data": "^1.0.0"
+    "smartapi-javascript": "1.0.27"
   }
 }
