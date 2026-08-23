@@ -1,0 +1,42 @@
+name: Force SENSEX attach fix
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'public/strike-pulse.js'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch SENSEX force attach
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('public/strike-pulse.js')
+          s=p.read_text()
+          marker="function prices(){"
+          if "function forceSensexAttach(){" not in s:
+              fn='''function forceSensexAttach(){try{let card=document.querySelector('.sp-market-sensex');if(!card){card=document.createElement('div');card.className='sp-market-card sp-market-sensex';card.innerHTML='<div class="sp-market-name">SENSEX</div><div class="sp-price" data-market="sensex">Loading…</div><div class="sp-change" data-change="sensex">—</div><div class="sp-updated" data-updated="sensex">Updated --</div><div class="sp-market-status sp-closed">CLOSED</div>';console.error('[StrikePulse] SENSEX CARD WAS MISSING — CREATED NOW')}const p=document.querySelector('.sp-price[data-market="nifty"]');const grid=p?.closest('.wp-block-columns');if(grid&&card.parentElement!==grid)grid.appendChild(card);card.classList.add('sp-market-card','sp-market-sensex');console.log('%c[StrikePulse] SENSEX FORCE ATTACHED','color:#22c55e;font-weight:900');return card}catch(e){console.error('[StrikePulse] SENSEX FORCE ATTACH FAILED',e);return null}}\n'''
+              s=s.replace(marker,fn+marker)
+          s=s.replace("async function prices(){", "async function prices(){forceSensexAttach();")
+          # Remove accidental duplicate sensex calls and leave exactly one.
+          import re
+          pat=r"card\('sensex',d\.sensex\?\?d\.SENSEX\?\?d\.bseSensex,d\.sensexChange\?\?d\.SENSEXChange\?\?d\.bseSensexChange\);"
+          s=re.sub(pat,'',s)
+          needle="card('vix',d.vix,d.vixChange);"
+          one="card('sensex',d.sensex??d.SENSEX??d.bseSensex,d.sensexChange??d.SENSEXChange??d.bseSensexChange);"
+          if one not in s:
+              s=s.replace(needle,needle+one)
+          s=s.replace("console.log('[StrikePulse] SENSEX API VALUE',d.sensex??d.SENSEX??d.bseSensex);", "console.log('%c[StrikePulse] SENSEX API VALUE '+(d.sensex??d.SENSEX??d.bseSensex),'color:#38bdf8;font-weight:900');")
+          p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/strike-pulse.js .github/workflows/fix-sensex-force.yml
+          git diff --cached --quiet || git commit -m 'Force SENSEX card attach after VIX update'
+          git push
