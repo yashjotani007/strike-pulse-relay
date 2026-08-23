@@ -51,14 +51,18 @@ jobs:
           if start>=0:
               end=s.find('decorateHomeBlocks();',start)
               s=s[:start]+s[end:]
-          mount='''function mountSensex(){let card=document.querySelector('.sp-market-sensex');const anchor=document.querySelector('.sp-price[data-market="nifty"],.sp-price[data-symbol="nifty"],.sp-price[data-index="nifty"]');let grid=anchor?.closest('.wp-block-column')?.parentElement;if(!grid)grid=document.querySelector('.sp-market-cards,.sp-market-cards .wp-block-columns');if(!card){card=document.createElement('div');card.className='sp-market-card sp-market-sensex';card.innerHTML='<div class="sp-market-name">SENSEX</div><div class="sp-price" data-market="sensex">Loading…</div><div class="sp-change" data-change="sensex">—</div><div class="sp-updated" data-updated="sensex">Updated --</div><div class="sp-market-status sp-closed">CLOSED</div>';}if(card&&grid){grid.classList.add('sp-market-cards');if(card.parentElement!==grid)grid.appendChild(card);console.log('%c[StrikePulse] SENSEX CARD READY','color:#22c55e;font-weight:900')}}\n'''
+          mount='''function mountSensex(){let card=document.querySelector('.sp-market-sensex');const anchor=document.querySelector('.sp-price[data-market="nifty"],.sp-price[data-symbol="nifty"],.sp-price[data-index="nifty"]');let grid=anchor?.closest('.wp-block-column')?.parentElement;if(!grid)grid=document.querySelector('.sp-market-cards,.sp-market-cards .wp-block-columns');if(!card){card=document.createElement('div');card.className='sp-market-card sp-market-sensex';card.innerHTML='<div class="sp-market-name">SENSEX</div><div class="sp-price" data-market="sensex">Loading…</div><div class="sp-change" data-change="sensex">—</div><div class="sp-updated" data-updated="sensex">Updated --</div><div class="sp-market-status sp-closed">CLOSED</div>';}if(card&&grid){grid.classList.add('sp-market-cards');if(card.parentElement!==grid)grid.appendChild(card);console.log('%c[StrikePulse] SENSEX CARD READY','color:#22c55e;font-weight:900')}else{console.error('[StrikePulse] SENSEX CARD MOUNT FAILED',{card:!!card,grid:!!grid})}}\n'''
           s=s.replace('decorateHomeBlocks();',mount+'decorateHomeBlocks();')
           marker="card('vix',d.vix,d.vixChange);"
           if "card('sensex',d.sensex,d.sensexChange);" not in s:
               s=s.replace(marker,marker+"card('sensex',d.sensex??d.SENSEX??d.bseSensex,d.sensexChange??d.SENSEXChange??d.bseSensexChange);")
           if "console.log('[StrikePulse] SENSEX API VALUE'" not in s:
-              s=s.replace("console.log('[StrikePulse] LIVE VALUES',d);", "console.log('[StrikePulse] LIVE VALUES',d);console.log('[StrikePulse] SENSEX API VALUE',d.sensex??d.SENSEX??d.bseSensex);")
-          s=s.replace("?v=20260824-glow7", "?v=20260824-glow8")
+              s=s.replace("console.log('[StrikePulse] LIVE VALUES',d);", "console.log('[StrikePulse] LIVE VALUES',d);console.log('[StrikePulse] SENSEX API VALUE',d.sensex??d.SENSEX??d.bseSensex);if(d.sensex==null&&d.SENSEX==null&&d.bseSensex==null)console.error('[StrikePulse] SENSEX VALUE MISSING FROM /api/prices',d);")
+          if "SENSEX CSS FALLBACK ACTIVE" not in s:
+              hook="const LOG='[StrikePulse]';"
+              inject="const LOG='[StrikePulse]';console.log('%c[StrikePulse] JS FILE EXECUTED','color:#22c55e;font-weight:900');window.addEventListener('error',e=>console.error('[StrikePulse] GLOBAL JS ERROR',e.error||e.message,e.filename,e.lineno));window.addEventListener('unhandledrejection',e=>console.error('[StrikePulse] PROMISE ERROR',e.reason));if(!document.getElementById('sp-sensex-css-fallback')){const st=document.createElement('style');st.id='sp-sensex-css-fallback';st.textContent='.sp-market-sensex{position:relative!important;display:flex!important;flex-direction:column!important;box-sizing:border-box!important;min-height:255px!important;padding:25px 24px 21px!important;background:linear-gradient(145deg,#101c34,#0b1528 58%,#101d36)!important;border:1px solid rgba(96,165,250,.22)!important;border-radius:20px!important;box-shadow:0 14px 34px rgba(0,0,0,.28)!important;color:#fff!important}.sp-market-sensex .sp-price{font-size:34px!important;font-weight:900!important;line-height:1.15!important;margin:16px 0 10px!important;color:#fff!important}.sp-market-sensex .sp-change{font-weight:800!important}.sp-market-sensex .sp-updated{font-size:12px!important;margin-top:10px!important}.sp-market-sensex .sp-market-status{margin-top:8px!important;padding:3px 8px!important;border-radius:4px!important}.sp-market-sensex .sp-positive{color:#22c55e!important}.sp-market-sensex .sp-negative{color:#fb7185!important}';document.head.appendChild(st);console.log('%c[StrikePulse] SENSEX CSS FALLBACK ACTIVE','color:#22c55e;font-weight:900')}}"
+              s=s.replace(hook,inject)
+          s=s.replace("?v=20260824-glow7", "?v=20260824-glow9")
           p.write_text(s)
           PY
 
@@ -68,7 +72,6 @@ jobs:
           from pathlib import Path
           p=Path('public/strike-pulse.css')
           s=p.read_text().replace('grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:18px!important;width:100%!important;max-width:1450px!important;', 'grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:18px!important;width:100%!important;max-width:1450px!important;', 1)
-          s=s.replace('strike-pulse.css?v=20260824-glow7','strike-pulse.css?v=20260824-glow8')
           p.write_text(s)
           PY
 
@@ -77,5 +80,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add server.js public/strike-pulse.js public/strike-pulse.css
-          git diff --cached --quiet || git commit -m 'Harden SENSEX live card and five-card layout'
+          git diff --cached --quiet || git commit -m 'Add hard SENSEX diagnostics and CSS fallback'
           git push
