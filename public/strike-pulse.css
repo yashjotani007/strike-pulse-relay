@@ -23,7 +23,7 @@
 .sp-option-chain-page p{margin:0!important;padding:0!important;}
 .sp-option-chain-page br{line-height:0;}
 .sp-option-chain-page>.wp-block-spacer,.sp-option-chain-page>p:empty{display:none!important;}
-.sp-option-chain-page .wp-block-columns{display:flex!important;margin:0!important;}
+.sp-option-chain-page .wp-block-columns{margin:0!important;}
 .sp-option-chain-page .wp-block-column{margin:0!important;padding:0!important;min-width:0!important;}
 .sp-option-chain-page .wp-block-heading{margin:0!important;}
 .sp-option-chain-page button,.sp-option-chain-page input{font-family:inherit!important;}
@@ -53,6 +53,7 @@
 .sp-symbol-btn.active{border-color:#2563eb!important;background:#2563eb!important;color:#fff!important;box-shadow:0 4px 10px rgba(37,99,235,.18)!important;}
 
 .sp-controls,.sp-summary-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:11px!important;width:100%!important;margin:0 0 14px!important;padding:0!important;}
+.sp-controls>.wp-block-column,.sp-summary-grid>.wp-block-column{display:contents!important;}
 .sp-controls>p,.sp-summary-grid>p{display:contents!important;}
 .sp-control-card,.sp-summary-card{display:block!important;min-width:0!important;width:100%!important;margin:0!important;padding:14px 15px!important;background:#fff!important;border:1px solid #e5e7eb!important;border-radius:11px!important;box-shadow:0 4px 14px rgba(15,23,42,.035)!important;}
 .sp-control-card>p,.sp-summary-card>p{margin:0!important;padding:0!important;}
@@ -83,14 +84,12 @@
 .sp-positive{color:#16a34a!important;}.sp-negative{color:#dc2626!important;}.sp-table-loading{padding:34px!important;color:#64748b!important;text-align:center!important;}
 .sp-option-chain-table th:nth-child(-n+5),.sp-option-chain-table td:nth-child(-n+5),.sp-option-chain-table th:nth-child(n+7),.sp-option-chain-table td:nth-child(n+7){width:9%!important;}.sp-option-chain-table th:nth-child(6),.sp-option-chain-table td:nth-child(6){width:10%!important;}
 
-/* TABLET */
 @media(max-width:1000px){
   .sp-oc-header{gap:18px!important;}
   .sp-oc-search{width:340px!important;max-width:340px!important;flex-basis:340px!important;}
   .sp-controls,.sp-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
 }
 
-/* MOBILE */
 @media(max-width:700px){
   .sp-option-chain-page{width:100%!important;max-width:100%!important;margin:12px auto!important;padding:0 10px!important;overflow:visible!important;}
   .sp-oc-header{display:block!important;width:100%!important;padding:17px!important;margin-bottom:12px!important;}
@@ -122,4 +121,29 @@
   .sp-oc-label{font-size:9px!important;}
   .sp-control-card,.sp-summary-card{padding:10px!important;}
   .sp-summary-card strong{font-size:15px!important;}
+}
+
+/* FINAL WORDPRESS MOBILE LAYOUT FIX */
+.sp-option-chain-page .sp-controls.wp-block-columns,
+.sp-option-chain-page .sp-summary-grid.wp-block-columns{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;align-items:stretch!important;}
+.sp-option-chain-page .sp-controls.wp-block-columns>.wp-block-column,
+.sp-option-chain-page .sp-summary-grid.wp-block-columns>.wp-block-column{display:contents!important;}
+.sp-option-chain-page .sp-controls .sp-control-card,
+.sp-option-chain-page .sp-summary-grid .sp-summary-card{grid-column:auto!important;}
+
+@media(max-width:1000px){
+  .sp-option-chain-page .sp-controls.wp-block-columns,
+  .sp-option-chain-page .sp-summary-grid.wp-block-columns{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+}
+
+@media(max-width:700px){
+  .sp-option-chain-page .sp-oc-header.wp-block-columns{display:block!important;width:100%!important;}
+  .sp-option-chain-page .sp-oc-header.wp-block-columns>.wp-block-column{width:100%!important;flex-basis:100%!important;}
+  .sp-option-chain-page .sp-controls.wp-block-columns,
+  .sp-option-chain-page .sp-summary-grid.wp-block-columns{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;width:100%!important;}
+  .sp-option-chain-page .sp-controls.wp-block-columns>.wp-block-column,
+  .sp-option-chain-page .sp-summary-grid.wp-block-columns>.wp-block-column{display:contents!important;}
+  .sp-option-chain-page .sp-control-card,
+  .sp-option-chain-page .sp-summary-card{width:100%!important;min-width:0!important;}
+  .sp-option-chain-page .sp-controls{margin-top:0!important;}
 }
