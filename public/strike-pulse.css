@@ -48,8 +48,22 @@ table:has(#spOptionBody) thead{position:sticky!important;top:0!important;z-index
 .sp-table-header:after{content:""!important;position:absolute!important;left:0!important;right:0!important;bottom:0!important;height:3px!important;background:linear-gradient(90deg,#2563eb,#06b6d4,#22c55e,#f59e0b,#ef4444)!important;background-size:200% 100%!important;animation:sp-gradient 4s linear infinite!important}
 .sp-table-live{border-radius:999px!important;font-weight:900!important}.sp-table-live:not(.sp-closed){animation:sp-live 1.8s ease-in-out infinite!important}
 
+/* ===== MARKET OVERVIEW CARDS ===== */
+.wp-block-column:has(.sp-price[data-market]){position:relative!important;width:100%!important;min-height:255px!important;padding:30px 28px 28px!important;box-sizing:border-box!important;background:linear-gradient(145deg,#111a33 0%,#0d162c 52%,#111b35 100%)!important;border:1px solid #26385f!important;border-radius:28px!important;box-shadow:0 18px 45px rgba(2,8,23,.42),inset 0 1px 0 rgba(255,255,255,.035)!important;overflow:hidden!important;transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease!important}
+.wp-block-column:has(.sp-price[data-market]):before{content:""!important;position:absolute!important;top:-70px!important;right:-60px!important;width:180px!important;height:180px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(59,130,246,.18),transparent 68%)!important;pointer-events:none!important}
+.wp-block-column:has(.sp-price[data-market]):hover{transform:translateY(-4px)!important;border-color:#35558e!important;box-shadow:0 24px 55px rgba(2,8,23,.52),0 0 28px rgba(37,99,235,.10)!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-price{display:block!important;margin:14px 0 18px!important;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:42px!important;line-height:1.08!important;font-weight:900!important;letter-spacing:-1.2px!important;color:#7da2ff!important;text-shadow:0 0 22px rgba(79,123,255,.12)!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-change{display:inline-block!important;font-size:15px!important;font-weight:800!important;margin:0 0 18px!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-change.sp-positive{color:#4ade80!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-change.sp-negative{color:#fb7185!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-updated{display:block!important;font-size:13px!important;font-weight:600!important;color:#8c96ab!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-market-status{display:inline-flex!important;align-items:center!important;gap:7px!important;margin-top:4px!important;font-size:13px!important;font-weight:900!important;letter-spacing:.3px!important;color:#22c55e!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-market-status:before{content:""!important;width:8px!important;height:8px!important;flex:0 0 8px!important;border-radius:50%!important;background:#22c55e!important;box-shadow:0 0 10px rgba(34,197,94,.75)!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-market-status.sp-closed{color:#94a3b8!important}
+.wp-block-column:has(.sp-price[data-market]) .sp-market-status.sp-closed:before{background:#64748b!important;box-shadow:none!important}
+
 /* ===== MOBILE ===== */
-@media(max-width:700px){table:has(#spOptionBody){min-width:1100px!important}#spOptionBody td{height:43px!important;padding:8px 5px!important;font-size:11px!important}#spOptionBody td:nth-child(6){min-width:78px!important;width:78px!important;font-size:12px!important}table:has(#spOptionBody) thead th{font-size:9px!important;padding:8px 4px!important}}
+@media(max-width:700px){.wp-block-column:has(.sp-price[data-market]){min-height:235px!important;padding:26px 22px 24px!important;border-radius:24px!important}.wp-block-column:has(.sp-price[data-market]) .sp-price{font-size:38px!important;letter-spacing:-1px!important}table:has(#spOptionBody){min-width:1100px!important}#spOptionBody td{height:43px!important;padding:8px 5px!important;font-size:11px!important}#spOptionBody td:nth-child(6){min-width:78px!important;width:78px!important;font-size:12px!important}table:has(#spOptionBody) thead th{font-size:9px!important;padding:8px 4px!important}}
 
 @keyframes sp-atm{0%,100%{box-shadow:inset 0 0 0 rgba(59,130,246,0)}50%{box-shadow:inset 0 0 22px rgba(59,130,246,.16)}}
 @keyframes sp-gradient{0%{background-position:0 0}100%{background-position:200% 0}}
