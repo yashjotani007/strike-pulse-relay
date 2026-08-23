@@ -1,6 +1,6 @@
 (function(){
   const base='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
-  const version='20260823-optionchain-final-01';
+  const version='20260824-theme-card-fix-02';
   console.log('[StrikePulse] Loader: refreshing assets',version);
   if(!document.querySelector('link[data-strike-pulse-css]')){
     const css=document.createElement('link');
