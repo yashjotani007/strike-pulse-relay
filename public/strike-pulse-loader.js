@@ -1,15 +1,16 @@
 (function(){
   const base='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
+  const version='20260823-layout2';
   if(!document.querySelector('link[data-strike-pulse-css]')){
     const css=document.createElement('link');
     css.rel='stylesheet';
-    css.href=base+'strike-pulse.css';
+    css.href=base+'strike-pulse.css?v='+version;
     css.dataset.strikePulseCss='1';
     document.head.appendChild(css);
   }
   if(!document.querySelector('script[data-strike-pulse-js]')){
     const js=document.createElement('script');
-    js.src=base+'strike-pulse.js';
+    js.src=base+'strike-pulse.js?v='+version;
     js.defer=true;
     js.dataset.strikePulseJs='1';
     document.head.appendChild(js);
