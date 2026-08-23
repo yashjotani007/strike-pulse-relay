@@ -1,6 +1,7 @@
 (function(){
   const base='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
-  const version='20260823-layout4';
+  const version='20260823-optionchain-final-01';
+  console.log('[StrikePulse] Loader: refreshing assets',version);
   if(!document.querySelector('link[data-strike-pulse-css]')){
     const css=document.createElement('link');
     css.rel='stylesheet';
