@@ -7,6 +7,18 @@ const err=(msg,data)=>data===undefined?console.error(LOG+' ERROR:',msg):console.
 window.StrikePulseDebug={log,ok,warn,err};
 log('JS loaded successfully');
 log('Page:',location.href);
+
+/* FORCE-FRESH STRIKE PULSE CSS */
+const SP_CSS='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/strike-pulse.css?v=20260824-glow2';
+if(!document.querySelector('link[data-strike-pulse-css="glow2"]')){
+ const link=document.createElement('link');
+ link.rel='stylesheet'; link.href=SP_CSS; link.dataset.strikePulseCss='glow2';
+ link.onload=()=>console.log('%c[StrikePulse] PREMIUM GLOW CSS LOADED','color:#22c55e;font-weight:900');
+ link.onerror=()=>console.error('[StrikePulse] PREMIUM GLOW CSS FAILED');
+ document.head.appendChild(link);
+ console.log('[StrikePulse] Fresh CSS requested:',SP_CSS);
+}
+
 const BASE='https://strike-pulse-relay.onrender.com/api';
 const PRICE=BASE+'/prices';
 let symbol='NIFTY';
