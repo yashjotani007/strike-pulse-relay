@@ -2,59 +2,26 @@
 @import url("https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@46cc414e9d8e3ad6f2d9ed479172364a7dfd6545/public/strike-pulse.css");
 
 .sp-option-chain-page .sp-option-table-card{border:1px solid #dbe4ef!important;border-radius:16px!important;overflow:hidden!important;background:#fff!important;box-shadow:0 12px 32px rgba(15,23,42,.07)!important}
-.sp-option-chain-page .sp-table-header{padding:16px 20px!important;min-height:68px!important;background:linear-gradient(135deg,#ffffff,#f8fbff)!important;border-bottom:1px solid #e2e8f0!important}
-.sp-option-chain-page .sp-table-header h2{font-size:18px!important;font-weight:850!important;letter-spacing:-.2px!important}
-.sp-option-chain-page .sp-table-header small{font-size:10px!important;color:#64748b!important}
+.sp-option-chain-page .sp-table-header{padding:16px 20px!important;min-height:68px!important;background:linear-gradient(135deg,#fff,#f8fbff)!important;border-bottom:1px solid #e2e8f0!important}
+.sp-option-chain-page .sp-table-header h2{font-size:18px!important;font-weight:850!important;letter-spacing:-.2px!important}.sp-option-chain-page .sp-table-header small{font-size:10px!important;color:#64748b!important}
 .sp-option-chain-page .sp-table-live{padding:7px 10px!important;border-radius:8px!important;font-size:9px!important}
-
 .sp-option-chain-page .sp-table-scroll{width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;background:#f8fafc!important;scrollbar-width:thin!important}
-.sp-option-chain-page .sp-table-scroll::-webkit-scrollbar{height:7px!important}
-.sp-option-chain-page .sp-table-scroll::-webkit-scrollbar-thumb{background:#b8c5d6!important;border-radius:20px!important}
-.sp-option-chain-page .sp-option-chain-table{width:100%!important;min-width:1040px!important;table-layout:fixed!important;border-collapse:separate!important;border-spacing:0!important;font-size:11px!important}
+.sp-option-chain-page .sp-table-scroll::-webkit-scrollbar{height:7px!important}.sp-option-chain-page .sp-table-scroll::-webkit-scrollbar-thumb{background:#b8c5d6!important;border-radius:20px!important}
+.sp-option-chain-page .sp-option-chain-table{width:100%!important;min-width:1040px!important;table-layout:fixed!important;border-collapse:separate!important;border-spacing:0!important;font-size:12px!important}
 
-/* Compact, professional headers */
-.sp-option-chain-page .sp-option-chain-table th{height:38px!important;padding:8px 5px!important;border-right:1px solid #dfe7f0!important;border-bottom:1px solid #d8e1ec!important;text-align:center!important;vertical-align:middle!important;font-size:9.5px!important;font-weight:850!important;line-height:1.15!important;letter-spacing:.15px!important;white-space:nowrap!important}
-.sp-option-chain-page .sp-option-chain-table .sp-main-head th{height:34px!important;font-size:10px!important;letter-spacing:.5px!important}
-.sp-option-chain-page .sp-option-chain-table .sp-call-head{background:linear-gradient(180deg,#ecfdf5,#e7f9ef)!important;color:#15803d!important}
-.sp-option-chain-page .sp-option-chain-table .sp-put-head{background:linear-gradient(180deg,#fff1f2,#fdebed)!important;color:#dc2626!important}
-.sp-option-chain-page .sp-option-chain-table .sp-strike-head{background:linear-gradient(180deg,#eff6ff,#e7f0ff)!important;color:#1d4ed8!important}
-.sp-option-chain-page .sp-option-chain-table .sp-sub-head th{height:36px!important;background:#f8fafc!important;color:#64748b!important;font-size:9px!important}
+/* Larger, crisp headers */
+.sp-option-chain-page .sp-option-chain-table th{height:40px!important;padding:9px 5px!important;border-right:1px solid #dfe7f0!important;border-bottom:1px solid #d8e1ec!important;text-align:center!important;vertical-align:middle!important;font-size:10px!important;font-weight:850!important;line-height:1.15!important;letter-spacing:.15px!important;white-space:nowrap!important}
+.sp-option-chain-page .sp-option-chain-table .sp-main-head th{height:35px!important;font-size:11px!important;letter-spacing:.5px!important}.sp-option-chain-page .sp-option-chain-table .sp-call-head{background:linear-gradient(180deg,#ecfdf5,#e7f9ef)!important;color:#15803d!important}.sp-option-chain-page .sp-option-chain-table .sp-put-head{background:linear-gradient(180deg,#fff1f2,#fdebed)!important;color:#dc2626!important}.sp-option-chain-page .sp-option-chain-table .sp-strike-head{background:linear-gradient(180deg,#eff6ff,#e7f0ff)!important;color:#1d4ed8!important}.sp-option-chain-page .sp-option-chain-table .sp-sub-head th{height:37px!important;background:#f8fafc!important;color:#64748b!important;font-size:10px!important}
 
-/* Readable body */
-.sp-option-chain-page .sp-option-chain-table tbody td{height:40px!important;padding:8px 5px!important;border-right:1px solid #edf1f5!important;border-bottom:1px solid #edf1f5!important;text-align:center!important;vertical-align:middle!important;white-space:nowrap!important;color:#334155!important;font-size:10.5px!important;font-weight:650!important;line-height:1.15!important;background:#fff!important}
-.sp-option-chain-page .sp-option-chain-table tbody tr:nth-child(even) td{background:#fcfdff!important}
-.sp-option-chain-page .sp-option-chain-table tbody tr:hover td{background:#f0f7ff!important}
+/* Larger readable body */
+.sp-option-chain-page .sp-option-chain-table tbody td{height:42px!important;padding:9px 5px!important;border-right:1px solid #edf1f5!important;border-bottom:1px solid #edf1f5!important;text-align:center!important;vertical-align:middle!important;white-space:nowrap!important;color:#334155!important;font-size:12px!important;font-weight:650!important;line-height:1.15!important;background:#fff!important}.sp-option-chain-page .sp-option-chain-table tbody tr:nth-child(even) td{background:#fcfdff!important}.sp-option-chain-page .sp-option-chain-table tbody tr:hover td{background:#f0f7ff!important}
 
-/* STRIKE deliberately compact */
-.sp-option-chain-page .sp-option-chain-table th:nth-child(6),.sp-option-chain-page .sp-option-chain-table td:nth-child(6){width:7%!important;min-width:68px!important;max-width:76px!important}
-.sp-option-chain-page .sp-option-chain-table tbody td:nth-child(6){background:#f3f8ff!important;color:#0f172a!important;font-size:11px!important;font-weight:900!important;border-left:1px solid #bfdbfe!important;border-right:1px solid #bfdbfe!important}
-.sp-option-chain-page .sp-option-chain-table tbody tr:nth-child(even) td:nth-child(6){background:#edf5ff!important}
-.sp-option-chain-page .sp-option-chain-table tbody tr:hover td:nth-child(6){background:#dbeafe!important}
+/* STRIKE — much narrower */
+.sp-option-chain-page .sp-option-chain-table th:nth-child(6),.sp-option-chain-page .sp-option-chain-table td:nth-child(6){width:5.8%!important;min-width:58px!important;max-width:66px!important}.sp-option-chain-page .sp-option-chain-table tbody td:nth-child(6){background:#f3f8ff!important;color:#0f172a!important;font-size:12px!important;font-weight:900!important;border-left:1px solid #bfdbfe!important;border-right:2px solid #93c5fd!important}.sp-option-chain-page .sp-option-chain-table tbody tr:nth-child(even) td:nth-child(6){background:#edf5ff!important}.sp-option-chain-page .sp-option-chain-table tbody tr:hover td:nth-child(6){background:#dbeafe!important}
 
-/* Balanced widths for readable data */
-.sp-option-chain-page .sp-option-chain-table th:nth-child(1),.sp-option-chain-page .sp-option-chain-table td:nth-child(1),.sp-option-chain-page .sp-option-chain-table th:nth-child(11),.sp-option-chain-page .sp-option-chain-table td:nth-child(11){width:10.2%!important}
-.sp-option-chain-page .sp-option-chain-table th:nth-child(2),.sp-option-chain-page .sp-option-chain-table td:nth-child(2),.sp-option-chain-page .sp-option-chain-table th:nth-child(10),.sp-option-chain-page .sp-option-chain-table td:nth-child(10){width:10.2%!important}
-.sp-option-chain-page .sp-option-chain-table th:nth-child(3),.sp-option-chain-page .sp-option-chain-table td:nth-child(3),.sp-option-chain-page .sp-option-chain-table th:nth-child(9),.sp-option-chain-page .sp-option-chain-table td:nth-child(9){width:11.2%!important}
-.sp-option-chain-page .sp-option-chain-table th:nth-child(4),.sp-option-chain-page .sp-option-chain-table td:nth-child(4),.sp-option-chain-page .sp-option-chain-table th:nth-child(8),.sp-option-chain-page .sp-option-chain-table td:nth-child(8){width:8.2%!important}
-.sp-option-chain-page .sp-option-chain-table th:nth-child(5),.sp-option-chain-page .sp-option-chain-table td:nth-child(5),.sp-option-chain-page .sp-option-chain-table th:nth-child(7),.sp-option-chain-page .sp-option-chain-table td:nth-child(7){width:9.2%!important}
-
-/* Visual separators between CALL / STRIKE / PUT */
-.sp-option-chain-page .sp-option-chain-table th:nth-child(5),.sp-option-chain-page .sp-option-chain-table td:nth-child(5){border-right:2px solid #cbd5e1!important}
-.sp-option-chain-page .sp-option-chain-table th:nth-child(6),.sp-option-chain-page .sp-option-chain-table td:nth-child(6){border-right:2px solid #93c5fd!important}
-.sp-option-chain-page .sp-option-chain-table th:nth-child(7),.sp-option-chain-page .sp-option-chain-table td:nth-child(7){border-left:1px solid #fecaca!important}
-
-/* ATM emphasis */
-.sp-option-chain-page .sp-option-chain-table tbody tr.atm-row td,.sp-option-chain-page .sp-option-chain-table tbody tr.sp-chain-atm td{background:#eef6ff!important;border-top:1px solid #93c5fd!important;border-bottom:1px solid #93c5fd!important}
-.sp-option-chain-page .sp-option-chain-table tbody tr.atm-row td:nth-child(6),.sp-option-chain-page .sp-option-chain-table tbody tr.sp-chain-atm td:nth-child(6){background:#dbeafe!important;color:#1d4ed8!important;font-weight:950!important;box-shadow:inset 0 0 0 1px #60a5fa!important}
-
-/* Number emphasis */
-.sp-option-chain-page .sp-option-chain-table .sp-positive{color:#15803d!important;font-weight:800!important}
-.sp-option-chain-page .sp-option-chain-table .sp-negative{color:#dc2626!important;font-weight:800!important}
-.sp-option-chain-page .sp-option-chain-table .sp-table-loading{height:120px!important;color:#64748b!important;font-size:12px!important;background:#fff!important}
-
-@media(max-width:700px){
- .sp-option-chain-page .sp-option-chain-table{min-width:1040px!important}
- .sp-option-chain-page .sp-option-chain-table th{font-size:8.5px!important;padding:8px 4px!important}
- .sp-option-chain-page .sp-option-chain-table tbody td{font-size:10px!important;padding:8px 4px!important}
- .sp-option-chain-page .sp-option-chain-table th:nth-child(6),.sp-option-chain-page .sp-option-chain-table td:nth-child(6){min-width:64px!important;max-width:70px!important;width:7%!important}
-}
+/* Balanced readable data columns */
+.sp-option-chain-page .sp-option-chain-table th:nth-child(1),.sp-option-chain-page .sp-option-chain-table td:nth-child(1),.sp-option-chain-page .sp-option-chain-table th:nth-child(11),.sp-option-chain-page .sp-option-chain-table td:nth-child(11){width:10.4%!important}.sp-option-chain-page .sp-option-chain-table th:nth-child(2),.sp-option-chain-page .sp-option-chain-table td:nth-child(2),.sp-option-chain-page .sp-option-chain-table th:nth-child(10),.sp-option-chain-page .sp-option-chain-table td:nth-child(10){width:10.4%!important}.sp-option-chain-page .sp-option-chain-table th:nth-child(3),.sp-option-chain-page .sp-option-chain-table td:nth-child(3),.sp-option-chain-page .sp-option-chain-table th:nth-child(9),.sp-option-chain-page .sp-option-chain-table td:nth-child(9){width:11.4%!important}.sp-option-chain-page .sp-option-chain-table th:nth-child(4),.sp-option-chain-page .sp-option-chain-table td:nth-child(4),.sp-option-chain-page .sp-option-chain-table th:nth-child(8),.sp-option-chain-page .sp-option-chain-table td:nth-child(8){width:8.4%!important}.sp-option-chain-page .sp-option-chain-table th:nth-child(5),.sp-option-chain-page .sp-option-chain-table td:nth-child(5),.sp-option-chain-page .sp-option-chain-table th:nth-child(7),.sp-option-chain-page .sp-option-chain-table td:nth-child(7){width:9.4%!important}
+.sp-option-chain-page .sp-option-chain-table th:nth-child(5),.sp-option-chain-page .sp-option-chain-table td:nth-child(5){border-right:2px solid #cbd5e1!important}.sp-option-chain-page .sp-option-chain-table th:nth-child(7),.sp-option-chain-page .sp-option-chain-table td:nth-child(7){border-left:1px solid #fecaca!important}
+.sp-option-chain-page .sp-option-chain-table tbody tr.atm-row td,.sp-option-chain-page .sp-option-chain-table tbody tr.sp-chain-atm td{background:#eef6ff!important;border-top:1px solid #93c5fd!important;border-bottom:1px solid #93c5fd!important}.sp-option-chain-page .sp-option-chain-table tbody tr.atm-row td:nth-child(6),.sp-option-chain-page .sp-option-chain-table tbody tr.sp-chain-atm td:nth-child(6){background:#dbeafe!important;color:#1d4ed8!important;font-weight:950!important;box-shadow:inset 0 0 0 1px #60a5fa!important}
+.sp-option-chain-page .sp-option-chain-table .sp-positive{color:#15803d!important;font-weight:800!important}.sp-option-chain-page .sp-option-chain-table .sp-negative{color:#dc2626!important;font-weight:800!important}.sp-option-chain-page .sp-option-chain-table .sp-table-loading{height:120px!important;color:#64748b!important;font-size:13px!important;background:#fff!important}
+@media(max-width:700px){.sp-option-chain-page .sp-option-chain-table{min-width:1040px!important}.sp-option-chain-page .sp-option-chain-table th{font-size:9.5px!important;padding:9px 4px!important}.sp-option-chain-page .sp-option-chain-table tbody td{font-size:11px!important;padding:9px 4px!important}.sp-option-chain-page .sp-option-chain-table th:nth-child(6),.sp-option-chain-page .sp-option-chain-table td:nth-child(6){min-width:56px!important;max-width:64px!important;width:5.8%!important}}
