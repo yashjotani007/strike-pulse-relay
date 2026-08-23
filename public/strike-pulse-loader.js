@@ -1,30 +1,39 @@
 (function(){
-  const base='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
-  const version='20260824-theme-card-force-03';
-  console.log('[StrikePulse] Loader: FORCE loading latest theme assets',version);
+  const VERSION='20260824-css-diagnostic-04';
+  const BASE='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
+  console.log('🔥 STRIKE PULSE DEBUG START');
+  console.log('🔎 Loader executing:', location.href);
+  console.log('🔎 Document ready:', document.readyState);
 
-  const addCss=(id,file)=>{
-    let el=document.querySelector('link[data-'+id+']');
-    if(!el){
-      el=document.createElement('link');
-      el.rel='stylesheet';
-      el.dataset[id]='1';
-      document.head.appendChild(el);
-    }
-    el.href=base+file+'?v='+version+'&force='+Date.now();
-  };
+  function report(){
+    const links=[...document.querySelectorAll('link[rel="stylesheet"]')];
+    const ours=links.filter(l=>/strike-pulse/i.test(l.href));
+    console.log('📦 Strike Pulse stylesheet links found:', ours.length);
+    ours.forEach((l,i)=>console.log('📄 CSS LINK '+(i+1)+':',l.href,l.sheet?'sheet available':'sheet unavailable'));
+    const cards=[...document.querySelectorAll('.sp-market-card')];
+    console.log('📦 MARKET CARDS FOUND:',cards.length);
+    if(cards.length){
+      const s=getComputedStyle(cards[0]);
+      console.log('🎨 CARD COMPUTED STYLE:',{background:s.backgroundColor,borderRadius:s.borderRadius,minHeight:s.minHeight,padding:s.padding,display:s.display});
+      console.log('🎨 CSS IS APPLYING:',!!s.backgroundImage || s.backgroundColor!=='rgba(0, 0, 0, 0)' || s.borderRadius!=='0px');
+    }else console.warn('⚠️ .sp-market-card NOT FOUND');
+  }
 
-  const addJs=(id,file)=>{
-    if(document.querySelector('script[data-'+id+']')) return;
-    const el=document.createElement('script');
-    el.src=base+file+'?v='+version+'&force='+Date.now();
-    el.defer=true;
-    el.dataset[id]='1';
+  function addCss(file){
+    const href=BASE+file+'?v='+VERSION+'&t='+Date.now();
+    const el=document.createElement('link');
+    el.rel='stylesheet'; el.href=href; el.dataset.strikePulseCss='1';
+    el.onload=()=>{console.log('✅ CSS FILE LOADED:',file);report();};
+    el.onerror=()=>{console.error('❌ CSS FILE FAILED TO LOAD:',file,href);report();};
     document.head.appendChild(el);
-  };
+    console.log('📡 CSS FILE REQUESTED:',href);
+  }
 
-  addCss('strike-pulse-css','strike-pulse.css');
-  addCss('strike-pulse-fix-css','strike-pulse-fix.css');
-  addJs('strike-pulse-js','strike-pulse.js');
-  addJs('strike-pulse-home-fix','strike-pulse-home-fix.js');
+  function start(){
+    console.log('✅ WORDPRESS LOADER RUNNING');
+    addCss('strike-pulse.css');
+    addCss('strike-pulse-fix.css');
+    setTimeout(report,1000);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true}); else start();
 })();
