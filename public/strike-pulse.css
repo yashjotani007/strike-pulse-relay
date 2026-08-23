@@ -1,54 +1,38 @@
 /* STRIKE PULSE — LIVE OPTION CHAIN FINAL UI */
 /* The live JS renders rows directly into #spOptionBody. These selectors target that real DOM node. */
 
-/* ===== REAL OPTION TABLE TARGET ===== */
 table:has(> tbody > #spOptionBody),table:has(#spOptionBody){width:100%!important;min-width:1100px!important;border-collapse:separate!important;border-spacing:0!important;table-layout:fixed!important;background:#fff!important;border:1px solid #d7e0ec!important;border-radius:16px!important;overflow:hidden!important;box-shadow:0 12px 35px rgba(15,23,42,.10)!important}
-
 #spOptionBody{position:relative!important}
 #spOptionBody td{height:46px!important;padding:9px 6px!important;text-align:center!important;vertical-align:middle!important;white-space:nowrap!important;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:12px!important;font-weight:650!important;letter-spacing:.1px!important;color:#334155!important;background:#fff!important;border-right:1px solid #e8edf3!important;border-bottom:1px solid #e8edf3!important;transition:all .18s ease!important}
 #spOptionBody tr:nth-child(even) td{background:#f8fafc!important}
 #spOptionBody tr:hover td{background:#e8f2ff!important;color:#0f172a!important;box-shadow:inset 0 2px 0 rgba(37,99,235,.18),inset 0 -2px 0 rgba(37,99,235,.18)!important}
 #spOptionBody tr:hover td:not(:nth-child(6)){transform:translateY(-1px)!important}
-
-/* ===== STRIKE COLUMN ===== */
 #spOptionBody td:nth-child(6){position:sticky!important;left:0!important;z-index:5!important;min-width:88px!important;width:88px!important;background:linear-gradient(180deg,#e0ecff,#f0f6ff)!important;color:#16439c!important;font-size:13px!important;font-weight:950!important;border-left:3px solid #3b82f6!important;border-right:3px solid #3b82f6!important;box-shadow:6px 0 18px rgba(37,99,235,.14)!important}
 #spOptionBody tr:nth-child(even) td:nth-child(6){background:linear-gradient(180deg,#d5e6ff,#eaf2ff)!important}
 #spOptionBody tr:hover td:nth-child(6){background:#bfdbfe!important;color:#123b8f!important}
-
-/* ===== CALL / PUT DIVISION ===== */
 #spOptionBody td:nth-child(5){border-right:3px solid #94a3b8!important}
 #spOptionBody td:nth-child(7){border-left:3px solid #fca5a5!important}
 #spOptionBody td:nth-child(1),#spOptionBody td:nth-child(2),#spOptionBody td:nth-child(3),#spOptionBody td:nth-child(4),#spOptionBody td:nth-child(5){background-image:linear-gradient(90deg,rgba(34,197,94,.025),transparent)!important}
 #spOptionBody td:nth-child(7),#spOptionBody td:nth-child(8),#spOptionBody td:nth-child(9),#spOptionBody td:nth-child(10),#spOptionBody td:nth-child(11){background-image:linear-gradient(90deg,rgba(244,63,94,.025),transparent)!important}
 #spOptionBody .sp-positive{color:#15803d!important;font-weight:900!important}
 #spOptionBody .sp-negative{color:#dc2626!important;font-weight:900!important}
-
-/* ===== ATM ===== */
 #spOptionBody tr.atm-row td,#spOptionBody tr.sp-chain-atm td{background:linear-gradient(90deg,#e0f2fe,#dbeafe,#e0f2fe)!important;color:#0f3f91!important;border-top:2px solid #3b82f6!important;border-bottom:2px solid #3b82f6!important;animation:sp-atm 2.2s ease-in-out infinite!important}
 #spOptionBody tr.atm-row td:nth-child(6),#spOptionBody tr.sp-chain-atm td:nth-child(6){background:linear-gradient(180deg,#1d4ed8,#3b82f6)!important;color:#fff!important;border-color:#1d4ed8!important;box-shadow:0 0 0 2px #2563eb,6px 0 20px rgba(37,99,235,.30)!important;z-index:8!important}
-
-/* ===== HEADERS OF THE ACTUAL TABLE ===== */
 table:has(#spOptionBody) thead th{height:42px!important;padding:9px 5px!important;text-align:center!important;vertical-align:middle!important;white-space:nowrap!important;font-family:Inter,system-ui,sans-serif!important;font-size:10px!important;font-weight:900!important;letter-spacing:.35px!important;color:#334155!important;background:#f1f5f9!important;border-right:1px solid #d7e0ea!important;border-bottom:1px solid #cbd5e1!important}
 table:has(#spOptionBody) thead tr:first-child th{height:40px!important;font-size:11px!important}
 table:has(#spOptionBody) thead th:nth-child(1),table:has(#spOptionBody) thead th:nth-child(2),table:has(#spOptionBody) thead th:nth-child(3),table:has(#spOptionBody) thead th:nth-child(4),table:has(#spOptionBody) thead th:nth-child(5){background:linear-gradient(135deg,#dcfce7,#f0fdf4)!important;color:#047857!important}
 table:has(#spOptionBody) thead th:nth-child(6){background:linear-gradient(180deg,#1d4ed8,#60a5fa)!important;color:#fff!important;font-size:12px!important;position:sticky!important;left:0!important;z-index:10!important}
 table:has(#spOptionBody) thead th:nth-child(7),table:has(#spOptionBody) thead th:nth-child(8),table:has(#spOptionBody) thead th:nth-child(9),table:has(#spOptionBody) thead th:nth-child(10),table:has(#spOptionBody) thead th:nth-child(11){background:linear-gradient(135deg,#ffe4e6,#fff1f2)!important;color:#be123c!important}
-
-/* ===== TABLE WRAPPER / SCROLL ===== */
 table:has(#spOptionBody){margin:0!important}
 table:has(#spOptionBody) thead{position:sticky!important;top:0!important;z-index:7!important}
-
-/* ===== LOADING STATE ===== */
 #spOptionBody .sp-table-loading{height:120px!important;color:#64748b!important;text-align:center!important;font-weight:800!important;background:#f8fafc!important}
 #spOptionBody .sp-table-loading:after{content:""!important;display:inline-block!important;width:11px!important;height:11px!important;margin-left:9px!important;vertical-align:-1px!important;border:2px solid #cbd5e1!important;border-top-color:#2563eb!important;border-radius:50%!important;animation:sp-spin .7s linear infinite!important}
-
-/* ===== CARD / HEADER IF PRESENT ===== */
 .sp-option-table-card{position:relative!important;width:100%!important;border:1px solid #d8e2ef!important;border-radius:18px!important;background:#fff!important;box-shadow:0 16px 42px rgba(15,23,42,.10)!important;overflow:hidden!important}
 .sp-table-header{position:relative!important;background:linear-gradient(135deg,#fff,#f1f7ff)!important;border-bottom:1px solid #dbe4ef!important}
 .sp-table-header:after{content:""!important;position:absolute!important;left:0!important;right:0!important;bottom:0!important;height:3px!important;background:linear-gradient(90deg,#2563eb,#06b6d4,#22c55e,#f59e0b,#ef4444)!important;background-size:200% 100%!important;animation:sp-gradient 4s linear infinite!important}
 .sp-table-live{border-radius:999px!important;font-weight:900!important}.sp-table-live:not(.sp-closed){animation:sp-live 1.8s ease-in-out infinite!important}
 
-/* ===== MARKET OVERVIEW CARDS ===== */
+/* ===== MARKET OVERVIEW CARDS — MATCH MOBILE REFERENCE ===== */
 .wp-block-column:has(.sp-price[data-market]){position:relative!important;width:100%!important;min-height:255px!important;padding:30px 28px 28px!important;box-sizing:border-box!important;background:linear-gradient(145deg,#111a33 0%,#0d162c 52%,#111b35 100%)!important;border:1px solid #26385f!important;border-radius:28px!important;box-shadow:0 18px 45px rgba(2,8,23,.42),inset 0 1px 0 rgba(255,255,255,.035)!important;overflow:hidden!important;transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease!important}
 .wp-block-column:has(.sp-price[data-market]):before{content:""!important;position:absolute!important;top:-70px!important;right:-60px!important;width:180px!important;height:180px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(59,130,246,.18),transparent 68%)!important;pointer-events:none!important}
 .wp-block-column:has(.sp-price[data-market]):hover{transform:translateY(-4px)!important;border-color:#35558e!important;box-shadow:0 24px 55px rgba(2,8,23,.52),0 0 28px rgba(37,99,235,.10)!important}
@@ -62,8 +46,20 @@ table:has(#spOptionBody) thead{position:sticky!important;top:0!important;z-index
 .wp-block-column:has(.sp-price[data-market]) .sp-market-status.sp-closed{color:#94a3b8!important}
 .wp-block-column:has(.sp-price[data-market]) .sp-market-status.sp-closed:before{background:#64748b!important;box-shadow:none!important}
 
-/* ===== MOBILE ===== */
-@media(max-width:700px){.wp-block-column:has(.sp-price[data-market]){min-height:235px!important;padding:26px 22px 24px!important;border-radius:24px!important}.wp-block-column:has(.sp-price[data-market]) .sp-price{font-size:38px!important;letter-spacing:-1px!important}table:has(#spOptionBody){min-width:1100px!important}#spOptionBody td{height:43px!important;padding:8px 5px!important;font-size:11px!important}#spOptionBody td:nth-child(6){min-width:78px!important;width:78px!important;font-size:12px!important}table:has(#spOptionBody) thead th{font-size:9px!important;padding:8px 4px!important}}
+/* Mobile card: reference has large tall cards, generous top/side spacing and large price typography. */
+@media(max-width:700px){
+  .wp-block-column:has(.sp-price[data-market]){min-height:415px!important;padding:58px 38px 34px!important;border-radius:28px!important;background:linear-gradient(145deg,#101a34 0%,#0e1730 52%,#111b35 100%)!important;border:1px solid #223a70!important;box-shadow:0 18px 44px rgba(2,8,23,.48),inset 0 1px 0 rgba(255,255,255,.035)!important}
+  .wp-block-column:has(.sp-price[data-market]):before{top:-75px!important;right:-65px!important;width:190px!important;height:190px!important;background:radial-gradient(circle,rgba(64,110,255,.14),transparent 70%)!important}
+  .wp-block-column:has(.sp-price[data-market]) .sp-price{margin:4px 0 24px!important;font-size:54px!important;line-height:1.18!important;letter-spacing:-1.5px!important;color:#78a0ff!important}
+  .wp-block-column:has(.sp-price[data-market]) .sp-change{font-size:16px!important;margin:0 0 22px!important}
+  .wp-block-column:has(.sp-price[data-market]) .sp-updated{font-size:14px!important}
+  .wp-block-column:has(.sp-price[data-market]) .sp-market-status{font-size:14px!important;margin-top:8px!important;gap:8px!important}
+  .wp-block-column:has(.sp-price[data-market]) .sp-market-status:before{width:9px!important;height:9px!important;flex-basis:9px!important}
+  table:has(#spOptionBody){min-width:1100px!important}
+  #spOptionBody td{height:43px!important;padding:8px 5px!important;font-size:11px!important}
+  #spOptionBody td:nth-child(6){min-width:78px!important;width:78px!important;font-size:12px!important}
+  table:has(#spOptionBody) thead th{font-size:9px!important;padding:8px 4px!important}
+}
 
 @keyframes sp-atm{0%,100%{box-shadow:inset 0 0 0 rgba(59,130,246,0)}50%{box-shadow:inset 0 0 22px rgba(59,130,246,.16)}}
 @keyframes sp-gradient{0%{background-position:0 0}100%{background-position:200% 0}}
