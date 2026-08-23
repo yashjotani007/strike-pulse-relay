@@ -1,4 +1,4 @@
-name: Add SENSEX support
+name: Harden SENSEX support
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     paths:
       - 'server.js'
       - 'public/strike-pulse.js'
+      - 'public/strike-pulse.css'
       - '.github/workflows/add-sensex.yml'
 
 permissions:
@@ -16,44 +17,65 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch server.js
+
+      - name: Verify and harden server SENSEX API
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('server.js')
           s=p.read_text()
-          replacements={
-          'const price={success:true,nifty:null,niftyChange:null,banknifty:null,bankniftyChange:null,finnifty:null,finniftyChange:null,vix:null,vixChange:null,updated:null,source:"nse"};':'const price={success:true,nifty:null,niftyChange:null,banknifty:null,bankniftyChange:null,finnifty:null,finniftyChange:null,vix:null,vixChange:null,sensex:null,sensexChange:null,updated:null,source:"nse"};',
-          'vix:["INDIA VIX","INDIA VIX INDEX"]':'vix:["INDIA VIX","INDIA VIX INDEX"],sensex:["SENSEX","BSE SENSEX","S&P BSE SENSEX","BSE SENSEX 30"]',
-          'const yahooMap={nifty:"^NSEI",banknifty:"^NSEBANK",vix:"^INDIAVIX"};':'const yahooMap={nifty:"^NSEI",banknifty:"^NSEBANK",vix:"^INDIAVIX",sensex:"^BSESN"};',
-          'console.log("STRIKE PULSE PRICES:",price.nifty,price.banknifty,price.finnifty,price.vix);':'console.log("STRIKE PULSE PRICES:",price.nifty,price.banknifty,price.finnifty,price.vix,price.sensex);',
-          'if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix)await updatePrices();':'if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix||!price.sensex)await updatePrices();',
-          'vix:{price:price.vix,change:price.vixChange}}});});':'vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}}});});'
-          }
-          for a,b in replacements.items(): s=s.replace(a,b)
+          if 'sensex:null' not in s:
+              s=s.replace('vix:null,vixChange:null,updated:null,source:"nse"','vix:null,vixChange:null,sensex:null,sensexChange:null,updated:null,source:"nse"')
+          if 'sensex:"^BSESN"' not in s:
+              s=s.replace('vix:"^INDIAVIX"','vix:"^INDIAVIX",sensex:"^BSESN"')
+          if 'sensex:{price:price.sensex,change:price.sensexChange}' not in s:
+              s=s.replace('vix:{price:price.vix,change:price.vixChange}', 'vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}')
+          if 'price.sensex' not in s.split('app.get("/api/prices"',1)[-1]:
+              s=s.replace('!price.vix)', '!price.vix||!price.sensex)')
           p.write_text(s)
           PY
-      - name: Patch market JS
+
+      - name: Harden market JavaScript
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('public/strike-pulse.js')
           s=p.read_text()
-          old="decorateHomeBlocks();status();prices();load('NIFTY');setInterval(prices,1000);"
-          new="function mountSensex(){const card=document.querySelector('.sp-market-sensex');const grid=document.querySelector('.sp-market-cards,.sp-market-cards .wp-block-columns');if(card&&grid&&card.parentElement!==grid){grid.appendChild(card);console.log('%c[StrikePulse] SENSEX CARD MOUNTED','color:#22c55e;font-weight:900')}}decorateHomeBlocks();mountSensex();status();prices();load('NIFTY');setInterval(prices,1000);"
-          s=s.replace(old,new)
-          old="card('vix',d.vix,d.vixChange);const e=document.getElementById('sp-chain-spot');"
-          new="card('vix',d.vix,d.vixChange);card('sensex',d.sensex,d.sensexChange);const e=document.getElementById('sp-chain-spot');"
-          s=s.replace(old,new)
-          old="vix:['vix','india-vix','indiavix']"
-          new="vix:['vix','india-vix','indiavix'],sensex:['sensex','bse-sensex','sensex-30']"
-          s=s.replace(old,new)
+          start=s.find('function findPrice(')
+          end=s.find('function getCard(', start)
+          if start < 0 or end < 0:
+              raise SystemExit('findPrice function not found')
+          find_price='''function findPrice(market){const names={nifty:['nifty','nifty50','nifty-50'],banknifty:['banknifty','bank-nifty','bank_nifty'],finnifty:['finnifty','fin-nifty','fin_nifty'],vix:['vix','india-vix','indiavix'],sensex:['sensex','bse-sensex','sensex-30','bseSensex']};for(const key of names[market]||[market]){for(const s of [`.sp-price[data-market="${key}"]`,`.sp-price[data-symbol="${key}"]`,`.sp-price[data-index="${key}"]`,`[data-market="${key}"] .sp-price`,`[data-symbol="${key}"] .sp-price`,`#sp-${key}-price`]){const el=$(s);if(el)return el}}const prices=[...$$('.sp-price')],i=['nifty','banknifty','finnifty','vix','sensex'].indexOf(market);return prices[i]||null}\n'''
+          s=s[:start]+find_price+s[end:]
+          start=s.find('function mountSensex(')
+          if start>=0:
+              end=s.find('decorateHomeBlocks();',start)
+              s=s[:start]+s[end:]
+          mount='''function mountSensex(){let card=document.querySelector('.sp-market-sensex');const anchor=document.querySelector('.sp-price[data-market="nifty"],.sp-price[data-symbol="nifty"],.sp-price[data-index="nifty"]');let grid=anchor?.closest('.wp-block-column')?.parentElement;if(!grid)grid=document.querySelector('.sp-market-cards,.sp-market-cards .wp-block-columns');if(!card){card=document.createElement('div');card.className='sp-market-card sp-market-sensex';card.innerHTML='<div class="sp-market-name">SENSEX</div><div class="sp-price" data-market="sensex">Loading…</div><div class="sp-change" data-change="sensex">—</div><div class="sp-updated" data-updated="sensex">Updated --</div><div class="sp-market-status sp-closed">CLOSED</div>';}if(card&&grid){grid.classList.add('sp-market-cards');if(card.parentElement!==grid)grid.appendChild(card);console.log('%c[StrikePulse] SENSEX CARD READY','color:#22c55e;font-weight:900')}}\n'''
+          s=s.replace('decorateHomeBlocks();',mount+'decorateHomeBlocks();')
+          marker="card('vix',d.vix,d.vixChange);"
+          if "card('sensex',d.sensex,d.sensexChange);" not in s:
+              s=s.replace(marker,marker+"card('sensex',d.sensex??d.SENSEX??d.bseSensex,d.sensexChange??d.SENSEXChange??d.bseSensexChange);")
+          if "console.log('[StrikePulse] SENSEX API VALUE'" not in s:
+              s=s.replace("console.log('[StrikePulse] LIVE VALUES',d);", "console.log('[StrikePulse] LIVE VALUES',d);console.log('[StrikePulse] SENSEX API VALUE',d.sensex??d.SENSEX??d.bseSensex);")
+          s=s.replace("?v=20260824-glow7", "?v=20260824-glow8")
           p.write_text(s)
           PY
-      - name: Commit patch
+
+      - name: Make five-card desktop grid
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('public/strike-pulse.css')
+          s=p.read_text().replace('grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:18px!important;width:100%!important;max-width:1450px!important;', 'grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:18px!important;width:100%!important;max-width:1450px!important;', 1)
+          s=s.replace('strike-pulse.css?v=20260824-glow7','strike-pulse.css?v=20260824-glow8')
+          p.write_text(s)
+          PY
+
+      - name: Commit verified SENSEX patch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add server.js public/strike-pulse.js
-          git diff --cached --quiet || git commit -m 'Connect SENSEX live price and market card'
+          git add server.js public/strike-pulse.js public/strike-pulse.css
+          git diff --cached --quiet || git commit -m 'Harden SENSEX live card and five-card layout'
           git push
