@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'server.js'
+      - 'public/strike-pulse.js'
       - '.github/workflows/add-sensex.yml'
 
 permissions:
@@ -21,23 +22,31 @@ jobs:
           from pathlib import Path
           p=Path('server.js')
           s=p.read_text()
-          old='const price={success:true,nifty:null,niftyChange:null,banknifty:null,bankniftyChange:null,finnifty:null,finniftyChange:null,vix:null,vixChange:null,updated:null,source:"nse"};'
-          new='const price={success:true,nifty:null,niftyChange:null,banknifty:null,bankniftyChange:null,finnifty:null,finniftyChange:null,vix:null,vixChange:null,sensex:null,sensexChange:null,updated:null,source:"nse"};'
+          replacements={
+          'const price={success:true,nifty:null,niftyChange:null,banknifty:null,bankniftyChange:null,finnifty:null,finniftyChange:null,vix:null,vixChange:null,updated:null,source:"nse"};':'const price={success:true,nifty:null,niftyChange:null,banknifty:null,bankniftyChange:null,finnifty:null,finniftyChange:null,vix:null,vixChange:null,sensex:null,sensexChange:null,updated:null,source:"nse"};',
+          'vix:["INDIA VIX","INDIA VIX INDEX"]':'vix:["INDIA VIX","INDIA VIX INDEX"],sensex:["SENSEX","BSE SENSEX","S&P BSE SENSEX","BSE SENSEX 30"]',
+          'const yahooMap={nifty:"^NSEI",banknifty:"^NSEBANK",vix:"^INDIAVIX"};':'const yahooMap={nifty:"^NSEI",banknifty:"^NSEBANK",vix:"^INDIAVIX",sensex:"^BSESN"};',
+          'console.log("STRIKE PULSE PRICES:",price.nifty,price.banknifty,price.finnifty,price.vix);':'console.log("STRIKE PULSE PRICES:",price.nifty,price.banknifty,price.finnifty,price.vix,price.sensex);',
+          'if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix)await updatePrices();':'if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix||!price.sensex)await updatePrices();',
+          'vix:{price:price.vix,change:price.vixChange}}});});':'vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}}});});'
+          }
+          for a,b in replacements.items(): s=s.replace(a,b)
+          p.write_text(s)
+          PY
+      - name: Patch market JS
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('public/strike-pulse.js')
+          s=p.read_text()
+          old="decorateHomeBlocks();status();prices();load('NIFTY');setInterval(prices,1000);"
+          new="function mountSensex(){const card=document.querySelector('.sp-market-sensex');const grid=document.querySelector('.sp-market-cards,.sp-market-cards .wp-block-columns');if(card&&grid&&card.parentElement!==grid){grid.appendChild(card);console.log('%c[StrikePulse] SENSEX CARD MOUNTED','color:#22c55e;font-weight:900')}}decorateHomeBlocks();mountSensex();status();prices();load('NIFTY');setInterval(prices,1000);"
           s=s.replace(old,new)
-          old='vix:["INDIA VIX","INDIA VIX INDEX"]'
-          new='vix:["INDIA VIX","INDIA VIX INDEX"],sensex:["SENSEX","BSE SENSEX","S&P BSE SENSEX","BSE SENSEX 30"]'
+          old="card('vix',d.vix,d.vixChange);const e=document.getElementById('sp-chain-spot');"
+          new="card('vix',d.vix,d.vixChange);card('sensex',d.sensex,d.sensexChange);const e=document.getElementById('sp-chain-spot');"
           s=s.replace(old,new)
-          old='const yahooMap={nifty:"^NSEI",banknifty:"^NSEBANK",vix:"^INDIAVIX"};'
-          new='const yahooMap={nifty:"^NSEI",banknifty:"^NSEBANK",vix:"^INDIAVIX",sensex:"^BSESN"};'
-          s=s.replace(old,new)
-          old='console.log("STRIKE PULSE PRICES:",price.nifty,price.banknifty,price.finnifty,price.vix);'
-          new='console.log("STRIKE PULSE PRICES:",price.nifty,price.banknifty,price.finnifty,price.vix,price.sensex);'
-          s=s.replace(old,new)
-          old='if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix)await updatePrices();'
-          new='if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix||!price.sensex)await updatePrices();'
-          s=s.replace(old,new)
-          old='vix:{price:price.vix,change:price.vixChange}}});});'
-          new='vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}}});});'
+          old="vix:['vix','india-vix','indiavix']"
+          new="vix:['vix','india-vix','indiavix'],sensex:['sensex','bse-sensex','sensex-30']"
           s=s.replace(old,new)
           p.write_text(s)
           PY
@@ -45,6 +54,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add server.js
-          git diff --cached --quiet || git commit -m 'Add SENSEX to prices API'
+          git add server.js public/strike-pulse.js
+          git diff --cached --quiet || git commit -m 'Connect SENSEX live price and market card'
           git push
