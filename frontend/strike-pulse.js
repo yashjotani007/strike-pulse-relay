@@ -30,4 +30,6 @@ status();prices();load("NIFTY");setInterval(prices,2000);setInterval(()=>load(cu
 };
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
 window.StrikePulseDebug={run:boot,priceApi:"https://strike-pulse-relay.onrender.com/api/prices"};
+const vwapCss='https://raw.githubusercontent.com/yashjotani007/strike-pulse-relay/main/frontend/strike-pulse-vwap.css';if(!document.querySelector('link[data-sp-vwap]')){const l=document.createElement('link');l.rel='stylesheet';l.href=vwapCss;l.dataset.spVwap='1';document.head.appendChild(l)}
+const vwapJs='https://raw.githubusercontent.com/yashjotani007/strike-pulse-relay/main/frontend/strike-pulse-vwap.js';if(!document.querySelector('script[data-sp-vwap]')){const s=document.createElement('script');s.src=vwapJs;s.defer=true;s.dataset.spVwap='1';document.head.appendChild(s)}
 })();
