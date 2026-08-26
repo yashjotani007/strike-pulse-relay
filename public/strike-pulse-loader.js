@@ -1,56 +1,74 @@
 (function(){
-  const VERSION='20260825-vwap-test-02';
+  const VERSION='20260826-vwap-final-01';
   const BASE='https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
-  console.log('🔥 STRIKE PULSE DEBUG START');
-  console.log('🔎 Loader executing:',location.href);
-  console.log('🔎 Document ready:',document.readyState);
+  console.log('🔥 STRIKE PULSE FINAL LOADER');
 
   function report(){
     const links=[...document.querySelectorAll('link[rel="stylesheet"]')];
     const ours=links.filter(l=>/strike-pulse/i.test(l.href));
-    console.log('📦 Strike Pulse stylesheet links found:',ours.length);
-    ours.forEach((l,i)=>console.log('📄 CSS LINK '+(i+1)+':',l.href,l.sheet?'sheet available':'sheet unavailable'));
-
-    /* WordPress can render the card as a column/group instead of .sp-market-card. */
-    const cards=[...document.querySelectorAll('.sp-market-card, .sp-market-cards > .wp-block-column, .sp-market-cards .wp-block-column')];
-    const unique=[...new Set(cards)];
-    console.log('📦 MARKET CARDS FOUND:',unique.length);
-    if(unique.length){
-      const s=getComputedStyle(unique[0]);
-      console.log('🎨 CARD COMPUTED STYLE:',{background:s.backgroundColor,borderRadius:s.borderRadius,minHeight:s.minHeight,padding:s.padding,display:s.display});
-      console.log('🎨 CARD CSS IS APPLYING:',s.borderRadius!=='0px' || s.padding!=='0px');
-    }else console.warn('⚠️ MARKET CARDS CONTAINER NOT FOUND (.sp-market-cards)');
-
+    console.log('📦 Strike Pulse stylesheet links:',ours.length);
+    const cards=[...document.querySelectorAll('.sp-market-card,.sp-market-cards > .wp-block-column,.sp-market-cards .wp-block-column')];
+    console.log('📦 MARKET CARDS FOUND:',[...new Set(cards)].length);
     const vwap=document.querySelector('.sp-vwap-section');
     console.log('📊 VWAP SECTION FOUND:',!!vwap);
-    if(vwap){
-      const s=getComputedStyle(vwap);
-      console.log('🎨 VWAP COMPUTED STYLE:',{background:s.backgroundImage,borderRadius:s.borderRadius,padding:s.padding,display:s.display,color:s.color});
-      console.log('🎨 VWAP CSS IS APPLYING:',s.borderRadius!=='0px' && s.padding!=='0px');
-    }else console.warn('⚠️ .sp-vwap-section NOT FOUND - HTML is not present in DOM');
+    const table=document.querySelector('.sp-vwap-table');
+    console.log('📋 VWAP TABLE FOUND:',!!table);
   }
 
   function addCss(file){
     const href=BASE+file+'?v='+VERSION+'&t='+Date.now();
+    const old=[...document.querySelectorAll('link[data-strike-pulse-css]')].find(x=>x.href.includes(file));
+    if(old) old.remove();
     const el=document.createElement('link');
-    el.rel='stylesheet';
-    el.href=href;
-    el.dataset.strikePulseCss='1';
-    el.onload=()=>{console.log('✅ CSS FILE LOADED:',file);report();};
-    el.onerror=()=>{console.error('❌ CSS FILE FAILED TO LOAD:',file,href);report();};
+    el.rel='stylesheet';el.href=href;el.dataset.strikePulseCss='1';
+    el.onload=()=>{console.log('✅ CSS FILE LOADED:',file);report()};
+    el.onerror=()=>console.error('❌ CSS FILE FAILED:',file);
     document.head.appendChild(el);
-    console.log('📡 CSS FILE REQUESTED:',href);
   }
 
+  function findVwap(){
+    return document.querySelector('.sp-vwap-value,[data-vwap-value],[data-vwap],#sp-vwap,#spVwap,#sp-vwap-price,#spVwapPrice');
+  }
+  function findSpot(){
+    return document.querySelector('#sp-chain-spot,[data-vwap-spot],.sp-vwap-spot,#spSpot,.sp-spot-value');
+  }
+  function readNum(el){
+    if(!el)return null;
+    const raw=(el.value??el.textContent??'').replace(/,/g,'').match(/-?\d+(?:\.\d+)?/);
+    return raw?Number(raw[0]):null;
+  }
+  function ensureVwapTable(){
+    const section=document.querySelector('.sp-vwap-section');
+    if(!section)return;
+    if(section.querySelector('.sp-vwap-table-card'))return;
+    const card=document.createElement('div');
+    card.className='sp-vwap-table-card';
+    card.innerHTML='<div class="sp-vwap-table-title">VWAP INTRADAY SNAPSHOT</div><div class="sp-vwap-table-wrap"><table class="sp-vwap-table"><thead><tr><th>TIME</th><th>SPOT</th><th>VWAP</th><th>DIFFERENCE</th><th>BIAS</th></tr></thead><tbody></tbody></table></div>';
+    section.appendChild(card);
+    console.log('✅ VWAP TABLE INJECTED');
+  }
+  function updateVwapTable(){
+    ensureVwapTable();
+    const tb=document.querySelector('.sp-vwap-table tbody');
+    if(!tb)return;
+    const vwap=readNum(findVwap());
+    const spot=readNum(findSpot()) ?? readNum(document.querySelector('#spSpot'));
+    if(vwap==null && spot==null)return;
+    const diff=(spot!=null&&vwap!=null)?spot-vwap:null;
+    const bias=diff==null?'--':diff>0?'ABOVE VWAP':diff<0?'BELOW VWAP':'AT VWAP';
+    const cls=diff==null?'vwap-neutral':diff>0?'vwap-positive':'vwap-negative';
+    const time=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
+    let row=tb.querySelector('tr[data-current="1"]');
+    if(!row){row=document.createElement('tr');row.dataset.current='1';tb.prepend(row)}
+    row.innerHTML='<td>'+time+'</td><td>'+(spot==null?'--':spot.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))+'</td><td>'+(vwap==null?'--':vwap.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}))+'</td><td class="'+cls+'">'+(diff==null?'--':(diff>=0?'+':'')+diff.toFixed(2))+'</td><td class="'+cls+'">'+bias+'</td>';
+  }
   function start(){
     console.log('✅ WORDPRESS LOADER RUNNING');
     addCss('strike-pulse.css');
     addCss('strike-pulse-fix.css');
-    setTimeout(report,1000);
-    setTimeout(report,3000);
+    setTimeout(()=>{ensureVwapTable();updateVwapTable();report()},1200);
+    setTimeout(()=>{ensureVwapTable();updateVwapTable();report()},3000);
+    setInterval(updateVwapTable,30000);
   }
-
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded',start,{once:true});
-  }else start();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
