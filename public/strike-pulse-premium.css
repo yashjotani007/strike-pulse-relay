@@ -1,0 +1,32 @@
+/* STRIKE PULSE — PREMIUM MIDNIGHT THEME
+   Visual-only override. Existing HTML/JS/layout untouched. */
+html,body{background:#070b14!important;background-image:radial-gradient(circle at 15% 8%,rgba(37,99,235,.12),transparent 28%),radial-gradient(circle at 85% 18%,rgba(124,58,237,.10),transparent 28%),radial-gradient(circle at 50% 100%,rgba(14,165,233,.07),transparent 35%)!important;background-attachment:fixed!important}
+body{color:#e8eef9!important}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:linear-gradient(135deg,rgba(255,255,255,.018),transparent 40%,rgba(59,130,246,.012));}
+
+/* Market cards */
+.sp-market-grid .sp-market-card,.wp-block-columns.sp-market-cards>.wp-block-column{background:linear-gradient(145deg,#0a1224 0%,#0d1830 55%,#101f3d 100%)!important;border-color:rgba(96,165,250,.26)!important;box-shadow:0 18px 45px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.045)!important}
+.sp-market-grid .sp-market-card::before{background:linear-gradient(90deg,#2563eb,#38bdf8,#8b5cf6)!important}
+.sp-market-grid .sp-market-card::after{background:rgba(56,189,248,.10)!important}
+.sp-market-grid .sp-market-card:hover{border-color:rgba(96,165,250,.58)!important;box-shadow:0 24px 55px rgba(0,0,0,.42),0 0 30px rgba(37,99,235,.13)!important}
+.sp-market-grid .sp-market-name,.sp-market-grid .sp-price{color:#f7faff!important}
+.sp-market-grid .sp-change{color:#a9b8ce!important}.sp-market-grid .sp-updated{color:#70829e!important}
+.wp-block-columns.sp-market-cards .sp-market-card{color:#fff!important}
+
+/* Option-chain containers/cards */
+.sp-oc-header,.sp-control-card,.sp-summary-card,.sp-option-table-card{background:linear-gradient(145deg,#0a1224,#0e1930)!important;border-color:rgba(96,165,250,.22)!important;box-shadow:0 14px 38px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.035)!important;color:#e8eef9!important}
+.sp-oc-title h1,.sp-control-card strong,.sp-summary-card strong{color:#f5f8ff!important}.sp-oc-title p,.sp-control-card>p:first-child span,.sp-summary-card span{color:#8293ad!important}
+.sp-search-box,.sp-expiry-value,.sp-symbol-btn{background:#0b1427!important;border-color:rgba(96,165,250,.20)!important;color:#cbd7e8!important}.sp-search-box input{color:#f5f8ff!important}.sp-search-box button,.sp-symbol-btn.active{background:#2563eb!important}
+.sp-search-results{background:#0b1427!important;border-color:rgba(96,165,250,.22)!important;color:#e8eef9!important}.sp-search-item:hover{background:#12213b!important}
+.sp-option-table-card{overflow:hidden!important}.sp-table-header{background:rgba(255,255,255,.025)!important;border-bottom-color:rgba(96,165,250,.15)!important;color:#e8eef9!important}
+.sp-option-chain-table{background:#091120!important;color:#dce7f5!important}.sp-option-chain-table thead th{border-color:rgba(148,163,184,.13)!important}.sp-option-chain-table .sp-sub-head th{background:#0d1729!important;color:#8798b0!important}.sp-option-chain-table tbody td{border-color:rgba(148,163,184,.10)!important}.sp-option-chain-table tbody td:nth-child(6){background:#0d1a31!important;color:#f5f8ff!important;border-color:rgba(96,165,250,.25)!important}
+.sp-option-chain-table .sp-call-head{background:rgba(34,197,94,.10)!important}.sp-option-chain-table .sp-put-head{background:rgba(239,68,68,.10)!important}.sp-option-chain-table .sp-strike-head{background:rgba(37,99,235,.12)!important}
+.sp-call-summary{border-left-color:#22c55e!important}.sp-put-summary{border-left-color:#ef4444!important}
+
+/* Page wrappers */
+.sp-option-chain-page{color:#e8eef9!important}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#070b14}::-webkit-scrollbar-thumb{background:#263752;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#3b82f6}
+
+@media(max-width:768px){html,body{background-attachment:scroll!important}.sp-market-grid .sp-market-card,.wp-block-columns.sp-market-cards>.wp-block-column{box-shadow:0 12px 30px rgba(0,0,0,.30)!important}}
