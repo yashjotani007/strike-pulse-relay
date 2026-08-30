@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const V='20260830-final-theme-01';
+const V='20260831-unified-direct-01';
 const JS='https://cdn.jsdelivr.net/gh/yashjotani007/codevault@main/strike-pulse/js/strike-pulse.js';
 const CSS='https://cdn.jsdelivr.net/gh/yashjotani007/codevault@main/strike-pulse/css/strike-pulse-final.css';
 function addCSS(){
