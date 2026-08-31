@@ -31,33 +31,4 @@ async function loadHomeOptionChain(){
  }catch(e){console.error('[StrikePulse Home Option]',e);b.innerHTML='<tr><td colspan="7">Live option data unavailable</td></tr>'}
 }
 
-
-// Isolated symbol search: failure here must never stop prices or option-chain.
-function initSafeSearch(){
-  try{
-    const input=$('#spSymbolSearch'),btn=$('#spSearchBtn');
-    if(!input||!btn)return;
-    let list=document.getElementById('spSearchResults');
-    if(!list){ console.warn('[StrikePulse Search] #spSearchResults not found'); return; }
-    let timer;
-    const hide=()=>{setTimeout(()=>{if(list)list.style.display='none'},150)};
-    const run=async()=>{
-      try{
-        const q=(input.value||'').trim().toUpperCase();
-        if(!q){list.innerHTML='';list.style.display='none';return}
-        const r=await fetch(BASE+'/option-symbols?q='+encodeURIComponent(q),{cache:'no-store'});
-        const j=await r.json();if(!r.ok||j.success===false)throw Error(j.error||'Search unavailable');
-        const items=(j.symbols||[]).slice(0,20);
-        list.innerHTML=items.map(s=>'<button type="button" data-sp-symbol="'+String(s).replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px;border:0;border-bottom:1px solid #333;background:#111;color:#fff;cursor:pointer">'+s+'</button>').join('');
-        list.style.cssText='display:'+(items.length?'block':'none')+';position:absolute;z-index:999999;width:100%;max-height:260px;overflow:auto;background:#111;color:#fff;border:1px solid #334b70;border-radius:10px;margin-top:6px;padding:4px;box-sizing:border-box';
-        list.querySelectorAll('[data-sp-symbol]').forEach(el=>el.onclick=()=>{const s=el.dataset.spSymbol;input.value=s;list.style.display='none';load(s).catch(e=>console.error('[StrikePulse Search Load]',e))});
-      }catch(e){console.error('[StrikePulse Search]',e)}
-    };
-    input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(run,250)});
-    input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const q=input.value.trim().toUpperCase();if(q)load(q).catch(err=>console.error('[StrikePulse Search Load]',err));hide()}});
-    input.addEventListener('blur',hide);
-    btn.addEventListener('click',()=>{const q=input.value.trim().toUpperCase();if(q)load(q).catch(e=>console.error('[StrikePulse Search Load]',e));hide()});
-  }catch(e){console.error('[StrikePulse Search Init]',e)}
-}
-
-function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));status();prices();load('NIFTY');loadHomeOptionChain();initSafeSearch();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
+function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));$('#spSearchBtn')?.addEventListener('click',()=>{const q=($('#spSymbolSearch')?.value||'').trim().toUpperCase();if(q)load(q)});status();prices();load('NIFTY');loadHomeOptionChain();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
