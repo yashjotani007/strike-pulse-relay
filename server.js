@@ -51,7 +51,9 @@ async function bseSensexChain(){
  const urls=[
   BSE_API+"/DerivOptionChain/w?flag=1&assetType=I&symbol=SENSEX",
   BSE_API+"/DerivOptionChain/w?flag=0&assetType=I&symbol=SENSEX",
-  BSE_API+"/DerivOptionChain/w?flag=1&symbol=SENSEX"
+  BSE_API+"/DerivOptionChain/w?flag=1&symbol=SENSEX",
+  BSE_API+"/DerivOptionChain/w?flag=1&assetType=I&symbol=SENSEX&strExpDate=",
+  BSE_API+"/GetOptionChainData/w?symbol=SENSEX&assetType=I"
  ];
  let last;
  for(const u of urls){try{
