@@ -2,11 +2,11 @@
 'use strict';
 
 /* Strike Pulse Market Cards - single loader for price + LIVE/CLOSED */
-if(window.__STRIKE_PULSE_MARKET_CARDS_RUNNING__) return;
+// Force latest loader to run even if an older cached script used the legacy flag.
 window.__STRIKE_PULSE_MARKET_CARDS_RUNNING__=true;
 
 const API='https://strike-pulse-relay.onrender.com/api/prices';
-const VERSION='MARKET-CARDS-SINGLE-20260901-01';
+const VERSION='MARKET-CARDS-SINGLE-20260901-02-FIX';
 const REFRESH_MS=15000;
 
 const markets={
@@ -96,11 +96,17 @@ async function loadPrices(){
 
     const json=await response.json();
     const data=json&&json.data&&typeof json.data==='object'?json.data:json;
+    const marketData=json?.markets||data?.markets||{};
     const updated=data?.updated||json?.updated;
 
     Object.keys(markets).forEach(key=>{
-      const value=markets[key].map(alias=>data?.[alias]).find(v=>v!==null&&v!==undefined&&v!=='');
-      const change=markets[key].map(alias=>data?.[alias+'Change']).find(v=>v!==null&&v!==undefined&&v!=='');
+      const direct=marketData?.[key]||{};
+      const value=(direct.price!==undefined&&direct.price!==null)
+        ?direct.price
+        :markets[key].map(alias=>data?.[alias]).find(v=>v!==null&&v!==undefined&&v!=='');
+      const change=(direct.change!==undefined&&direct.change!==null)
+        ?direct.change
+        :markets[key].map(alias=>data?.[alias+'Change']).find(v=>v!==null&&v!==undefined&&v!=='');
       updateMarket(key,value,change,updated);
     });
 
