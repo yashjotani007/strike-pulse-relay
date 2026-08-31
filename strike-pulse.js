@@ -4,4 +4,25 @@ const aliases={nifty:['nifty','nifty50'],banknifty:['banknifty','bankNifty'],fin
 const live=open();
 Object.keys(aliases).forEach(k=>{const card=document.querySelector('.sp-market-card[data-market-card="'+k+'"]');if(!card)return;const m=md[k]||{};const val=m.price??aliases[k].map(a=>d[a]).find(v=>v!=null);const ch=m.change??aliases[k].map(a=>d[a+'Change']).find(v=>v!=null);const price=card.querySelector('.sp-price');if(price)price.textContent=fmt(val,2);const ce=card.querySelector('.sp-change');if(ce){const n=Number(ch);ce.textContent=Number.isFinite(n)?(n>0?'▲ +':n<0?'▼ ':'● ')+Math.abs(n).toFixed(2)+'%':'--';ce.className='sp-change '+(n>0?'sp-up':n<0?'sp-down':'')};const ue=card.querySelector('.sp-updated');if(ue)ue.textContent='Updated '+new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date())+' IST';const se=card.querySelector('.sp-market-status');if(se){se.textContent=live?'LIVE':'CLOSED';se.className='sp-market-status '+(live?'sp-live':'sp-closed')}});
 }
-function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));$('#spSearchBtn')?.addEventListener('click',()=>{const q=($('#spSymbolSearch')?.value||'').trim().toUpperCase();if(q)load(q)});status();prices();load('NIFTY');setInterval(prices,5000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
+
+// Home NIFTY Option Chain widget (uses the same central Strike Pulse script/API)
+function renderHomeOptionChain(d){
+ const root=document.querySelector('.sp-option-chain-page');
+ if(!root||!document.getElementById('sp-chain-body'))return;
+ const rows=(d.rows||[]).map(x=>({strike:V2(x,['strike','strikePrice']),ce:x.ce||x.CE||{},pe:x.pe||x.PE||{}})).filter(x=>x.strike!=null).sort((a,b)=>Number(a.strike)-Number(b.strike));
+ const atm=Number(d.atmStrike??d.atm);let i=rows.findIndex(x=>Number(x.strike)===atm);if(i<0)i=Math.floor(rows.length/2);
+ const start=Math.max(0,Math.min(i-1,Math.max(0,rows.length-4))),four=rows.slice(start,start+4),b=document.getElementById('sp-chain-body');
+ if(b)b.innerHTML=four.map(x=>{const c=x.ce,p=x.pe,cc=Number(V2(c,['oiChange','changeinOpenInterest']))||0,pc=Number(V2(p,['oiChange','changeinOpenInterest']))||0;return '<tr><td>'+fmt(V2(c,['oi','openInterest']))+'</td><td class="'+(cc>=0?'sp-up':'sp-down')+'">'+(cc>=0?'+':'')+fmt(cc)+'</td><td>'+fmt(V2(c,['ltp','lastPrice']),2)+'</td><td class="sp-chain-strike">'+fmt(x.strike)+'</td><td>'+fmt(V2(p,['ltp','lastPrice']),2)+'</td><td class="'+(pc>=0?'sp-up':'sp-down')+'">'+(pc>=0?'+':'')+fmt(pc)+'</td><td>'+fmt(V2(p,['oi','openInterest']))+'</td></tr>'}).join('');
+ const set=(id,v,dig)=>{const e=document.getElementById(id);if(e)e.textContent=id==='sp-chain-expiry'?(v||'--'):fmt(v,dig)};
+ set('sp-chain-spot',d.spot,2);set('sp-chain-atm',atm,0);set('sp-call-oi',d.callOI,0);set('sp-put-oi',d.putOI,0);
+ const p=document.getElementById('sp-pcr');if(p)p.textContent=d.pcr==null?'--':Number(d.pcr).toFixed(2);
+ set('sp-max-pain',d.maxPain,0);set('sp-chain-expiry',d.expiry);
+ const u=document.getElementById('sp-chain-updated');if(u)u.textContent='Updated '+new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date())+' IST';
+}
+const V2=(o,k)=>{for(const x of k)if(o&&o[x]!=null)return o[x];return null};
+async function loadHomeOptionChain(){
+ if(!document.getElementById('sp-chain-body'))return;
+ try{const r=await fetch(BASE+'/nifty-option-chain?symbol=NIFTY&t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();renderHomeOptionChain(d)}catch(e){console.error('[StrikePulse Home Option]',e)}
+}
+
+function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));$('#spSearchBtn')?.addEventListener('click',()=>{const q=($('#spSymbolSearch')?.value||'').trim().toUpperCase();if(q)load(q)});status();prices();load('NIFTY');loadHomeOptionChain();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
