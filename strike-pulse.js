@@ -38,7 +38,7 @@ function initSafeSearch(){
     const input=$('#spSymbolSearch'),btn=$('#spSearchBtn');
     if(!input||!btn)return;
     let list=document.getElementById('sp-symbol-results');
-    if(!list){list=document.createElement('div');list.id='sp-symbol-results';list.style.cssText='display:none';input.parentElement?.appendChild(list)}
+    if(!list){list=document.createElement('div');list.id='sp-symbol-results';list.style.cssText='display:none';input.parentElement?.appendChild(list);list.style.cssText='display:none;position:absolute;z-index:999999;background:#111;color:#fff;border:1px solid #444;border-radius:8px;max-height:260px;overflow:auto;min-width:220px;padding:4px';input.parentElement&&(input.parentElement.style.position='relative')}
     let timer;
     const hide=()=>{setTimeout(()=>{if(list)list.style.display='none'},150)};
     const run=async()=>{
@@ -48,7 +48,7 @@ function initSafeSearch(){
         const r=await fetch(BASE+'/option-symbols?q='+encodeURIComponent(q),{cache:'no-store'});
         const j=await r.json();if(!r.ok||j.success===false)throw Error(j.error||'Search unavailable');
         const items=(j.symbols||[]).slice(0,20);
-        list.innerHTML=items.map(s=>'<button type="button" data-sp-symbol="'+String(s).replace(/"/g,'&quot;')+'">'+s+'</button>').join('');
+        list.innerHTML=items.map(s=>'<button type="button" data-sp-symbol="'+String(s).replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px;border:0;border-bottom:1px solid #333;background:#111;color:#fff;cursor:pointer">'+s+'</button>').join('');
         list.style.display=items.length?'block':'none';
         $('[data-sp-symbol]',list).forEach(el=>el.onclick=()=>{const s=el.dataset.spSymbol;input.value=s;list.style.display='none';load(s).catch(e=>console.error('[StrikePulse Search Load]',e))});
       }catch(e){console.error('[StrikePulse Search]',e)}
