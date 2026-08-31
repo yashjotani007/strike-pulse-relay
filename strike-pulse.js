@@ -31,10 +31,10 @@ async function loadHomeOptionChain(){
  }catch(e){console.error('[StrikePulse Home Option]',e);b.innerHTML='<tr><td colspan="7">Live option data unavailable</td></tr>'}
 }
 
-function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;
+function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;try{
 $$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));
 const input=$('#spSymbolSearch');
 $('#spSearchBtn')?.addEventListener('click',()=>{const q=(input?.value||'').trim().toUpperCase();if(q)load(q)});
 input?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const q=input.value.trim().toUpperCase();if(q)load(q)}});
-status();prices();load('NIFTY');loadHomeOptionChain();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}
+status();prices();load('NIFTY');loadHomeOptionChain();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}catch(e){console.error('[StrikePulse INIT ERROR]',e,e&&e.stack);window.__StrikePulseInitialized=false;}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
