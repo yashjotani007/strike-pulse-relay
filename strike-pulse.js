@@ -50,7 +50,7 @@ function initSafeSearch(){
         const items=(j.symbols||[]).slice(0,20);
         list.innerHTML=items.map(s=>'<button type="button" data-sp-symbol="'+String(s).replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px;border:0;border-bottom:1px solid #333;background:#111;color:#fff;cursor:pointer">'+s+'</button>').join('');
         list.style.cssText='display:'+(items.length?'block':'none')+';position:absolute;z-index:999999;width:100%;max-height:260px;overflow:auto;background:#111;color:#fff;border:1px solid #334b70;border-radius:10px;margin-top:6px;padding:4px;box-sizing:border-box';
-        $('[data-sp-symbol]',list).forEach(el=>el.onclick=()=>{const s=el.dataset.spSymbol;input.value=s;list.style.display='none';load(s).catch(e=>console.error('[StrikePulse Search Load]',e))});
+        list.querySelectorAll('[data-sp-symbol]').forEach(el=>el.onclick=()=>{const s=el.dataset.spSymbol;input.value=s;list.style.display='none';load(s).catch(e=>console.error('[StrikePulse Search Load]',e))});
       }catch(e){console.error('[StrikePulse Search]',e)}
     };
     input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(run,250)});
