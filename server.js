@@ -45,7 +45,7 @@ async function warmBse(force=false){
 async function bseGet(url){
  const cookie=await warmBse(false);
  const headers={"User-Agent":HEADERS["User-Agent"],"Accept":"application/json, text/plain, */*","Accept-Language":"en-US,en;q=0.9","Origin":"https://www.bseindia.com","Referer":"https://www.bseindia.com/markets/Derivatives/DeriReports/DeriOptionchain.html","X-Requested-With":"XMLHttpRequest",...(cookie?{Cookie:cookie}:{})};
- let r=await fetch(url,{headers}); if([401,403,500].includes(r.status)){await warmBse(true);r=await fetch(url,{headers:{...headers,Cookie:bseCookies}})} const t=await r.text(); if(!r.ok)throw Error("BSE HTTP "+r.status+": "+t.slice(0,120)); try{return JSON.parse(t)}catch{throw Error("BSE returned non-JSON")};
+ let r=await fetch(url,{headers}); if([401,403,500].includes(r.status)){await warmBse(true);r=await fetch(url,{headers:{...headers,Cookie:bseCookies}})} const t=await r.text(); if(!r.ok)throw Error("BSE HTTP "+r.status+": "+t.slice(0,120)); try{return JSON.parse(t)}catch{throw Error("BSE returned non-JSON: "+t.slice(0,80).replace(/\s+/g," "))};
 }
 async function bseSensexChain(){
  const urls=[
@@ -65,7 +65,10 @@ async function bseSensexChain(){
    let atm=rows[0].strike; rows.forEach(x=>{if(Math.abs(x.strike-spot)<Math.abs(atm-spot))atm=x.strike});
    const callOI=rows.reduce((s,x)=>s+(x.ce.oi||0),0),putOI=rows.reduce((s,x)=>s+(x.pe.oi||0),0);
    return {success:true,source:"bse",symbol:"SENSEX",spot,expiry:raw[0]?.End_TimeStamp??raw[0]?.ExpiryDate??"BSE LIVE",atm,atmStrike:atm,callOI,putOI,pcr:callOI?putOI/callOI:null,maxPain:maxPain(rows),rows:rows.filter(x=>Math.abs(x.strike-atm)<=1000),updated:new Date().toISOString()};
- }catch(e){last=e;console.log("BSE SENSEX",u,e.message)}} throw last||Error("BSE SENSEX option chain unavailable");
+ }catch(e){last=e;console.log("BSE SENSEX",u,e.message)}} 
+ // BSE may block cloud IPs or return HTML. Return spot-based status instead of fake option data.
+ const spot=price.sensex||(await yahooPrice("^BSESN")).last;
+ throw last||Error("BSE SENSEX option chain unavailable; spot "+spot);
 }
 app.get("/api/sensex-option-chain",async(req,res)=>{try{res.json(await bseSensexChain())}catch(e){res.status(502).json({success:false,error:e.message})}});
 
