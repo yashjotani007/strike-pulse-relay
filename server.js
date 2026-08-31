@@ -33,10 +33,39 @@ app.get("/api/option-expiries",async(req,res)=>{try{const symbol=String(req.quer
 app.get("/api/option-chain",async(req,res)=>{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();const expiry=req.query.expiry?String(req.query.expiry):null;const full=String(req.query.full??"true")!=="false";const key=`${symbol}|${expiry||"AUTO"}|${full}`;const cached=cache.get(key);if(cached&&Date.now()-cached.at<5000)return res.json(cached.data);if(pending.has(key)){try{return res.json(await pending.get(key));}catch(e){return res.status(500).json({success:false,error:e.message});}}const promise=Promise.race([loadChain(symbol,expiry,full),new Promise((_,reject)=>setTimeout(()=>reject(Error("Option chain upstream timeout")),25000))]);pending.set(key,promise);try{const data=await promise;cache.set(key,{at:Date.now(),data});res.json(data);}catch(e){res.status(500).json({success:false,error:e.message});}finally{pending.delete(key);}});
 app.get("/api/nifty-option-chain",async(req,res)=>{try{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();const data=await loadChain(symbol,req.query.expiry?String(req.query.expiry):null,false);res.json(data);}catch(e){res.status(500).json({success:false,error:e.message});}});
 // BSE SENSEX option chain relay
+let bseCookies="",bseCookieAt=0;
+const BSE_BASE="https://www.bseindia.com",BSE_API="https://api.bseindia.com/BseIndiaAPI/api";
+function mergeCookies(oldCookie,newCookie){const m=new Map();for(const part of String(oldCookie||"").split(";")){const i=part.indexOf("=");if(i>0)m.set(part.slice(0,i).trim(),part.trim())}for(const part of String(newCookie||"").split(";")){const i=part.indexOf("=");if(i>0)m.set(part.slice(0,i).trim(),part.trim())}return [...m.values()].join("; ")}
+async function warmBse(force=false){
+ if(!force&&bseCookies&&Date.now()-bseCookieAt<240000)return bseCookies;
+ const baseHeaders={"User-Agent":HEADERS["User-Agent"],"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"en-US,en;q=0.9","Referer":"https://www.google.com/"};
+ let r=await fetch(BSE_BASE+"/",{headers:baseHeaders,redirect:"follow"}); bseCookies=mergeCookies(bseCookies,getCookies(r));
+ r=await fetch(BSE_BASE+"/markets/Derivatives/DeriReports/DeriOptionchain.html",{headers:{...baseHeaders,Referer:BSE_BASE+"/",...(bseCookies?{Cookie:bseCookies}:{})},redirect:"follow"}); bseCookies=mergeCookies(bseCookies,getCookies(r)); bseCookieAt=Date.now(); return bseCookies;
+}
+async function bseGet(url){
+ const cookie=await warmBse(false);
+ const headers={"User-Agent":HEADERS["User-Agent"],"Accept":"application/json, text/plain, */*","Accept-Language":"en-US,en;q=0.9","Origin":"https://www.bseindia.com","Referer":"https://www.bseindia.com/markets/Derivatives/DeriReports/DeriOptionchain.html","X-Requested-With":"XMLHttpRequest",...(cookie?{Cookie:cookie}:{})};
+ let r=await fetch(url,{headers}); if([401,403,500].includes(r.status)){await warmBse(true);r=await fetch(url,{headers:{...headers,Cookie:bseCookies}})} const t=await r.text(); if(!r.ok)throw Error("BSE HTTP "+r.status+": "+t.slice(0,120)); try{return JSON.parse(t)}catch{throw Error("BSE returned non-JSON")};
+}
 async function bseSensexChain(){
- const headers={"User-Agent":HEADERS["User-Agent"],"Accept":"application/json, text/plain, */*","Referer":"https://www.bseindia.com/markets/Derivatives/DeriReports.aspx"};
- const urls=["https://api.bseindia.com/BseIndiaAPI/api/DerivOptionChain/w?flag=1&assetType=I&symbol=SENSEX","https://api.bseindia.com/BseIndiaAPI/api/DerivOptionChain/w?flag=1&symbol=SENSEX"];
- let last; for(const u of urls){try{const r=await fetch(u,{headers}); if(!r.ok)throw Error("BSE HTTP "+r.status); const j=await r.json(); const raw=j?.Table||j?.data||j?.Data||[]; if(!Array.isArray(raw)||!raw.length)throw Error("No BSE option rows"); const rows=raw.map(x=>{const strike=num(x.StrikePrice??x.Strike??x.strikePrice);return strike==null?null:{strike,ce:{ltp:num(x.CELTP??x.CallLTP),oi:num(x.CEOI??x.CallOI),oiChange:num(x.CEOIChange??x.CallOIChange),volume:num(x.CEVolume??x.CallVolume),iv:num(x.CEIV??x.CallIV)},pe:{ltp:num(x.PELTP??x.PutLTP),oi:num(x.PEOI??x.PutOI),oiChange:num(x.PEOIChange??x.PutOIChange),volume:num(x.PEVolume??x.PutVolume),iv:num(x.PEIV??x.PutIV)}}}).filter(Boolean); if(rows.length<2)throw Error("Invalid BSE option data"); const spot=price.sensex|| (await yahooPrice("^BSESN")).last; let atm=rows[0].strike; rows.forEach(x=>{if(Math.abs(x.strike-spot)<Math.abs(atm-spot))atm=x.strike}); const callOI=rows.reduce((s,x)=>s+(x.ce.oi||0),0),putOI=rows.reduce((s,x)=>s+(x.pe.oi||0),0); return {success:true,source:"bse",symbol:"SENSEX",spot,expiry:"BSE LIVE",atm,atmStrike:atm,callOI,putOI,pcr:callOI?putOI/callOI:null,maxPain:atm,rows:rows.filter(x=>Math.abs(x.strike-atm)<=1000),updated:new Date().toISOString()};}catch(e){last=e}} throw last||Error("BSE SENSEX option chain unavailable");
+ const urls=[
+  BSE_API+"/DerivOptionChain/w?flag=1&assetType=I&symbol=SENSEX",
+  BSE_API+"/DerivOptionChain/w?flag=0&assetType=I&symbol=SENSEX",
+  BSE_API+"/DerivOptionChain/w?flag=1&symbol=SENSEX"
+ ];
+ let last;
+ for(const u of urls){try{
+   const j=await bseGet(u);
+   const raw=j?.Table||j?.data||j?.Data||j?.Table1||[];
+   if(!Array.isArray(raw)||!raw.length)throw Error("No BSE option rows");
+   const rows=raw.map(x=>{const strike=num(x.StrikePrice??x.Strike_Price??x.Strike??x.strikePrice);return strike==null?null:{strike,ce:{ltp:num(x.C_Last_Trd_Price??x.CELTP??x.CallLTP),oi:num(x.C_Open_Interest??x.CEOI??x.CallOI),oiChange:num(x.C_Absolute_Change_OI??x.CEOIChange??x.CallOIChange),volume:num(x.C_Vol_Traded??x.CEVolume??x.CallVolume),iv:num(x.C_IV??x.CEIV??x.CallIV)},pe:{ltp:num(x.Last_Trd_Price??x.PELTP??x.PutLTP),oi:num(x.Open_Interest??x.PEOI??x.PutOI),oiChange:num(x.Absolute_Change_OI??x.PEOIChange??x.PutOIChange),volume:num(x.Vol_Traded??x.PEVolume??x.PutVolume),iv:num(x.IV??x.PEIV??x.PutIV)}}}).filter(Boolean);
+   if(rows.length<2)throw Error("Invalid BSE option data");
+   const spotData=await bseGet("https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexData/w").catch(()=>null);
+   const spot=num(spotData?.Table?.[0]?.LTP??spotData?.Table?.[0]?.ltp??price.sensex)||price.sensex||(await yahooPrice("^BSESN")).last;
+   let atm=rows[0].strike; rows.forEach(x=>{if(Math.abs(x.strike-spot)<Math.abs(atm-spot))atm=x.strike});
+   const callOI=rows.reduce((s,x)=>s+(x.ce.oi||0),0),putOI=rows.reduce((s,x)=>s+(x.pe.oi||0),0);
+   return {success:true,source:"bse",symbol:"SENSEX",spot,expiry:raw[0]?.End_TimeStamp??raw[0]?.ExpiryDate??"BSE LIVE",atm,atmStrike:atm,callOI,putOI,pcr:callOI?putOI/callOI:null,maxPain:maxPain(rows),rows:rows.filter(x=>Math.abs(x.strike-atm)<=1000),updated:new Date().toISOString()};
+ }catch(e){last=e;console.log("BSE SENSEX",u,e.message)}} throw last||Error("BSE SENSEX option chain unavailable");
 }
 app.get("/api/sensex-option-chain",async(req,res)=>{try{res.json(await bseSensexChain())}catch(e){res.status(502).json({success:false,error:e.message})}});
 
