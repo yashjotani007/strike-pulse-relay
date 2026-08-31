@@ -31,4 +31,17 @@ async function loadHomeOptionChain(){
  }catch(e){console.error('[StrikePulse Home Option]',e);b.innerHTML='<tr><td colspan="7">Live option data unavailable</td></tr>'}
 }
 
-function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));$('#spSearchBtn')?.addEventListener('click',()=>{const q=($('#spSymbolSearch')?.value||'').trim().toUpperCase();if(q)load(q)});status();prices();load('NIFTY');loadHomeOptionChain();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
+async function searchSymbols(){
+ const input=$('#spSymbolSearch'),box=$('#spSearchResults');if(!input||!box)return;
+ const q=input.value.trim().toUpperCase();if(!q){box.innerHTML='';box.style.display='none';return}
+ try{const r=await fetch(BASE+'/option-symbols?q='+encodeURIComponent(q)+'&t='+Date.now(),{cache:'no-store'}),j=await r.json(),list=j.symbols||[];
+ box.innerHTML=list.length?list.map(s=>'<button type="button" class="sp-search-item" data-symbol="'+s+'">'+s+'</button>').join(''):'<div class="sp-search-empty">No NSE option symbol found</div>';
+ box.style.display='block';
+ box.querySelectorAll('[data-symbol]').forEach(x=>x.onclick=()=>{input.value=x.dataset.symbol;box.style.display='none';load(x.dataset.symbol)});
+ }catch(e){console.error('[StrikePulse] symbol search',e)}
+}
+function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));
+ const input=$('#spSymbolSearch');input?.addEventListener('input',searchSymbols);input?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const q=input.value.trim().toUpperCase();if(q){$('#spSearchResults').style.display='none';load(q)}}});
+ $('#spSearchBtn')?.addEventListener('click',()=>{const q=(input?.value||'').trim().toUpperCase();if(q){$('#spSearchResults').style.display='none';load(q)}else searchSymbols()});
+ document.addEventListener('click',e=>{if(!e.target.closest('.sp-oc-search')){const b=$('#spSearchResults');if(b)b.style.display='none'}});
+ status();prices();load('NIFTY');loadHomeOptionChain();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();})();
