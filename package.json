@@ -4,7 +4,7 @@
   "description": "Strike Pulse live market relay using Angel One SmartAPI WebSocket V2",
   "main": "server.js",
   "scripts": {
-    "start": "node fresh-server.js"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=18"
