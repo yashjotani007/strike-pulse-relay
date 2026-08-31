@@ -25,7 +25,61 @@ function hasRealStrikeVariation(rows){const strikes=new Set(rows.map(x=>x.strike
 async function loadChain(symbol,expiry,full=true){symbol=String(symbol||"NIFTY").toUpperCase();let expiries=[];try{expiries=await contractInfo(symbol);}catch(e){console.log("expiry",symbol,e.message);}const exp=expiry||expiries[0]||null;const type=["NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY","NIFTYNXT50"].includes(symbol)?"Indices":"Equity";const v3=`/api/option-chain-v3?type=${type}&symbol=${encodeURIComponent(symbol)}`;const standard=`/api/option-chain-${type==="Indices"?"indices":"equities"}?symbol=${encodeURIComponent(symbol)}`;const paths=[];if(exp)paths.push(v3+`&expiry=${encodeURIComponent(exp)}`);paths.push(v3);if(exp)paths.push(standard+`&expiry=${encodeURIComponent(exp)}`);paths.push(standard);let lastError;for(const path of paths){try{const body=await nse(path);const normalized=normalize(body,exp);if(!normalized.rows.length)throw Error("No option rows");const spot=normalized.spot||(symbol==="NIFTY"?price.nifty:symbol==="BANKNIFTY"?price.banknifty:symbol==="FINNIFTY"?price.finnifty:null);if(!spot)throw Error("Spot unavailable");let atmIndex=0,distance=Infinity;normalized.rows.forEach((row,i)=>{const d=Math.abs(row.strike-spot);if(d<distance){distance=d;atmIndex=i;}});const source=full?normalized.rows:normalized.rows.slice(Math.max(0,atmIndex-5),atmIndex+6);const rows=toRows(source);if(rows.length>=5&&!hasRealStrikeVariation(rows))throw Error("Upstream returned repeated values for all strikes");const callOI=rows.reduce((sum,row)=>sum+(row.ce.oi||0),0);const putOI=rows.reduce((sum,row)=>sum+(row.pe.oi||0),0);return {success:true,source:"nse",symbol,spot,expiry:exp,expiries,atm:normalized.rows[atmIndex].strike,atmStrike:normalized.rows[atmIndex].strike,callOI,putOI,callOIChange:rows.reduce((sum,row)=>sum+(row.ce.oiChange||0),0),putOIChange:rows.reduce((sum,row)=>sum+(row.pe.oiChange||0),0),pcr:callOI?putOI/callOI:null,maxPain:maxPain(normalized.rows),totalStrikes:normalized.rows.length,rows,updated:new Date().toISOString()};}catch(e){lastError=e;console.log("option",symbol,e.message);}}throw lastError||Error("Option chain unavailable");}
 const POPULAR=["RELIANCE","HDFCBANK","ICICIBANK","SBIN","INFY","TCS","BHARTIARTL","ITC","LT","AXISBANK","KOTAKBANK","M&M","BAJFINANCE","HINDUNILVR","MARUTI","SUNPHARMA","ADANIENT","ADANIPORTS","NTPC","POWERGRID","TATAMOTORS","TATASTEEL","JSWSTEEL","HCLTECH","WIPRO","TECHM","COALINDIA","ONGC","BEL","TRENT","ETERNAL","INDUSINDBK","BANKBARODA","PNB","CANBK","RECLTD","PFC","IRFC","HAL","DLF","VBL","PIDILITIND","ASIANPAINT","ULTRACEMCO","GRASIM","NESTLEIND","TITAN","BAJAJFINSV","BAJAJ-AUTO","EICHERMOT","HEROMOTOCO","TVSMOTOR","DRREDDY","CIPLA","APOLLOHOSP","DIVISLAB","BPCL","IOC","GAIL","VEDL","HINDALCO","JINDALSTEL","SAIL","TATAPOWER","AMBUJACEM","ACC","ABB","SIEMENS","INDIGO","IRCTC","LICI","HDFCLIFE","SBILIFE","MOTHERSON","DABUR","COLPAL","GODREJCP","CHOLAFIN","SHRIRAMFIN","OFSS","PERSISTENT","COFORGE","MPHASIS","LTIM","BHEL","NHPC","IEX","IDEA","YESBANK"];
 app.get("/",(req,res)=>res.json({success:true,message:"Strike Pulse Relay is running",source:price.source,lastUpdate:price.updated}));
-app.get("/vwap.js",(req,res)=>{res.type("application/javascript").send(`(()=>{const u="https://strike-pulse-relay.onrender.com/api/vwap";const set=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val};const fmt=n=>Number(n).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});function draw(points){const p=document.getElementById("spVwapPriceLine"),v=document.getElementById("spVwapLine");if(!p||!v||!points?.length)return;const vals=points.flatMap(x=>[+x.price,+x.vwap]),min=Math.min(...vals),max=Math.max(...vals),pad=(max-min)||1;const xy=(x,y)=>x.toFixed(1)+","+(280-((y-min)/pad)*250).toFixed(1);const n=points.length-1;p.setAttribute("points",points.map((x,i)=>xy(30+(i/(n||1))*940,+x.price)).join(" "));v.setAttribute("points",points.map((x,i)=>xy(30+(i/(n||1))*940,+x.vwap)).join(" "));}async function x(){try{const r=await fetch(u+"?t="+Date.now());const j=await r.json();if(!j.success)throw Error(j.error);const d=j.data,s=+d.spot,v=+d.vwap,diff=s-v,pct=(diff/v)*100;set("spVwapSpot",fmt(s));set("spVwapValue",fmt(v));set("spVwapDifference",(diff>=0?"+":"")+diff.toFixed(2)+" ("+(pct>=0?"+":"")+pct.toFixed(2)+"%)");set("spVwapPosition",s>v?"ABOVE VWAP":s<v?"BELOW VWAP":"AT VWAP");set("spVwapStatus",d.marketOpen?"Live VWAP data active":"Market closed");set("spVwapUpdated",d.marketOpen?"Updated "+new Date(d.updated).toLocaleTimeString("en-IN"):"Market Closed");document.querySelectorAll(".sp-vwap-live").forEach(e=>e.textContent=d.marketOpen?"● LIVE":"● CLOSED");draw(d.points);const m=document.getElementById("spVwapChartMessage");if(m)m.style.display="none";}catch(e){set("spVwapStatus","VWAP data temporarily unavailable");console.error("STRIKE PULSE VWAP ERROR:",e)}}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",x);else x();setInterval(x,30000)})();`);});
+app.get("/vwap.js",(req,res)=>{res.type("application/javascript").send(`(()=>{'use strict';
+const API="https://strike-pulse-relay.onrender.com/api/vwap";
+const $=id=>document.getElementById(id);
+let currentSymbol="NIFTY",lastPoints=[];
+const fmt=n=>Number(n).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const set=(id,val)=>{const e=$(id);if(e)e.textContent=val};
+function selected(){
+ const e=document.getElementById("spSelectedSymbol");
+ return String(e?.textContent||window.StrikePulseSelectedSymbol||currentSymbol||"NIFTY").trim().toUpperCase().replace(/\s+/g,"");
+}
+function title(symbol){set("spVwapTitle","VWAP • "+symbol);set("spVwapSymbol",symbol)}
+function draw(points){
+ const p=$("spVwapPriceLine"),v=$("spVwapLine");if(!p||!v||!points?.length)return;
+ const vals=points.flatMap(x=>[+x.price,+x.vwap]).filter(Number.isFinite);if(!vals.length)return;
+ const min=Math.min(...vals),max=Math.max(...vals),pad=(max-min)||1,n=points.length-1;
+ const xy=(x,y)=>x.toFixed(1)+","+(280-((y-min)/pad)*250).toFixed(1);
+ p.setAttribute("points",points.map((x,i)=>xy(30+(i/(n||1))*940,+x.price)).join(" "));
+ v.setAttribute("points",points.map((x,i)=>xy(30+(i/(n||1))*940,+x.vwap)).join(" "));
+}
+function tooltip(){
+ const chart=$("spVwapChart"),svg=$("spVwapSvg");if(!chart||!svg||chart.dataset.spTip)return;
+ chart.dataset.spTip="1";chart.style.position="relative";
+ const tip=document.createElement("div");tip.id="spVwapTooltip";tip.style.cssText="display:none;position:absolute;z-index:99;pointer-events:none;padding:9px 11px;background:#020617;border:1px solid #334155;border-radius:8px;color:#fff;font:12px Arial;line-height:1.55;box-shadow:0 8px 30px rgba(0,0,0,.45)";
+ const line=document.createElement("div");line.id="spVwapCrosshair";line.style.cssText="display:none;position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.45);pointer-events:none;z-index:90";
+ chart.append(line,tip);
+ const move=e=>{if(!lastPoints.length)return;const r=chart.getBoundingClientRect();const x=Math.max(0,Math.min(r.width,e.clientX-r.left));const i=Math.round((x/r.width)*(lastPoints.length-1));const d=lastPoints[i];if(!d)return;
+ const time=d.t?new Date(d.t).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}):"--";
+ line.style.display="block";line.style.left=x+"px";tip.style.display="block";tip.style.left=Math.min(x+12,r.width-170)+"px";tip.style.top="12px";
+ tip.innerHTML="<b>"+currentSymbol+"</b><br>Time: "+time+"<br>Price: "+fmt(+d.price)+"<br>VWAP: "+fmt(+d.vwap);
+ };
+ chart.addEventListener("mousemove",move);chart.addEventListener("touchmove",e=>{if(e.touches[0])move(e.touches[0])},{passive:true});
+ chart.addEventListener("mouseleave",()=>{tip.style.display="none";line.style.display="none"});chart.addEventListener("touchend",()=>{tip.style.display="none";line.style.display="none"});
+}
+async function load(forceSymbol){
+ try{
+  currentSymbol=String(forceSymbol||selected()||"NIFTY").toUpperCase();title(currentSymbol);
+  const r=await fetch(API+"?symbol="+encodeURIComponent(currentSymbol)+"&t="+Date.now(),{cache:"no-store"});
+  const j=await r.json();if(!r.ok||!j.success)throw Error(j.error||"VWAP unavailable");
+  const d=j.data,s=+d.spot,v=+d.vwap,diff=s-v,pct=v?diff/v*100:0;
+  set("spVwapSpot",fmt(s));set("spVwapValue",fmt(v));set("spVwapDifference",(diff>=0?"+":"")+diff.toFixed(2)+" ("+(pct>=0?"+":"")+pct.toFixed(2)+"%)");
+  set("spVwapPosition",s>v?"ABOVE VWAP":s<v?"BELOW VWAP":"AT VWAP");
+  set("spVwapStatus",d.marketOpen?"Live VWAP data active":"Market closed");set("spVwapUpdated",d.marketOpen?"Updated "+new Date(d.updated).toLocaleTimeString("en-IN"):"Market Closed");
+  document.querySelectorAll(".sp-vwap-live").forEach(e=>e.textContent=d.marketOpen?"● LIVE":"● CLOSED");
+  lastPoints=Array.isArray(d.points)?d.points:[];draw(lastPoints);tooltip();const m=$("spVwapChartMessage");if(m)m.style.display=lastPoints.length?"none":"block";
+ }catch(e){set("spVwapStatus","VWAP data temporarily unavailable");console.error("STRIKE PULSE VWAP ERROR:",e)}
+}
+function init(){
+ load();
+ document.addEventListener("click",()=>setTimeout(()=>{const s=selected();if(s&&s!==currentSymbol)load(s)},100));
+ const observer=new MutationObserver(()=>{const s=selected();if(s&&s!==currentSymbol)load(s)});
+ const target=$("spSelectedSymbol");if(target)observer.observe(target,{childList:true,subtree:true,characterData:true});
+ setInterval(()=>load(currentSymbol),30000);
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
+})();`);});
 app.get("/api/vwap",async(req,res)=>{try{const symbol=String(req.query.symbol||"NIFTY").toUpperCase(),yahooSymbol=symbol==="NIFTY"?"^NSEI":symbol==="BANKNIFTY"?"^NSEBANK":symbol;const intraday=await yahooIntraday(yahooSymbol);const spot=symbol==="NIFTY"?(price.nifty??intraday.spot):symbol==="BANKNIFTY"?(price.banknifty??intraday.spot):intraday.spot;const points=intraday.points.map(x=>({price:x.price,vwap:x.vwap,t:new Date(x.t).toISOString()}));res.json({success:true,data:{symbol,spot,vwap:intraday.vwap,points,marketOpen:isNseOpen(),updated:new Date().toISOString()}});}catch(e){res.status(500).json({success:false,error:e.message});}});
 app.get("/api/prices",async(req,res)=>{if(!price.nifty||!price.banknifty||!price.finnifty||!price.vix||!price.sensex)await updatePrices();if(price.vwap==null){try{price.vwap=await yahooVWAP("^NSEI");price.updated=new Date().toISOString();}catch(e){console.log("VWAP request",e.message);}}res.json({...price,data:{...price},markets:{nifty:{price:price.nifty,change:price.niftyChange},banknifty:{price:price.banknifty,change:price.bankniftyChange},finnifty:{price:price.finnifty,change:price.finniftyChange},vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}}});});
 app.get("/api/option-symbols",(req,res)=>{const q=String(req.query.q||"").toUpperCase().trim();const exact=[...new Set([...POPULAR,"NIFTY","BANKNIFTY","FINNIFTY","MIDCPNIFTY"])];res.json({success:true,symbols:exact.filter(x=>!q||x.includes(q)).slice(0,40)});});
