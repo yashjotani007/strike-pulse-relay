@@ -13,7 +13,8 @@ function renderHomeOptionChain(raw){
  const atm=Number(d?.atmStrike??d?.atm);
  let i=rows.findIndex(x=>Number(x.strike)===atm);if(i<0)i=Math.floor(rows.length/2);
  const start=Math.max(0,Math.min(i-1,Math.max(0,rows.length-4)));
- const view=rows.slice(start,start+4),b=document.getElementById('sp-chain-body');
+ const limit=window.__spHomeViewAll?rows.length:4;
+ const view=rows.slice(start,start+limit),b=document.getElementById('sp-chain-body');
  if(b)b.innerHTML=view.length?view.map(x=>{const ce=x.ce,pe=x.pe,cc=Number(V(ce,['oiChange','changeinOpenInterest']))||0,pc=Number(V(pe,['oiChange','changeinOpenInterest']))||0;return '<tr><td>'+fmt(V(ce,['oi','openInterest']))+'</td><td class="'+(cc>=0?'sp-up':'sp-down')+'">'+(cc>=0?'+':'')+fmt(cc)+'</td><td>'+fmt(V(ce,['ltp','lastPrice']),2)+'</td><td class="sp-chain-strike">'+fmt(x.strike)+'</td><td>'+fmt(V(pe,['ltp','lastPrice']),2)+'</td><td class="'+(pc>=0?'sp-up':'sp-down')+'">'+(pc>=0?'+':'')+fmt(pc)+'</td><td>'+fmt(V(pe,['oi','openInterest']))+'</td></tr>'}).join(''):'<tr><td colspan="7">No option data available</td></tr>';
  const put=(id,val,dig)=>{const e=document.getElementById(id);if(e)e.textContent=fmt(val,dig)};
  put('sp-chain-spot',d?.spot,2);put('sp-chain-atm',atm);put('sp-call-oi',d?.callOI);put('sp-put-oi',d?.putOI);
@@ -21,7 +22,10 @@ function renderHomeOptionChain(raw){
  put('sp-max-pain',d?.maxPain);
  const ex=document.getElementById('sp-chain-expiry');if(ex)ex.textContent=d?.expiry||'--';
  const u=document.getElementById('sp-chain-updated');if(u)u.textContent='Updated '+new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date())+' IST';
+ let btn=document.getElementById('sp-view-more-btn');const wrap=document.querySelector('.sp-chain-table-wrap');
+ if(rows.length>4&&wrap){if(!btn){btn=document.createElement('button');btn.id='sp-view-more-btn';btn.type='button';wrap.insertAdjacentElement('afterend',btn);btn.addEventListener('click',()=>{window.__spHomeViewAll=!window.__spHomeViewAll;renderHomeOptionChain(d);});}btn.textContent=window.__spHomeViewAll?'Show Less':'View More';btn.style.display='flex';}
 }
+
 async function loadHomeOptionChain(){
  const b=document.getElementById('sp-chain-body');if(!b)return;
  try{
