@@ -19,3 +19,23 @@ function summary(d){const atm=d.atmStrike??d.atm;set('spSelectedSymbol',d.symbol
 async function load(sym){symbol=(sym||'NIFTY').toUpperCase();try{const r=await fetch(BASE+'/nifty-option-chain?symbol='+encodeURIComponent(symbol)+'&t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();if(!d.success)throw Error(d.error||'API failed');const rows=rowsOf(d);if(!rows.length)throw Error('No option rows');summary(d);renderFull(rows,d.atmStrike??d.atm);renderHome(rows,d.atmStrike??d.atm);status()}catch(e){err('OPTION CHAIN load failed',{symbol,error:e})}}
 $$('.sp-symbol-btn').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();load(b.dataset.symbol)}));const input=$('#spSymbolSearch'),results=$('#spSearchResults'),symbols=[['NIFTY','NIFTY 50'],['BANKNIFTY','BANK NIFTY'],['FINNIFTY','FIN NIFTY']];function search(){if(!input||!results)return;const q=input.value.trim().toUpperCase(),m=symbols.filter(x=>x[0].includes(q)||x[1].includes(q));if(!q||!m.length){results.style.display='none';return}results.innerHTML=m.map(x=>`<div class="sp-search-item" data-symbol="${x[0]}">${x[1]}</div>`).join('');results.style.display='block';results.querySelectorAll('.sp-search-item').forEach(e=>e.onclick=()=>{input.value=e.textContent;results.style.display='none';load(e.dataset.symbol)})}input?.addEventListener('input',search);$('#spSearchBtn')?.addEventListener('click',e=>{e.preventDefault();search()});document.addEventListener('click',e=>{if(results&&e.target!==input&&!results.contains(e.target))results.style.display='none'});function mountSensex(){let card=document.querySelector('.sp-market-sensex');const anchor=document.querySelector('.sp-price[data-market="nifty"],.sp-price[data-symbol="nifty"],.sp-price[data-index="nifty"]');let grid=anchor?.closest('.wp-block-column')?.parentElement;if(!grid)grid=document.querySelector('.sp-market-cards,.sp-market-cards .wp-block-columns');if(!card){card=document.createElement('div');card.className='sp-market-card sp-market-sensex';card.innerHTML='<div class="sp-market-name">SENSEX</div><div class="sp-price" data-market="sensex">Loading…</div><div class="sp-change" data-change="sensex">—</div><div class="sp-updated" data-updated="sensex">Updated --</div><div class="sp-market-status sp-closed">CLOSED</div>';}if(card&&grid){grid.classList.add('sp-market-cards');if(card.parentElement!==grid)grid.appendChild(card);console.log('%c[StrikePulse] SENSEX CARD READY','color:#22c55e;font-weight:900')}else{console.error('[StrikePulse] SENSEX CARD MOUNT FAILED',{card:!!card,grid:!!grid})}}
 decorateHomeBlocks();mountSensex();status();prices();load('NIFTY');setInterval(prices,1000);setInterval(()=>load(symbol),30000);setInterval(status,1000);console.log('%c[StrikePulse] PRICE 1s + SENSEX SUPPORT ACTIVE','color:#22c55e;font-weight:900')});
+
+/* Strike Pulse VWAP widget */
+async function spInitVWAP(){
+ const $=id=>document.getElementById(id), root=document.querySelector('.sp-vwap-section');
+ if(!root||root.dataset.spVwapReady)return;if(root)root.dataset.spVwapReady='1';
+ const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};
+ const fmt=n=>Number.isFinite(+n)?(+n).toLocaleString('en-IN',{maximumFractionDigits:2}):'—';
+ async function update(){try{
+   const r=await fetch('https://strike-pulse-relay.onrender.com/api/vwap',{cache:'no-store'});
+   const text=await r.text(); let d; try{d=JSON.parse(text)}catch(e){throw new Error('VWAP API returned invalid JSON')}
+   const spot=+(d.spot??d.price??d.ltp), vwap=+(d.vwap??d.value), diff=spot-vwap;
+   if(!Number.isFinite(spot)||!Number.isFinite(vwap))throw new Error('VWAP values unavailable');
+   set('spVwapSpot',fmt(spot));set('spVwapValue',fmt(vwap));set('spVwapDifference',(diff>=0?'+':'')+fmt(diff));
+   const pos=diff>=0?'ABOVE VWAP':'BELOW VWAP';set('spVwapPosition',pos);root.classList.toggle('sp-above',diff>=0);root.classList.toggle('sp-below',diff<0);
+   set('spVwapStatus','VWAP data live');set('spVwapUpdated','Updated '+new Date().toLocaleTimeString('en-IN'));
+ }catch(e){console.error('STRIKE PULSE VWAP ERROR:',e);set('spVwapStatus','VWAP data unavailable')}
+ }
+ update();setInterval(update,30000);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',spInitVWAP);else spInitVWAP();
