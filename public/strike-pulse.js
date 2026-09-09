@@ -4,7 +4,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   const PRICE=BASE+'/prices';
   let priceBusy=false;
 
-  async function prices(){
+  async function forceSensexAttach(){try{let card=document.querySelector('.sp-market-sensex');if(!card){card=document.createElement('div');card.className='sp-market-card sp-market-sensex';card.innerHTML='<div class="sp-market-name">SENSEX</div><div class="sp-price" data-market="sensex">Loading…</div><div class="sp-change" data-change="sensex">—</div><div class="sp-updated" data-updated="sensex">Updated --</div><div class="sp-market-status sp-closed">CLOSED</div>';console.error('[StrikePulse] SENSEX CARD WAS MISSING — CREATED NOW')}const p=document.querySelector('.sp-price[data-market="nifty"]');const grid=p?.closest('.wp-block-columns');if(grid&&card.parentElement!==grid)grid.appendChild(card);card.classList.add('sp-market-card','sp-market-sensex');console.log('%c[StrikePulse] SENSEX FORCE ATTACHED','color:#22c55e;font-weight:900');return card}catch(e){console.error('[StrikePulse] SENSEX FORCE ATTACH FAILED',e);return null}}
+function prices(){
     if(priceBusy) return;
     priceBusy=true;
     try{
