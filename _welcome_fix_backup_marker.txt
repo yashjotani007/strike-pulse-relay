@@ -1,0 +1,1 @@
+Backup marker created before welcome-only fix. Existing strike-pulse.js core must remain unchanged; this marker is intentionally temporary and should not affect runtime.
