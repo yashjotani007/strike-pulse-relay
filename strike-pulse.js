@@ -1,3 +1,63 @@
+/* STRIKE PULSE — LIVE PRICE REPAIR + ORIGINAL 2197a6dd SYSTEM */
+(function(){
+  'use strict';
+  var PRICE_API='https://strike-pulse-relay.onrender.com/api/prices';
+  var priceTimer=null;
+
+  function repairPrices(){
+    fetch(PRICE_API+'?repair='+Date.now(),{cache:'no-store'})
+      .then(function(r){
+        if(!r.ok) throw new Error('Price API HTTP '+r.status);
+        return r.json();
+      })
+      .then(function(j){
+        var d=(j&&j.data&&typeof j.data==='object')?j.data:j||{};
+        var values={
+          nifty:d.nifty,
+          banknifty:d.banknifty,
+          finnifty:d.finnifty,
+          vix:d.vix,
+          sensex:d.sensex
+        };
+        var cards=document.querySelectorAll('.sp-market-card');
+        if(!cards.length){
+          console.error('[StrikePulse Price Repair] ERROR: market cards not found');
+          return;
+        }
+        cards.forEach(function(card){
+          var key=(card.getAttribute('data-market-card')||'').toLowerCase();
+          var value=values[key];
+          var price=card.querySelector('.sp-price');
+          if(value==null){
+            console.error('[StrikePulse Price Repair] ERROR: no value for',key);
+            return;
+          }
+          if(!price){
+            console.error('[StrikePulse Price Repair] ERROR: .sp-price missing for',key);
+            return;
+          }
+          price.textContent=Number(value).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+        });
+        console.log('[StrikePulse Price Repair] LIVE PRICES UPDATED',values);
+      })
+      .catch(function(err){
+        console.error('[StrikePulse Price Repair] ERROR:',err);
+      });
+  }
+
+  function startPriceRepair(){
+    repairPrices();
+    if(priceTimer) clearInterval(priceTimer);
+    priceTimer=setInterval(repairPrices,5000);
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',startPriceRepair,{once:true});
+  }else{
+    startPriceRepair();
+  }
+})();
+
 (()=>{const BASE='https://strike-pulse-relay.onrender.com/api',PRICE=BASE+'/prices';let symbol='NIFTY';const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),fmt=(v,d=0)=>v==null||v===''||isNaN(Number(v))?'--':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
 function open(){const p=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());let d,h,m;p.forEach(x=>{if(x.type==='weekday')d=x.value;if(x.type==='hour')h=+x.value;if(x.type==='minute')m=+x.value});return ['Mon','Tue','Wed','Thu','Fri'].includes(d)&&h*60+m>=555&&h*60+m<930}
 function status(){const o=open(),t=o?'LIVE':'CLOSED';const e=$('#spChainStatus');if(e){e.className='sp-table-live '+(o?'sp-live':'sp-closed');e.innerHTML='<span class="sp-live-dot"></span>'+t}const s=$('#spMarketStatus');if(s){s.style.display='flex';const z=s.querySelector('.sp-market-status');if(z){z.textContent=t;z.className='sp-market-status '+(o?'sp-live':'sp-closed')}}}
