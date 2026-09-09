@@ -4,117 +4,24 @@
   if(window.__StrikePulseRootLoaded)return;
   window.__StrikePulseRootLoaded=true;
   var API='https://strike-pulse-relay.onrender.com/api';
-
-  function fmt(v,d){var n=Number(v);return Number.isFinite(n)?n.toLocaleString('en-IN',{minimumFractionDigits:d||2,maximumFractionDigits:d||2}):'—';}
-  function text(e,v){if(e)e.textContent=v;}
-  function ist(){return new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());}
-  function marketOpen(){var p=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(new Date()).reduce(function(a,x){a[x.type]=x.value;return a},{});var s=+p.hour*3600+ +p.minute*60 + +p.second;return ['Mon','Tue','Wed','Thu','Fri'].indexOf(p.weekday)>=0&&s>=33300&&s<55800;}
-  function status(){var live=marketOpen();document.querySelectorAll('.sp-market-status').forEach(function(e){e.classList.remove('sp-live','sp-open','sp-closed');e.classList.add(live?'sp-live':'sp-closed');e.textContent=live?'LIVE':'CLOSED';});return live;}
-  function updateCard(card,key,item,updated){if(!card||!item)return;text(card.querySelector('.sp-price'),fmt(item.price,2));var c=card.querySelector('.sp-change');if(c){var n=Number(item.change);text(c,Number.isFinite(n)?(n>0?'▲ +':n<0?'▼ ':'● ')+Math.abs(n).toFixed(2)+'%':'—');c.classList.remove('sp-positive','sp-negative','sp-flat');c.classList.add(Number.isFinite(n)?n>0?'sp-positive':n<0?'sp-negative':'sp-flat':'sp-flat');}text(card.querySelector('.sp-updated'),updated?'Updated '+new Date(updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Updated '+ist()+' IST');}
-  async function prices(){try{var r=await fetch(API+'/prices?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);var j=await r.json(),d=j.data||j,m=j.markets||{};var keys=['nifty','banknifty','finnifty','vix','sensex'];keys.forEach(function(k){var item=m[k]||{price:d[k],change:d[k+'Change']};document.querySelectorAll('.sp-market-card[data-market-card="'+k+'"],.sp-market-'+k).forEach(function(card){updateCard(card,k,item,d.updated);});});status();window.__STRIKE_PULSE_STATUS_DIAGNOSTIC__={pricesLoaded:true,updated:d.updated||new Date().toISOString()};}catch(e){console.error('[StrikePulse] PRICE ERROR',e);}}
-
+  var selected='NIFTY',chainBusy=false;
   function q(id){return document.getElementById(id);}
+  function text(e,v){if(e)e.textContent=v;}
   function val(o,ks){for(var i=0;i<ks.length;i++)if(o&&o[ks[i]]!==undefined&&o[ks[i]]!==null&&o[ks[i]]!=='')return o[ks[i]];return null;}
   function n(v,d){var x=Number(v);return Number.isFinite(x)?x.toLocaleString('en-IN',{minimumFractionDigits:d||0,maximumFractionDigits:d||0}):'—';}
-  function rowValue(o,keys){return val(o,keys);}
-  var selected='NIFTY',chainBusy=false;
+  function ist(){return new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());}
+  function marketOpen(){var p=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(new Date()).reduce(function(a,x){a[x.type]=x.value;return a},{});var s=+p.hour*3600+ +p.minute*60 + +p.second;return ['Mon','Tue','Wed','Thu','Fri'].indexOf(p.weekday)>=0&&s>=33300&&s<55800;}
+  function status(){var live=marketOpen();document.querySelectorAll('.sp-market-status').forEach(function(e){e.classList.remove('sp-live','sp-open','sp-closed');e.classList.add(live?'sp-live':'sp-closed');if(e.id==='spFooterStatus'){var t=q('spFooterStatusText');if(t)t.textContent=live?'LIVE':'CLOSED';}else if(!e.querySelector('#spFooterStatusText'))e.textContent=live?'LIVE':'CLOSED';});var h=q('spHeaderMarketStatus'),ht=q('spHeaderStatusText');if(h){h.classList.remove('sp-live','sp-closed');h.classList.add(live?'sp-live':'sp-closed');}text(ht,live?'LIVE MARKET DATA':'MARKET CLOSED');var cs=q('spChainStatus'),ct=q('spChainStatusText');if(cs){cs.classList.remove('sp-status-live','sp-status-closed','sp-live','sp-closed');cs.classList.add(live?'sp-status-live':'sp-status-closed');}text(ct,live?'LIVE':'CLOSED');var f=q('spFooterStatus');if(f){f.classList.remove('sp-live','sp-open','sp-closed');f.classList.add(live?'sp-live':'sp-closed');}return live;}
+  function updateCard(card,item,updated){if(!card||!item)return;text(card.querySelector('.sp-price'),n(item.price,2));var c=card.querySelector('.sp-change');if(c){var x=Number(item.change);text(c,Number.isFinite(x)?(x>0?'▲ +':x<0?'▼ ':'● ')+Math.abs(x).toFixed(2)+'%':'—');c.classList.remove('sp-positive','sp-negative','sp-flat');c.classList.add(Number.isFinite(x)?x>0?'sp-positive':x<0?'sp-negative':'sp-flat':'sp-flat');}text(card.querySelector('.sp-updated'),updated?'Updated '+new Date(updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Updated '+ist()+' IST');}
+  async function prices(){try{var r=await fetch(API+'/prices?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);var j=await r.json(),d=j.data||j,m=j.markets||{};['nifty','banknifty','finnifty','vix','sensex'].forEach(function(k){var item=m[k]||{price:d[k],change:d[k+'Change']};document.querySelectorAll('.sp-market-card[data-market-card="'+k+'"],.sp-market-'+k).forEach(function(card){updateCard(card,item,d.updated);});});status();window.__STRIKE_PULSE_STATUS_DIAGNOSTIC__={pricesLoaded:true,updated:d.updated||new Date().toISOString()};}catch(e){console.error('[StrikePulse] PRICE ERROR',e);}}
   function chainBody(){return q('spOptionChainBody')||q('sp-chain-body');}
-
-  function fiveStrikes(rows,atm){
-    if(!Array.isArray(rows)||rows.length<=5)return rows||[];
-    var clean=rows.filter(function(x){return x&&Number.isFinite(Number(x.strike));});
-    if(!clean.length)return rows.slice(0,5);
-    clean.sort(function(a,b){return Number(a.strike)-Number(b.strike);});
-    var a=Number(atm);
-    if(!Number.isFinite(a))a=Number(clean[Math.floor(clean.length/2)].strike);
-    var center=0,best=Infinity;
-    clean.forEach(function(x,i){var dist=Math.abs(Number(x.strike)-a);if(dist<best){best=dist;center=i;}});
-    var start=Math.max(0,Math.min(center-2,clean.length-5));
-    return clean.slice(start,start+5);
-  }
-
-  function renderRows(rows,wide,atm){
-    var b=chainBody();
-    if(!b)return;
-    if(!wide)rows=fiveStrikes(rows,atm);
-    if(!rows.length){b.innerHTML='<tr><td colspan="'+(wide?11:7)+'">No live option-chain data available</td></tr>';return;}
-    b.innerHTML=rows.map(function(x){
-      var ce=x.ce||x.call||{},pe=x.pe||x.put||{};
-      if(wide)return '<tr><td>'+n(rowValue(ce,['oi','openInterest']))+'</td><td>'+n(rowValue(ce,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(ce,['ltp','lastPrice']),2)+'</td><td>'+n(rowValue(ce,['iv','impliedVolatility']),2)+'</td><td>'+n(rowValue(ce,['volume','totalTradedVolume']))+'</td><td><b>'+n(x.strike)+'</b></td><td>'+n(rowValue(pe,['ltp','lastPrice']),2)+'</td><td>'+n(rowValue(pe,['iv','impliedVolatility']),2)+'</td><td>'+n(rowValue(pe,['volume','totalTradedVolume']))+'</td><td>'+n(rowValue(pe,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(pe,['oi','openInterest']))+'</td></tr>';
-      return '<tr><td>'+n(rowValue(ce,['oi','openInterest']))+'</td><td>'+n(rowValue(ce,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(ce,['ltp','lastPrice']),2)+'</td><td class="sp-chain-strike"><b>'+n(x.strike)+'</b></td><td>'+n(rowValue(pe,['ltp','lastPrice']),2)+'</td><td>'+n(rowValue(pe,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(pe,['oi','openInterest']))+'</td></tr>';
-    }).join('');
-  }
-
-  async function loadChain(sym){
-    sym=String(sym||'NIFTY').trim().toUpperCase();
-    selected=sym;
-    var b=chainBody();
-    if(!b)return;
-    if(chainBusy)return;
-    chainBusy=true;
-    var wide=!!q('spOptionChainBody');
-    try{
-      b.innerHTML='<tr><td colspan="'+(wide?11:7)+'">Loading '+sym+' option chain…</td></tr>';
-      var r=await fetch(API+'/option-chain?symbol='+encodeURIComponent(sym)+'&t='+Date.now(),{cache:'no-store'});
-      if(!r.ok)throw Error('HTTP '+r.status);
-      var j=await r.json(),d=j.data&&typeof j.data==='object'&&!Array.isArray(j.data)?j.data:j,rows=Array.isArray(j.rows)?j.rows:Array.isArray(d.rows)?d.rows:[];
-      var atmValue=j.atmStrike??j.atm??d.atmStrike??d.atm;
-      text(q('spSelectedSymbol'),sym);
-      text(q('spSpot'),n(j.spot??d.spot,2));
-      text(q('spATM'),n(atmValue));
-      text(q('spCallOI'),n(j.callOI??d.callOI));
-      text(q('spPutOI'),n(j.putOI??d.putOI));
-      var p=j.pcr??d.pcr;
-      text(q('spPCR'),p==null?'—':Number(p).toFixed(2));
-      text(q('spMaxPain'),n(j.maxPain??d.maxPain));
-      text(q('spExpiry'),j.expiry??d.expiry??'—');
-      text(q('sp-chain-spot'),n(j.spot??d.spot,2));
-      text(q('sp-chain-atm'),n(atmValue));
-      text(q('sp-chain-expiry'),j.expiry??d.expiry??'—');
-      renderRows(rows,wide,atmValue);
-      text(q('sp-chain-updated'),'Updated '+ist()+' IST');
-      text(q('spTableUpdated'),'Updated '+ist()+' IST');
-    }catch(e){
-      console.error('[StrikePulse] OPTION CHAIN ERROR',e);
-      b.innerHTML='<tr><td colspan="'+(wide?11:7)+'">Live option-chain data unavailable — retrying…</td></tr>';
-    }finally{chainBusy=false;}
-  }
-
-  async function searchSymbols(qs){
-    var box=q('spSearchResults');
-    if(!box)return;
-    qs=String(qs||'').trim().toUpperCase();
-    if(!qs){box.innerHTML='';return;}
-    try{
-      var r=await fetch(API+'/option-symbols?q='+encodeURIComponent(qs)+'&t='+Date.now(),{cache:'no-store'});
-      var j=await r.json(),arr=Array.isArray(j)?j:(j.symbols||j.data||[]);
-      if(!Array.isArray(arr))arr=[];
-      box.innerHTML=arr.slice(0,12).map(function(s){var sym=typeof s==='string'?s:(s.symbol||s.symbolName||s.name||'');return sym?'<button type="button" class="sp-search-item" data-symbol="'+String(sym).replace(/"/g,'&quot;')+'">'+sym+'</button>':'';}).join('');
-    }catch(e){box.innerHTML='';}
-  }
-
-  function initChain(){
-    var b=chainBody();
-    if(!b)return;
-    document.addEventListener('click',function(e){
-      var el=e.target.closest('[data-symbol],.sp-quick-symbol,.sp-symbol-btn');
-      if(!el)return;
-      if(el.tagName==='BUTTON'&&el.type==='submit')return;
-      var sym=el.getAttribute('data-symbol')||el.dataset.symbol||el.textContent.trim();
-      if(sym&&sym.length<40)loadChain(sym);
-    });
-    var inp=q('spSymbolSearch');
-    if(inp){
-      inp.addEventListener('input',function(){searchSymbols(inp.value);});
-      inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();loadChain(inp.value||'NIFTY');}});
-    }
-    var sb=q('spSearchBtn');
-    if(sb)sb.addEventListener('click',function(){loadChain(inp&&inp.value||'NIFTY');});
-    var first=document.querySelector('[data-symbol="NIFTY"],.sp-quick-symbol,.sp-symbol-btn');
-    loadChain(first?(first.getAttribute('data-symbol')||first.dataset.symbol||first.textContent.trim()):'NIFTY');
-    setInterval(function(){if(selected)loadChain(selected);},30000);
-  }
-
+  function mainPage(){return !!q('spOptionChainBody');}
+  function fiveStrikes(rows,atm){if(!Array.isArray(rows)||rows.length<=5)return rows||[];var clean=rows.filter(function(x){return x&&Number.isFinite(Number(x.strike));});if(!clean.length)return [];clean.sort(function(a,b){return Number(a.strike)-Number(b.strike);});var a=Number(atm);if(!Number.isFinite(a))a=Number(clean[Math.floor(clean.length/2)].strike);var center=0,best=Infinity;clean.forEach(function(x,i){var dist=Math.abs(Number(x.strike)-a);if(dist<best){best=dist;center=i;}});var start=Math.max(0,Math.min(center-2,clean.length-5));return clean.slice(start,start+5);}
+  function renderRows(rows,isMain,atm){var b=chainBody();if(!b)return;var display=isMain?(Array.isArray(rows)?rows:[]):fiveStrikes(rows,atm);if(!display.length){b.innerHTML='<tr><td colspan="'+(isMain?11:7)+'">No live option-chain data available</td></tr>';return;}b.innerHTML=display.map(function(x){var ce=x.ce||x.call||x.CE||{},pe=x.pe||x.put||x.PE||{};if(isMain)return '<tr><td>'+n(val(ce,['oi','openInterest','open_interest']))+'</td><td>'+n(val(ce,['oiChange','changeinOpenInterest','changeOI','changeInOpenInterest']))+'</td><td>'+n(val(ce,['ltp','lastPrice','last_price']),2)+'</td><td>'+n(val(ce,['iv','impliedVolatility','implied_volatility']),2)+'</td><td>'+n(val(ce,['volume','totalTradedVolume','total_traded_volume']))+'</td><td class="sp-strike-cell"><b>'+n(x.strike)+'</b></td><td>'+n(val(pe,['oi','openInterest','open_interest']))+'</td><td>'+n(val(pe,['oiChange','changeinOpenInterest','changeOI','changeInOpenInterest']))+'</td><td>'+n(val(pe,['ltp','lastPrice','last_price']),2)+'</td><td>'+n(val(pe,['iv','impliedVolatility','implied_volatility']),2)+'</td><td>'+n(val(pe,['volume','totalTradedVolume','total_traded_volume']))+'</td></tr>';return '<tr><td>'+n(val(ce,['oi','openInterest','open_interest']))+'</td><td>'+n(val(ce,['oiChange','changeinOpenInterest','changeOI','changeInOpenInterest']))+'</td><td>'+n(val(ce,['ltp','lastPrice','last_price']),2)+'</td><td class="sp-chain-strike"><b>'+n(x.strike)+'</b></td><td>'+n(val(pe,['ltp','lastPrice','last_price']),2)+'</td><td>'+n(val(pe,['oiChange','changeinOpenInterest','changeOI','changeInOpenInterest']))+'</td><td>'+n(val(pe,['oi','openInterest','open_interest']))+'</td></tr>';}).join('');}
+  function active(sym){document.querySelectorAll('.sp-symbol-btn[data-symbol],.sp-quick-symbol[data-symbol]').forEach(function(b){b.classList.toggle('active',String(b.getAttribute('data-symbol')||'').toUpperCase()===sym);});}
+  async function loadChain(sym){sym=String(sym||'NIFTY').trim().toUpperCase();selected=sym;var b=chainBody();if(!b||chainBusy)return;chainBusy=true;var isMain=mainPage();try{b.innerHTML='<tr><td colspan="'+(isMain?11:7)+'">Loading '+sym+' option chain…</td></tr>';var r=await fetch(API+'/option-chain?symbol='+encodeURIComponent(sym)+'&t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);var j=await r.json(),d=j.data&&typeof j.data==='object'&&!Array.isArray(j.data)?j.data:j,rows=Array.isArray(j.rows)?j.rows:Array.isArray(d.rows)?d.rows:[];var atm=j.atmStrike!==undefined?j.atmStrike:(j.atm!==undefined?j.atm:(d.atmStrike!==undefined?d.atmStrike:d.atm));var expiry=j.expiry!==undefined?j.expiry:(d.expiry!==undefined?d.expiry:'—');var spot=j.spot!==undefined?j.spot:d.spot;var callOI=j.callOI!==undefined?j.callOI:d.callOI;var putOI=j.putOI!==undefined?j.putOI:d.putOI;var pcr=j.pcr!==undefined?j.pcr:d.pcr;var maxPain=j.maxPain!==undefined?j.maxPain:d.maxPain;text(q('spSelectedSymbol'),sym);text(q('spSpot'),n(spot,2));text(q('spATM'),n(atm));text(q('spCallOI'),n(callOI));text(q('spPutOI'),n(putOI));text(q('spPCR'),pcr==null?'—':Number(pcr).toFixed(2));text(q('spMaxPain'),n(maxPain));text(q('spExpiry'),expiry);text(q('sp-chain-spot'),n(spot,2));text(q('sp-chain-atm'),n(atm));text(q('sp-chain-expiry'),expiry);renderRows(rows,isMain,atm);text(q('spMarketUpdated'),'Updated '+ist()+' IST');text(q('sp-chain-updated'),'Updated '+ist()+' IST');text(q('spTableUpdated'),'Updated '+ist()+' IST');active(sym);status();window.__STRIKE_PULSE_MAIN_CHAIN_DIAGNOSTIC__={loaded:true,symbol:sym,rowsFromAPI:rows.length,rowsRendered:b.querySelectorAll('tr').length,atm:atm,expiry:expiry,fullTable:isMain};}catch(e){console.error('[StrikePulse] OPTION CHAIN ERROR',e);b.innerHTML='<tr><td colspan="'+(isMain?11:7)+'">Live option-chain data unavailable — retrying…</td></tr>';window.__STRIKE_PULSE_MAIN_CHAIN_DIAGNOSTIC__={loaded:false,error:String(e&&e.message||e),fullTable:isMain};}finally{chainBusy=false;}}
+  async function searchSymbols(qs){var box=q('spSearchResults');if(!box)return;qs=String(qs||'').trim().toUpperCase();if(!qs){box.innerHTML='';return;}try{var r=await fetch(API+'/option-symbols?q='+encodeURIComponent(qs)+'&t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);var j=await r.json(),arr=Array.isArray(j)?j:(j.symbols||j.data||[]);if(!Array.isArray(arr))arr=[];box.innerHTML=arr.slice(0,12).map(function(s){var sym=typeof s==='string'?s:(s.symbol||s.symbolName||s.name||'');return sym?'<button type="button" class="sp-search-item" data-symbol="'+String(sym).replace(/"/g,'&quot;')+'">'+sym+'</button>':'';}).join('');}catch(e){console.error('[StrikePulse] SYMBOL SEARCH ERROR',e);box.innerHTML='';}}
+  function initChain(){var b=chainBody();if(!b)return;document.addEventListener('click',function(e){var el=e.target.closest('[data-symbol],.sp-quick-symbol,.sp-symbol-btn');if(!el)return;if(el.tagName==='BUTTON'&&el.type==='submit')return;var sym=el.getAttribute('data-symbol')||el.dataset.symbol||el.textContent.trim();if(sym&&sym.length<40){var sr=q('spSearchResults');if(sr&&el.closest('#spSearchResults'))sr.innerHTML='';var inp=q('spSymbolSearch');if(inp&&el.closest('#spSearchResults'))inp.value=sym;loadChain(sym);}});var inp=q('spSymbolSearch');if(inp){inp.addEventListener('input',function(){searchSymbols(inp.value);});inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();if(q('spSearchResults'))q('spSearchResults').innerHTML='';loadChain(inp.value||'NIFTY');}});}var sb=q('spSearchBtn');if(sb)sb.addEventListener('click',function(){if(q('spSearchResults'))q('spSearchResults').innerHTML='';loadChain(inp&&inp.value||'NIFTY');});var first=document.querySelector('.sp-symbol-btn[data-symbol="NIFTY"],.sp-quick-symbol[data-symbol="NIFTY"],.sp-symbol-btn,.sp-quick-symbol');loadChain(first?(first.getAttribute('data-symbol')||first.dataset.symbol||first.textContent.trim()):'NIFTY');setInterval(function(){if(selected)loadChain(selected);},30000);}
   function start(){prices();setInterval(prices,5000);setInterval(status,1000);initChain();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
