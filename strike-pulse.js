@@ -1,104 +1,35 @@
-/* Strike Pulse root loader — intentionally self-contained for GitHub Pages */
+/* Strike Pulse root loader — self-contained Pages frontend */
 (function(){
   'use strict';
-  if (window.__StrikePulseRootLoaded) return;
-  window.__StrikePulseRootLoaded = true;
-  console.log('[StrikePulse] ROOT JS LOADED');
+  if(window.__StrikePulseRootLoaded)return;
+  window.__StrikePulseRootLoaded=true;
+  var API='https://strike-pulse-relay.onrender.com/api';
 
-  var API='https://strike-pulse-relay.onrender.com/api/prices';
-  var started=false;
-
-  function text(el,value){ if(el) el.textContent=value; }
-  function fmtPrice(v){
-    if(v===null || v===undefined || v==='') return '—';
-    var n=Number(v); return Number.isFinite(n) ? n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : String(v);
+  function loadCSS(){
+    if(document.getElementById('strike-pulse-pages-css'))return;
+    var l=document.createElement('link');
+    l.id='strike-pulse-pages-css';l.rel='stylesheet';
+    l.href='https://yashjotani007.github.io/strike-pulse-relay/public/strike-pulse.css?v=20260910';
+    document.head.appendChild(l);
   }
-  function fmtChange(v){
-    if(v===null || v===undefined || v==='') return '—';
-    var n=Number(v); if(!Number.isFinite(n)) return String(v);
-    return (n>0?'+':'')+n.toFixed(2)+'%';
-  }
+  function fmt(v,d){var n=Number(v);return Number.isFinite(n)?n.toLocaleString('en-IN',{minimumFractionDigits:d||2,maximumFractionDigits:d||2}):'—';}
+  function text(e,v){if(e)e.textContent=v;}
+  function ist(){return new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());}
+  function marketOpen(){var p=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(new Date()).reduce(function(a,x){a[x.type]=x.value;return a},{});var s=+p.hour*3600+ +p.minute*60 + +p.second;return ['Mon','Tue','Wed','Thu','Fri'].indexOf(p.weekday)>=0&&s>=33300&&s<55800;}
+  function status(){var live=marketOpen();document.querySelectorAll('.sp-market-status').forEach(function(e){e.classList.remove('sp-live','sp-open','sp-closed');e.classList.add(live?'sp-live':'sp-closed');e.textContent=live?'LIVE':'CLOSED';});return live;}
+  function updateCard(card,key,item,updated){if(!card||!item)return;text(card.querySelector('.sp-price'),fmt(item.price,2));var c=card.querySelector('.sp-change');if(c){var n=Number(item.change);text(c,Number.isFinite(n)?(n>0?'▲ +':n<0?'▼ ':'● ')+Math.abs(n).toFixed(2)+'%':'—');c.classList.remove('sp-positive','sp-negative','sp-flat');c.classList.add(Number.isFinite(n)?n>0?'sp-positive':n<0?'sp-negative':'sp-flat':'sp-flat');}text(card.querySelector('.sp-updated'),updated?'Updated '+new Date(updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Updated '+ist()+' IST');}
+  async function prices(){try{var r=await fetch(API+'/prices?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);var j=await r.json(),d=j.data||j,m=j.markets||{};var keys=['nifty','banknifty','finnifty','vix','sensex'];keys.forEach(function(k){var item=m[k]||{price:d[k],change:d[k+'Change']};document.querySelectorAll('.sp-market-card[data-market-card="'+k+'"],.sp-market-'+k).forEach(function(card){updateCard(card,k,item,d.updated);});});status();window.__STRIKE_PULSE_STATUS_DIAGNOSTIC__={pricesLoaded:true,updated:d.updated||new Date().toISOString()};}catch(e){console.error('[StrikePulse] PRICE ERROR',e);}}
 
-  async function updatePrices(){
-    try{
-      console.log('[StrikePulse] requesting prices');
-      var r=await fetch(API+'?t='+Date.now(),{cache:'no-store'});
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      var j=await r.json();
-      console.log('[StrikePulse] prices response received');
-      var d=j && (j.data || j.markets || j);
-      var markets=j && j.markets;
-      if(!d) throw new Error('empty response');
-
-      var values={
-        nifty: markets&&markets.nifty ? markets.nifty : {price:d.nifty,change:d.niftyChange},
-        banknifty: markets&&markets.banknifty ? markets.banknifty : {price:d.banknifty,change:d.bankniftyChange},
-        finnifty: markets&&markets.finnifty ? markets.finnifty : {price:d.finnifty,change:d.finniftyChange},
-        vix: markets&&markets.vix ? markets.vix : {price:d.vix,change:d.vixChange},
-        sensex: markets&&markets.sensex ? markets.sensex : {price:d.sensex,change:d.sensexChange}
-      };
-
-      document.querySelectorAll('.sp-market-card[data-market-card]').forEach(function(card){
-        var key=(card.getAttribute('data-market-card')||'').toLowerCase();
-        var item=values[key]; if(!item) return;
-        text(card.querySelector('.sp-price'),fmtPrice(item.price));
-        var change=card.querySelector('.sp-change');
-        text(change,fmtChange(item.change));
-        if(change){
-          change.classList.remove('sp-positive','sp-negative','sp-flat');
-          var c=Number(item.change);
-          change.classList.add(Number.isFinite(c)?(c>0?'sp-positive':c<0?'sp-negative':'sp-flat'):'sp-flat');
-        }
-        text(card.querySelector('.sp-updated'),d.updated ? ('Updated '+new Date(d.updated).toLocaleTimeString()) : 'Live');
-        text(card.querySelector('.sp-market-status'),'LIVE');
-      });
-      console.log('[StrikePulse] ROOT LIVE PRICES UPDATED');
-    }catch(e){
-      console.error('[StrikePulse] ROOT PRICE ERROR:',e);
-      document.querySelectorAll('.sp-market-status').forEach(function(el){ text(el,'API ERROR'); });
-    }
-  }
-
-  function start(){
-    if(started) return; started=true;
-    updatePrices();
-    setInterval(updatePrices,5000);
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true});
-  else start();
-})();
-
-/* Option-chain functionality */
-(function(){
-  'use strict';
-  if(window.__StrikePulseOptionChainLoaded) return;
-  window.__StrikePulseOptionChainLoaded=true;
-  var BASE='https://strike-pulse-relay.onrender.com/api';
-  var body=document.getElementById('spOptionChainBody');
-  if(!body) return;
-
-  function fmt(v){ return v===null||v===undefined||v===''?'—':Number.isFinite(Number(v))?Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}):String(v); }
-  async function load(sym){
-    try{
-      var r=await fetch(BASE+'/option-chain?symbol='+encodeURIComponent(sym)+'&t='+Date.now(),{cache:'no-store'});
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      var j=await r.json();
-      var rows=j.rows||j.data||[];
-      if(!Array.isArray(rows)) rows=[];
-      body.innerHTML=rows.map(function(x){
-        return '<tr><td>'+fmt(x.callOI)+'</td><td>'+fmt(x.callOIChange)+'</td><td>'+fmt(x.callLTP)+'</td><td>'+fmt(x.callIV)+'</td><td>'+fmt(x.callVolume)+'</td><td><b>'+fmt(x.strike)+'</b></td><td>'+fmt(x.putLTP)+'</td><td>'+fmt(x.putIV)+'</td><td>'+fmt(x.putVolume)+'</td><td>'+fmt(x.putOIChange)+'</td><td>'+fmt(x.putOI)+'</td></tr>';
-      }).join('');
-    }catch(e){ console.error('[StrikePulse] OPTION CHAIN ERROR:',e); }
-  }
-  document.addEventListener('click',function(e){
-    var b=e.target.closest('[data-symbol],.sp-quick-symbol');
-    if(!b) return;
-    var sym=b.getAttribute('data-symbol')||b.dataset.symbol||b.textContent.trim();
-    if(sym) load(sym);
-  });
-  document.addEventListener('DOMContentLoaded',function(){
-    var first=document.querySelector('[data-symbol="NIFTY"],.sp-quick-symbol');
-    if(first) load(first.getAttribute('data-symbol')||first.textContent.trim());
-    else load('NIFTY');
-  },{once:true});
+  function q(id){return document.getElementById(id);}
+  function val(o,ks){for(var i=0;i<ks.length;i++)if(o&&o[ks[i]]!==undefined&&o[ks[i]]!==null&&o[ks[i]]!=='')return o[ks[i]];return null;}
+  function n(v,d){var x=Number(v);return Number.isFinite(x)?x.toLocaleString('en-IN',{minimumFractionDigits:d||0,maximumFractionDigits:d||0}):'—';}
+  function rowValue(o,keys){return val(o,keys);}
+  var selected='NIFTY', chainBusy=false;
+  function chainBody(){return q('spOptionChainBody')||q('sp-chain-body');}
+  function renderRows(rows,wide){var b=chainBody();if(!b)return;if(!rows.length){b.innerHTML='<tr><td colspan="'+(wide?11:7)+'">No live option-chain data available</td></tr>';return;}b.innerHTML=rows.map(function(x){var ce=x.ce||x.call||{},pe=x.pe||x.put||{};if(wide)return '<tr><td>'+n(rowValue(ce,['oi','openInterest']))+'</td><td>'+n(rowValue(ce,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(ce,['ltp','lastPrice']),2)+'</td><td>'+n(rowValue(ce,['iv','impliedVolatility']),2)+'</td><td>'+n(rowValue(ce,['volume','totalTradedVolume']))+'</td><td><b>'+n(x.strike)+'</b></td><td>'+n(rowValue(pe,['ltp','lastPrice']),2)+'</td><td>'+n(rowValue(pe,['iv','impliedVolatility']),2)+'</td><td>'+n(rowValue(pe,['volume','totalTradedVolume']))+'</td><td>'+n(rowValue(pe,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(pe,['oi','openInterest']))+'</td></tr>';return '<tr><td>'+n(rowValue(ce,['oi','openInterest']))+'</td><td>'+n(rowValue(ce,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(ce,['ltp','lastPrice']),2)+'</td><td class="sp-chain-strike"><b>'+n(x.strike)+'</b></td><td>'+n(rowValue(pe,['ltp','lastPrice']),2)+'</td><td>'+n(rowValue(pe,['oiChange','changeinOpenInterest','changeOI']))+'</td><td>'+n(rowValue(pe,['oi','openInterest']))+'</td></tr>';}).join('');}
+  async function loadChain(sym){sym=String(sym||'NIFTY').trim().toUpperCase();selected=sym;var b=chainBody();if(!b)return;if(chainBusy)return;chainBusy=true;try{b.innerHTML='<tr><td colspan="11">Loading '+sym+' option chain…</td></tr>';var r=await fetch(API+'/option-chain?symbol='+encodeURIComponent(sym)+'&t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);var j=await r.json(),d=j.data&&typeof j.data==='object'&&!Array.isArray(j.data)?j.data:j,rows=Array.isArray(j.rows)?j.rows:Array.isArray(d.rows)?d.rows:[];var wide=!!q('spOptionChainBody');text(q('spSelectedSymbol'),sym);text(q('spSpot'),n(j.spot??d.spot,2));text(q('spATM'),n(j.atmStrike??j.atm??d.atmStrike??d.atm));text(q('spCallOI'),n(j.callOI??d.callOI));text(q('spPutOI'),n(j.putOI??d.putOI));var p=j.pcr??d.pcr;text(q('spPCR'),p==null?'—':Number(p).toFixed(2));text(q('spMaxPain'),n(j.maxPain??d.maxPain));text(q('spExpiry'),j.expiry??d.expiry??'—');text(q('sp-chain-spot'),n(j.spot??d.spot,2));text(q('sp-chain-atm'),n(j.atmStrike??j.atm??d.atmStrike??d.atm));text(q('sp-chain-expiry',),j.expiry??d.expiry??'—');renderRows(rows,wide);text(q('sp-chain-updated'),'Updated '+ist()+' IST');text(q('spTableUpdated'),'Updated '+ist()+' IST');}catch(e){console.error('[StrikePulse] OPTION CHAIN ERROR',e);b.innerHTML='<tr><td colspan="11">Live option-chain data unavailable — retrying…</td></tr>';}finally{chainBusy=false;}}
+  async function searchSymbols(qs){var box=q('spSearchResults');if(!box)return;qs=String(qs||'').trim().toUpperCase();if(!qs){box.innerHTML='';return;}try{var r=await fetch(API+'/option-symbols?q='+encodeURIComponent(qs)+'&t='+Date.now(),{cache:'no-store'});var j=await r.json(),arr=Array.isArray(j)?j:(j.symbols||j.data||[]);if(!Array.isArray(arr))arr=[];box.innerHTML=arr.slice(0,12).map(function(s){var sym=typeof s==='string'?s:(s.symbol||s.symbolName||s.name||'');return sym?'<button type="button" class="sp-search-item" data-symbol="'+String(sym).replace(/"/g,'&quot;')+'">'+sym+'</button>':'';}).join('');}catch(e){box.innerHTML='';}}
+  function initChain(){var b=chainBody();if(!b)return;document.addEventListener('click',function(e){var el=e.target.closest('[data-symbol],.sp-quick-symbol,.sp-symbol-btn');if(!el)return;if(el.tagName==='BUTTON'&&el.type==='submit')return;var sym=el.getAttribute('data-symbol')||el.dataset.symbol||el.textContent.trim();if(sym&&sym.length<40)loadChain(sym);});var inp=q('spSymbolSearch');if(inp){inp.addEventListener('input',function(){searchSymbols(inp.value);});inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();loadChain(inp.value||'NIFTY');}});}var sb=q('spSearchBtn');if(sb)sb.addEventListener('click',function(){loadChain(inp&&inp.value||'NIFTY');});var first=document.querySelector('[data-symbol="NIFTY"],.sp-quick-symbol,.sp-symbol-btn');loadChain(first?(first.getAttribute('data-symbol')||first.dataset.symbol||first.textContent.trim()):'NIFTY');setInterval(function(){if(selected)loadChain(selected);},30000);}
+  function start(){loadCSS();prices();setInterval(prices,5000);setInterval(status,1000);initChain();}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
