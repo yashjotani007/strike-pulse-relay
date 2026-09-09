@@ -1,71 +1,64 @@
-/* STRIKE PULSE — LIVE PRICE REPAIR + ORIGINAL 2197a6dd SYSTEM */
+/* STRIKE PULSE — ROOT LIVE PRICE REPAIR */
 (function(){
   'use strict';
   var PRICE_API='https://strike-pulse-relay.onrender.com/api/prices';
   var priceTimer=null;
 
   function repairPrices(){
-    fetch(PRICE_API+'?repair='+Date.now(),{cache:'no-store'})
+    fetch(PRICE_API+'?t='+Date.now(),{cache:'no-store'})
       .then(function(r){
         if(!r.ok) throw new Error('Price API HTTP '+r.status);
         return r.json();
       })
       .then(function(j){
-        var d=(j&&j.data&&typeof j.data==='object')?j.data:j||{};
+        var d=(j&&j.data&&typeof j.data==='object')?j.data:(j||{});
+        var markets=j&&j.markets&&typeof j.markets==='object'?j.markets:(d.markets||{});
         var values={
-          nifty:d.nifty,
-          banknifty:d.banknifty,
-          finnifty:d.finnifty,
-          vix:d.vix,
-          sensex:d.sensex
+          nifty:markets.nifty&&markets.nifty.price!=null?markets.nifty.price:(d.nifty!=null?d.nifty:d.nifty50),
+          banknifty:markets.banknifty&&markets.banknifty.price!=null?markets.banknifty.price:(d.banknifty!=null?d.banknifty:d.bankNifty),
+          finnifty:markets.finnifty&&markets.finnifty.price!=null?markets.finnifty.price:(d.finnifty!=null?d.finnifty:d.finNifty),
+          vix:markets.vix&&markets.vix.price!=null?markets.vix.price:(d.vix!=null?d.vix:d.indiaVix),
+          sensex:markets.sensex&&markets.sensex.price!=null?markets.sensex.price:(d.sensex!=null?d.sensex:(d.SENSEX!=null?d.SENSEX:d.bseSensex))
         };
-        var cards=document.querySelectorAll('.sp-market-card');
-        if(!cards.length){
-          console.error('[StrikePulse Price Repair] ERROR: market cards not found');
-          return;
-        }
+        var cards=document.querySelectorAll('.sp-market-card[data-market-card]');
+        if(!cards.length){console.error('[StrikePulse] Market cards not found');return;}
         cards.forEach(function(card){
           var key=(card.getAttribute('data-market-card')||'').toLowerCase();
           var value=values[key];
           var price=card.querySelector('.sp-price');
-          if(value==null){
-            console.error('[StrikePulse Price Repair] ERROR: no value for',key);
-            return;
-          }
-          if(!price){
-            console.error('[StrikePulse Price Repair] ERROR: .sp-price missing for',key);
-            return;
-          }
+          if(!price||value==null||!isFinite(Number(value)))return;
           price.textContent=Number(value).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+          price.classList.remove('sp-price-loading');
+          var changeEl=card.querySelector('.sp-change');
+          var change=markets[key]&&markets[key].change!=null?markets[key].change:(d[key+'Change']);
+          if(changeEl&&change!=null&&isFinite(Number(change))){
+            var n=Number(change);
+            changeEl.textContent=n>0?'▲ +'+Math.abs(n).toFixed(2)+'%':n<0?'▼ -'+Math.abs(n).toFixed(2)+'%':'● 0.00%';
+            changeEl.classList.remove('sp-up','sp-down','sp-positive','sp-negative','sp-flat');
+            changeEl.classList.add(n>0?'sp-up':n<0?'sp-down':'sp-flat');
+          }
+          var updated=card.querySelector('.sp-updated');
+          if(updated)updated.textContent='Updated '+new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date())+' IST';
         });
-        console.log('[StrikePulse Price Repair] LIVE PRICES UPDATED',values);
+        console.log('[StrikePulse] ROOT LIVE PRICES UPDATED',values);
       })
-      .catch(function(err){
-        console.error('[StrikePulse Price Repair] ERROR:',err);
-      });
+      .catch(function(err){console.error('[StrikePulse] ROOT PRICE ERROR:',err);});
   }
 
-  function startPriceRepair(){
-    repairPrices();
-    if(priceTimer) clearInterval(priceTimer);
-    priceTimer=setInterval(repairPrices,5000);
-  }
-
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded',startPriceRepair,{once:true});
-  }else{
-    startPriceRepair();
-  }
+  function start(){repairPrices();if(priceTimer)clearInterval(priceTimer);priceTimer=setInterval(repairPrices,5000);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 
-(()=>{const BASE='https://strike-pulse-relay.onrender.com/api',PRICE=BASE+'/prices';let symbol='NIFTY';const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),fmt=(v,d=0)=>v==null||v===''||isNaN(Number(v))?'--':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
-function open(){const p=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());let d,h,m;p.forEach(x=>{if(x.type==='weekday')d=x.value;if(x.type==='hour')h=+x.value;if(x.type==='minute')m=+x.value});return ['Mon','Tue','Wed','Thu','Fri'].includes(d)&&h*60+m>=555&&h*60+m<930}
-function status(){const o=open(),t=o?'LIVE':'CLOSED';const e=$('#spChainStatus');if(e){e.className='sp-table-live '+(o?'sp-live':'sp-closed');e.innerHTML='<span class="sp-live-dot"></span>'+t}const s=$('#spMarketStatus');if(s){s.style.display='flex';const z=s.querySelector('.sp-market-status');if(z){z.textContent=t;z.className='sp-market-status '+(o?'sp-live':'sp-closed')}}}
-function setupViewMore(){const b=$('#spOptionChainBody');if(!b)return;const card=b.closest('.sp-option-table-card');if(!card)return;let btn=$('#spViewMoreBtn');if(!btn){const w=document.createElement('div');w.className='sp-view-more-wrap';w.innerHTML='<button type="button" id="spViewMoreBtn" class="sp-view-more-btn">VIEW MORE</button>';btn=w.firstElementChild;const scroll=card.querySelector('.sp-table-scroll');scroll?scroll.insertAdjacentElement('afterend',w):card.appendChild(w)}if(btn.dataset.viewMoreBound!=='true'){btn.dataset.viewMoreBound='true';btn.addEventListener('click',()=>{btn.dataset.expanded=btn.dataset.expanded==='true'?'false':'true';applyViewMore()})}function applyViewMore(){const rows=Array.from(b.querySelectorAll('tr')).filter(r=>r.querySelectorAll('td').length>=11),expanded=btn.dataset.expanded==='true';if(rows.length<=21){btn.style.display='none';rows.forEach(r=>r.style.display='');return}btn.style.display='inline-flex';btn.textContent=expanded?'VIEW LESS':'VIEW MORE';rows.forEach((r,i)=>r.style.display=expanded||i<21?'':'none')}applyViewMore()}
-function render(d){const rows=d.rows||[];$('#spSelectedSymbol')&&($('#spSelectedSymbol').textContent=d.symbol||symbol);$('#spSpot')&&($('#spSpot').textContent=fmt(d.spot,2));$('#spATM')&&($('#spATM').textContent=fmt(d.atmStrike||d.atm));$('#spExpiry')&&($('#spExpiry').textContent=d.expiry||'--');$('#spCallOI')&&($('#spCallOI').textContent=fmt(d.callOI));$('#spPutOI')&&($('#spPutOI').textContent=fmt(d.putOI));$('#spPCR')&&($('#spPCR').textContent=d.pcr==null?'--':Number(d.pcr).toFixed(2));$('#spMaxPain')&&($('#spMaxPain').textContent=fmt(d.maxPain));const b=$('#spOptionChainBody');if(b)b.innerHTML=rows.map(x=>{const c=x.ce||{},p=x.pe||{};return '<tr class="'+(+x.strike===+(d.atmStrike||d.atm)?'sp-chain-atm':'')+'"><td>'+fmt(c.oi)+'</td><td>'+fmt(c.oiChange)+'</td><td>'+fmt(c.ltp,2)+'</td><td>'+fmt(c.iv,2)+'</td><td>'+fmt(c.volume)+'</td><td class="sp-chain-strike">'+fmt(x.strike)+'</td><td>'+fmt(p.oi)+'</td><td>'+fmt(p.oiChange)+'</td><td>'+fmt(p.ltp,2)+'</td><td>'+fmt(p.iv,2)+'</td><td>'+fmt(p.volume)+'</td></tr>'}).join('');status();setupViewMore()}
-async function load(sym){symbol=(sym||'NIFTY').toUpperCase();$$('.sp-symbol-btn').forEach(b=>b.classList.toggle('active',b.dataset.symbol===symbol));if(symbol==='SENSEX'){const b=$('#spOptionChainBody');if(b)b.innerHTML='<tr><td colspan="11" class="sp-table-loading">Loading live SENSEX option chain...</td></tr>';try{const r=await fetch(BASE+'/sensex-option-chain?t='+Date.now(),{cache:'no-store'}),d=await r.json();if(!r.ok||!d.success)throw Error(d.error||'BSE unavailable');render(d)}catch(e){console.error('[StrikePulse] SENSEX live unavailable',e.message);const b=$('#spOptionChainBody');$('#spSelectedSymbol')&&($('#spSelectedSymbol').textContent='SENSEX');$('#spExpiry')&&($('#spExpiry').textContent='Live data unavailable');$('#spATM')&&($('#spATM').textContent='--');$('#spCallOI')&&($('#spCallOI').textContent='--');$('#spPutOI')&&($('#spPutOI').textContent='--');$('#spPCR')&&($('#spPCR').textContent='--');$('#spMaxPain')&&($('#spMaxPain').textContent='--');if(b)b.innerHTML='<tr><td colspan="11" class="sp-table-loading">SENSEX live option chain temporarily unavailable</td></tr>';status()}return}const b=$('#spOptionChainBody');if(b)b.innerHTML='<tr><td colspan="11" class="sp-table-loading">Loading live option chain...</td></tr>';try{const r=await fetch(BASE+'/option-chain?symbol='+encodeURIComponent(symbol)+'&t='+Date.now(),{cache:'no-store'}),d=await r.json();if(!r.ok||!d.success)throw Error(d.error||'HTTP '+r.status);render(d)}catch(e){if(b)b.innerHTML='<tr><td colspan="11" class="sp-table-loading">Live data unavailable for '+symbol+'</td></tr>';status()}}
-async function prices(){try{const r=await fetch(PRICE+'?t='+Date.now(),{cache:'no-store'}),j=await r.json(),d=j.data||j;renderMarketCards(j);if(symbol==='SENSEX'&&d.sensex!=null){const e=$('#spSpot');if(e)e.textContent=fmt(d.sensex,2)}status()}catch(e){console.error('[StrikePulse] prices',e);status()}}
-function renderMarketCards(j){const d=j?.data||j||{},md=j?.markets||d?.markets||{};const aliases={nifty:['nifty','nifty50'],banknifty:['banknifty','bankNifty'],finnifty:['finnifty','finNifty'],vix:['vix','indiaVix','india_vix'],sensex:['sensex','SENSEX','bseSensex']};const live=open();Object.keys(aliases).forEach(k=>{const card=document.querySelector('.sp-market-card[data-market-card="'+k+'"]');if(!card)return;const m=md[k]||{};const val=m.price??aliases[k].map(a=>d[a]).find(v=>v!=null);const ch=m.change??aliases[k].map(a=>d[a+'Change']).find(v=>v!=null);const price=card.querySelector('.sp-price');if(price)price.textContent=fmt(val,2);const ce=card.querySelector('.sp-change');if(ce){const n=Number(ch);ce.textContent=Number.isFinite(n)?(n>0?'▲ +':n<0?'▼ ':'● ')+Math.abs(n).toFixed(2)+'%':'--';ce.className='sp-change '+(n>0?'sp-up':n<0?'sp-down':'')};const ue=card.querySelector('.sp-updated');if(ue)ue.textContent='Updated '+new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date())+' IST';const se=card.querySelector('.sp-market-status');if(se){se.textContent=live?'LIVE':'CLOSED';se.className='sp-market-status '+(live?'sp-live':'sp-closed')}})}
-function renderHomeOptionChain(raw){const d=raw&&raw.data?raw.data:raw;const V=(o,k)=>{for(const x of k)if(o&&o[x]!=null)return o[x];return null};const rows=(d?.rows||[]).map(x=>({strike:V(x,['strike','strikePrice']),ce:x.ce||x.CE||{},pe:x.pe||x.PE||{}})).filter(x=>x.strike!=null).sort((a,b)=>Number(a.strike)-Number(b.strike));const atm=Number(d?.atmStrike??d?.atm);let i=rows.findIndex(x=>Number(x.strike)===atm);if(i<0)i=Math.floor(rows.length/2);const start=Math.max(0,Math.min(i-1,Math.max(0,rows.length-4)));const limit=window.__spHomeViewAll?rows.length:4;const view=rows.slice(start,start+limit),b=document.getElementById('sp-chain-body');if(b)b.innerHTML=view.length?view.map(x=>{const ce=x.ce,pe=x.pe,cc=Number(V(ce,['oiChange','changeinOpenInterest']))||0,pc=Number(V(pe,['oiChange','changeinOpenInterest']))||0;return '<tr><td>'+fmt(V(ce,['oi','openInterest']))+'</td><td class="'+(cc>=0?'sp-up':'sp-down')+'">'+(cc>=0?'+':'')+fmt(cc)+'</td><td>'+fmt(V(ce,['ltp','lastPrice']),2)+'</td><td class="sp-chain-strike">'+fmt(x.strike)+'</td><td>'+fmt(V(pe,['ltp','lastPrice']),2)+'</td><td class="'+(pc>=0?'sp-up':'sp-down')+'">'+(pc>=0?'+':'')+fmt(pc)+'</td><td>'+fmt(V(pe,['oi','openInterest']))+'</td></tr>'}).join(''):'<tr><td colspan="7">No option data available</td></tr>';const put=(id,val,dig)=>{const e=document.getElementById(id);if(e)e.textContent=fmt(val,dig)};put('sp-chain-spot',d?.spot,2);put('sp-chain-atm',atm);put('sp-call-oi',d?.callOI);put('sp-put-oi',d?.putOI);const p=document.getElementById('sp-pcr');if(p)p.textContent=d?.pcr==null?'--':Number(d.pcr).toFixed(2);put('sp-max-pain',d?.maxPain);const ex=document.getElementById('sp-chain-expiry');if(ex)ex.textContent=d?.expiry||'--';const u=document.getElementById('sp-chain-updated');if(u)u.textContent='Updated '+new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date())+' IST';let btn=document.getElementById('sp-view-more-btn');const wrap=document.querySelector('.sp-chain-table-wrap');if(rows.length>4&&wrap){if(!btn){btn=document.createElement('button');btn.id='sp-view-more-btn';btn.type='button';wrap.insertAdjacentElement('afterend',btn);btn.addEventListener('click',()=>{window.__spHomeViewAll=!window.__spHomeViewAll;renderHomeOptionChain(d)})}btn.textContent=window.__spHomeViewAll?'Show Less':'View More';btn.style.display='flex'}}
-async function loadHomeOptionChain(){const b=document.getElementById('sp-chain-body');if(!b)return;try{const r=await fetch(BASE+'/nifty-option-chain?symbol=NIFTY&t='+Date.now(),{cache:'no-store'});const raw=await r.json();if(!r.ok||raw?.success===false)throw Error(raw?.error||'HTTP '+r.status);renderHomeOptionChain(raw)}catch(e){console.error('[StrikePulse Home Option]',e);b.innerHTML='<tr><td colspan="7">Live option data unavailable</td></tr>'}}
-function init(){if(window.__StrikePulseInitialized)return;window.__StrikePulseInitialized=true;$$('.sp-symbol-btn').forEach(b=>b.onclick=()=>load(b.dataset.symbol));$('#spSearchBtn')?.addEventListener('click',()=>{const q=($('#spSymbolSearch')?.value||'').trim().toUpperCase();if(q)load(q)});status();prices();load('NIFTY');loadHomeOptionChain();setupViewMore();setInterval(prices,5000);setInterval(loadHomeOptionChain,30000);setInterval(status,1000)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init()})();
+(function(){
+  'use strict';
+  var BASE='https://strike-pulse-relay.onrender.com/api';
+  var $=function(s){return document.querySelector(s)};
+  var $$=function(s){return document.querySelectorAll(s)};
+  var symbol='NIFTY';
+  var fmt=function(v,d){d=d==null?0:d;return v==null||v===''||isNaN(Number(v))?'--':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d})};
+  var marketOpen=function(){var p=new Intl.DateTimeFormat('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),day='',hour=0,min=0;p.forEach(function(x){if(x.type==='weekday')day=x.value;if(x.type==='hour')hour=+x.value;if(x.type==='minute')min=+x.value});return ['Mon','Tue','Wed','Thu','Fri'].indexOf(day)>=0&&hour*60+min>=555&&hour*60+min<930};
+  var status=function(){var live=marketOpen();$$('.sp-market-status').forEach(function(e){e.classList.remove('sp-live','sp-open','sp-closed');e.classList.add(live?'sp-live':'sp-closed');e.textContent=live?'LIVE':'CLOSED'});var s=$('#spChainStatus');if(s){s.className='sp-table-live '+(live?'sp-live':'sp-closed');s.innerHTML='<span class="sp-live-dot"></span>'+ (live?'LIVE':'CLOSED')}};
+  var load=function(sym){symbol=(sym||'NIFTY').toUpperCase();var b=$('#spOptionChainBody');if(b)b.innerHTML='<tr><td colspan="11" class="sp-table-loading">Loading live option chain...</td></tr>';fetch(BASE+'/option-chain?symbol='+encodeURIComponent(symbol)+'&t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(function(d){if(!d.success)throw Error(d.error||'API failed');var rows=d.rows||[];$('#spSelectedSymbol')&&($('#spSelectedSymbol').textContent=d.symbol||symbol);$('#spSpot')&&($('#spSpot').textContent=fmt(d.spot,2));$('#spATM')&&($('#spATM').textContent=fmt(d.atmStrike!=null?d.atmStrike:d.atm));$('#spExpiry')&&($('#spExpiry').textContent=d.expiry||'--');$('#spCallOI')&&($('#spCallOI').textContent=fmt(d.callOI));$('#spPutOI')&&($('#spPutOI').textContent=fmt(d.putOI));$('#spPCR')&&($('#spPCR').textContent=d.pcr==null?'--':Number(d.pcr).toFixed(2));$('#spMaxPain')&&($('#spMaxPain').textContent=fmt(d.maxPain));if(b)b.innerHTML=rows.map(function(x){var c=x.ce||{},p=x.pe||{};var cc=Number(c.oiChange)||0,pc=Number(p.oiChange)||0;return '<tr class="'+(+x.strike===+(d.atmStrike!=null?d.atmStrike:d.atm)?'sp-chain-atm':'')+'"><td>'+fmt(c.oi)+'</td><td class="'+(cc>0?'sp-positive':cc<0?'sp-negative':'sp-flat')+'">'+(cc>0?'+':'')+fmt(cc)+'</td><td>'+fmt(c.ltp,2)+'</td><td>'+fmt(c.iv,2)+'</td><td>'+fmt(c.volume)+'</td><td class="sp-chain-strike">'+fmt(x.strike)+'</td><td>'+fmt(p.ltp,2)+'</td><td>'+fmt(p.iv,2)+'</td><td>'+fmt(p.volume)+'</td><td class="'+(pc>0?'sp-positive':pc<0?'sp-negative':'sp-flat')+'">'+(pc>0?'+':'')+fmt(pc)+'</td><td>'+fmt(p.oi)+'</td></tr>'}).join('');status()}).catch(function(e){console.error('[StrikePulse] OPTION ERROR',e);if(b)b.innerHTML='<tr><td colspan="11" class="sp-table-loading">Live data unavailable for '+symbol+'</td></tr>';status()})};
+  function init(){if(window.__StrikePulseRootInitialized)return;window.__StrikePulseRootInitialized=true;$$('.sp-symbol-btn').forEach(function(b){b.onclick=function(){load(b.dataset.symbol)}});var sb=$('#spSearchBtn'),si=$('#spSymbolSearch');if(sb)sb.onclick=function(){var q=(si&&si.value||'').trim();if(q)load(q)};status();load('NIFTY');setInterval(status,1000)}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
