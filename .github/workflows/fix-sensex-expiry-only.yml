@@ -1,0 +1,43 @@
+name: Fix SENSEX expiry display only
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch only expiry display
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('strike-pulse.js')
+          s = p.read_text()
+          old = "function deriveHomeSummary(p){"
+          helper = """function cleanExpiry(exp, expiries){var list=Array.isArray(expiries)?expiries:[],c=[exp].concat(list);for(var i=0;i<c.length;i++){var v=String(c[i]??'').trim();if(!v||/^(BSE|NSE)\\s+(LIVE|CLOSED|OPEN)$/i.test(v))continue;if(/\\d/.test(v)&&(/[A-Za-z]{3}|[-\\/]|T)/.test(v))return v}return exp||'—'}\n"""
+          if 'function cleanExpiry(exp, expiries)' not in s:
+              if old not in s: raise SystemExit('helper insertion point not found')
+              s = s.replace(old, helper + old, 1)
+          a = "text(q('sp-chain-expiry'),p.expiry);"
+          b = "text(q('sp-chain-expiry'),cleanExpiry(p.expiry,p.expiries));"
+          if a in s: s=s.replace(a,b,1)
+          a = "text(q('spExpiry'),p.expiry);"
+          b = "text(q('spExpiry'),cleanExpiry(p.expiry,p.expiries));"
+          if a in s: s=s.replace(a,b,1)
+          p.write_text(s)
+          PY
+      - name: Commit and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add strike-pulse.js .github/workflows/fix-sensex-expiry-only.yml
+          git commit -m "fix: show only SENSEX expiry date" || exit 0
+          git rm .github/workflows/fix-sensex-expiry-only.yml
+          git commit -m "chore: remove temporary expiry fix workflow"
+          git push
