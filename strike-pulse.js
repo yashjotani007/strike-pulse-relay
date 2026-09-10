@@ -1,8 +1,8 @@
 /* Strike Pulse root loader v4 — 12-strike View More on Main Option Chain */
 (function(){
 'use strict';
-if(window.__StrikePulseRootLoaderLoaded)return;
-window.__StrikePulseRootLoaderLoaded=true;
+if(window.__StrikePulseRootLoaded)return;
+window.__StrikePulseRootLoaded=true;
 var API='https://strike-pulse-relay.onrender.com/api';
 var selected='NIFTY',homeBusy=false,mainBusy=false,mainRows=[],mainExpanded=false;
 function q(id){return document.getElementById(id)}
