@@ -1,0 +1,50 @@
+name: One-time welcome duration fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-welcome-duration:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Change only welcome duration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('strike-pulse.js')
+          s = p.read_text()
+          marker = '/* Strike Pulse — Premium Home welcome, once every 24 hours */'
+          if marker not in s:
+              raise SystemExit('welcome marker not found')
+          before, after = s.split(marker, 1)
+          old = 'DURATION=5000'
+          new = 'DURATION=10000'
+          if old not in after:
+              if new in after:
+                  print('Already 10 seconds; no change needed.')
+                  raise SystemExit(0)
+              raise SystemExit('welcome duration line not found')
+          after2 = after.replace(old, new, 1)
+          p.write_text(before + marker + after2)
+          PY
+      - name: Commit JS change
+        shell: bash
+        run: |
+          if git diff --quiet -- strike-pulse.js; then
+            echo 'No JS change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add strike-pulse.js
+          git commit -m 'fix: make home welcome screen 10 seconds'
+          git push
