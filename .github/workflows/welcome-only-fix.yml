@@ -1,0 +1,59 @@
+name: Fix Strike Pulse welcome only
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-welcome:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace only welcome block
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('strike-pulse.js')
+          s = p.read_text()
+          marker = '/* Strike Pulse — Premium Home welcome, once every 24 hours */'
+          if marker not in s:
+              raise SystemExit('welcome marker not found')
+          prefix = s.split(marker, 1)[0].rstrip() + '\n\n'
+          block = r'''/* Strike Pulse — Premium Home welcome v4, DOM-safe, 10 seconds */
+(function(){
+'use strict';
+if(window.__StrikePulseWelcomeV4Loaded)return;
+window.__StrikePulseWelcomeV4Loaded=true;
+var KEY='sp_home_welcome_last_v4',TTL=24*60*60*1000,DURATION=10000;
+function homeReady(){return !!document.getElementById('sp-chain-body')&&!document.getElementById('spOptionChainBody')}
+function show(){
+ if(!homeReady()||document.getElementById('spWelcomeLoader'))return;
+ var last=0;try{last=Number(localStorage.getItem(KEY)||0)}catch(e){}
+ if(last&&Date.now()-last<TTL)return;
+ var s=document.createElement('style');s.id='spWelcomeStylesV4';s.textContent='@keyframes spwvSpin{to{transform:rotate(360deg)}}@keyframes spwvSpinR{to{transform:rotate(-360deg)}}@keyframes spwvPulse{0%,100%{opacity:.4;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}@keyframes spwvScan{0%{transform:translateY(-120%)}100%{transform:translateY(120%)}}@keyframes spwvIn{0%{opacity:0;transform:translateY(18px) scale(.97)}100%{opacity:1;transform:none}}@keyframes spwvBar{0%{width:0}100%{width:100%}}#spWelcomeLoader{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(circle at 50% 42%,#eef6ff 0,#f8fbff 38%,#f8fafc 72%,#fff 100%);font-family:Arial,Helvetica,sans-serif;opacity:1;transition:opacity .6s ease,transform .6s ease}#spWelcomeLoader.spwvHide{opacity:0;transform:scale(1.025);pointer-events:none}.spwvGrid{position:absolute;inset:-35%;opacity:.4;background-image:linear-gradient(rgba(37,99,235,.075) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,.075) 1px,transparent 1px);background-size:42px 42px;transform:perspective(600px) rotateX(58deg) scale(1.5);transform-origin:center bottom}.spwvGlow{position:absolute;width:58vw;height:58vw;min-width:320px;min-height:320px;border-radius:50%;background:radial-gradient(circle,rgba(59,130,246,.14),rgba(6,182,212,.06) 40%,transparent 70%);animation:spwvPulse 3s ease-in-out infinite}.spwvScan{position:absolute;inset:0;overflow:hidden;pointer-events:none}.spwvScan:after{content:"";position:absolute;left:0;right:0;height:18%;background:linear-gradient(transparent,rgba(37,99,235,.055),transparent);animation:spwvScan 2.7s linear infinite}.spwvCard{position:relative;width:min(560px,calc(100vw - 36px));padding:42px 34px 32px;border:1px solid rgba(37,99,235,.16);border-radius:24px;background:rgba(255,255,255,.86);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 28px 80px rgba(15,23,42,.12),0 0 55px rgba(37,99,235,.08);text-align:center;animation:spwvIn .7s ease both}.spwvMark{position:relative;width:112px;height:112px;margin:0 auto 25px;display:grid;place-items:center}.spwvRing,.spwvRing2{position:absolute;border-radius:50%;border:1px solid rgba(37,99,235,.24)}.spwvRing{inset:0;border-top-color:#2563eb;border-right-color:#06b6d4;animation:spwvSpin 2.2s linear infinite}.spwvRing2{inset:8px;border-left-color:#2563eb;border-bottom-color:#06b6d4;animation:spwvSpinR 3.2s linear infinite}.spwvCore{width:62px;height:62px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(145deg,#2563eb,#06b6d4);box-shadow:0 12px 30px rgba(37,99,235,.24);color:#fff;font-size:25px;font-weight:900;letter-spacing:-2px}.spwvBrand{font-size:28px;line-height:1.1;font-weight:900;letter-spacing:3px;color:#0f172a}.spwvBrand b{color:#2563eb}.spwvTag{margin-top:9px;font-size:11px;letter-spacing:2.8px;font-weight:800;color:#64748b}.spwvLine{width:54px;height:2px;margin:22px auto;background:linear-gradient(90deg,#2563eb,#06b6d4);border-radius:9px}.spwvTitle{font-size:16px;font-weight:800;letter-spacing:.8px;color:#1e293b}.spwvSub{margin-top:8px;font-size:12px;line-height:1.65;color:#64748b}.spwvStatus{display:flex;justify-content:center;gap:9px;align-items:center;margin-top:23px;font-size:9px;font-weight:800;letter-spacing:1.8px;color:#2563eb}.spwvDot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.09),0 0 12px rgba(34,197,94,.4);animation:spwvPulse 1.3s ease-in-out infinite}.spwvProgress{height:3px;margin:22px auto 0;width:min(300px,75%);border-radius:9px;background:#e8eef7;overflow:hidden}.spwvProgress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2563eb,#06b6d4);animation:spwvBar 9.55s cubic-bezier(.2,.7,.2,1) forwards}.spwvCredit{margin-top:28px;padding-top:15px;border-top:1px solid rgba(100,116,139,.12);font-size:10px;letter-spacing:1.4px;color:#94a3b8}.spwvCredit strong{display:inline-block;margin-left:4px;color:#2563eb;font-weight:900;letter-spacing:1.8px}@media(max-width:600px){.spwvCard{padding:34px 22px 26px;border-radius:20px}.spwvBrand{font-size:24px;letter-spacing:2.5px}.spwvTag{font-size:9px;letter-spacing:2px}.spwvTitle{font-size:14px}.spwvSub{font-size:11px}.spwvMark{width:98px;height:98px}.spwvCore{width:56px;height:56px;font-size:22px}}';
+ (document.head||document.documentElement).appendChild(s);
+ var o=document.createElement('div');o.id='spWelcomeLoader';o.setAttribute('aria-label','Strike Pulse welcome');o.innerHTML='<div class="spwvGrid"></div><div class="spwvGlow"></div><div class="spwvScan"></div><div class="spwvCard"><div class="spwvMark"><span class="spwvRing"></span><span class="spwvRing2"></span><span class="spwvCore">SP</span></div><div class="spwvBrand">STRIKE <b>PULSE</b></div><div class="spwvTag">MARKET INTELLIGENCE PLATFORM</div><div class="spwvLine"></div><div class="spwvTitle">Welcome to a smarter market view</div><div class="spwvSub">Live market data · Option chain intelligence · Clean financial insights</div><div class="spwvStatus"><span class="spwvDot"></span><span>INITIALIZING MARKET DASHBOARD</span></div><div class="spwvProgress"><i></i></div><div class="spwvCredit">A DIGITAL FINANCE EXPERIENCE <strong>• POWERED BY YASH JOTANI</strong></div></div>';
+ (document.body||document.documentElement).appendChild(o);
+ try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}
+ setTimeout(function(){o.classList.add('spwvHide');setTimeout(function(){if(o.parentNode)o.parentNode.removeChild(o);if(s.parentNode)s.parentNode.removeChild(s)},650)},DURATION);
+}
+function wait(){if(homeReady()){show();return}setTimeout(wait,250)}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wait,{once:true});else wait();
+})();
+'''
+          p.write_text(prefix + block)
+          PY
+      - name: Commit welcome-only change
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add strike-pulse.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix home welcome loader timing and set 10s duration'
+          git push
