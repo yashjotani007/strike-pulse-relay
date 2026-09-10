@@ -62,3 +62,51 @@ if(typeof nativeFetch==='function'){window.fetch=function(input,init){var url=ty
 function observe(){if(observerStarted)return;observerStarted=true;var root=document.body||document.documentElement;if(!root)return;var mo=new MutationObserver(function(){if(hasLoadingText()&&active===0)show();if(!hasLoadingText()&&active===0&&shown)hide()});mo.observe(root,{subtree:true,childList:true,characterData:true});setInterval(function(){if(hasLoadingText()&&active===0)show();else if(!hasLoadingText()&&active===0&&shown)hide()},300)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',observe,{once:true});else observe();
 })();
+
+/* Strike Pulse — VWAP chart bridge (appended only; existing modules unchanged) */
+(function(){
+'use strict';
+if(window.__StrikePulseVWAPChartBridgeLoaded)return;
+window.__StrikePulseVWAPChartBridgeLoaded=true;
+var API='https://strike-pulse-relay.onrender.com/api';
+function el(id){return document.getElementById(id)}
+function getSymbol(){
+ var e=el('spSelectedSymbol');
+ var s=e&&e.textContent?e.textContent.trim():'';
+ if(!s){var a=document.querySelector('.sp-symbol-btn.active');s=a?(a.getAttribute('data-symbol')||a.textContent||'NIFTY'):''}
+ s=String(s||'NIFTY').toUpperCase().replace(/\s+/g,'');
+ if(s==='NIFTYBANK')s='BANKNIFTY';
+ if(s==='NIFTYFIN')s='FINNIFTY';
+ if(s==='NIFTYMIDCAP')s='MIDCPNIFTY';
+ return s;
+}
+function draw(points){
+ var p=el('spVwapPriceLine'),w=el('spVwapLine'),m=el('spVwapChartMessage');
+ if(!p||!w||!Array.isArray(points)||points.length<2)return;
+ var valid=points.filter(function(x){return Number.isFinite(+x.price)&&Number.isFinite(+x.vwap)});
+ if(valid.length<2)return;
+ var vals=[];valid.forEach(function(x){vals.push(+x.price,+x.vwap)});
+ var mn=Math.min.apply(Math,vals),mx=Math.max.apply(Math,vals),rg=(mx-mn)||1,n=valid.length-1;
+ function xy(i,v){return (30+(i/(n||1))*940).toFixed(1)+','+(280-((v-mn)/rg)*250).toFixed(1)}
+ p.setAttribute('points',valid.map(function(x,i){return xy(i,+x.price)}).join(' '));
+ w.setAttribute('points',valid.map(function(x,i){return xy(i,+x.vwap)}).join(' '));
+ if(m)m.style.display='none';
+}
+async function load(){
+ var chart=el('spVwapSvg');
+ if(!chart)return;
+ var symbol=getSymbol();
+ try{
+  var r=await fetch(API+'/vwap?symbol='+encodeURIComponent(symbol)+'&_='+Date.now(),{cache:'no-store'});
+  if(!r.ok)throw Error('HTTP '+r.status);
+  var j=await r.json();
+  if(j&&j.success&&j.data)draw(j.data.points||[]);
+ }catch(e){console.error('[StrikePulse] VWAP CHART ERROR',e)}
+}
+function init(){
+ load();
+ setInterval(load,30000);
+ setInterval(function(){if(el('spVwapSvg'))load()},2000);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
