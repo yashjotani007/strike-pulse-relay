@@ -16,41 +16,54 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch NSE session headers and cookies
+      - name: Patch NSE session and SENSEX BSE route
         shell: python
         run: |
           from pathlib import Path
 
           p = Path('server.js')
           s = p.read_text()
+
           marker = 'NSE_SESSION_HARDENED_V2'
-          if marker in s:
-              print('already patched')
-              raise SystemExit(0)
+          if marker not in s:
+              old_headers = 'const HEADERS = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36","Accept-Language":"en-US,en;q=0.9","Accept":"application/json,text/plain,*/*","Referer":"https://www.nseindia.com/option-chain"};'
+              new_headers = 'const HEADERS = {"User-Agent":"Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36","Accept-Language":"en-US,en;q=0.9,hi;q=0.8","Accept":"*/*","Referer":"https://www.nseindia.com/option-chain","Origin":"https://www.nseindia.com","X-Requested-With":"XMLHttpRequest","sec-fetch-dest":"empty","sec-fetch-mode":"cors","sec-fetch-site":"same-origin","sec-ch-ua":"\\\"Google Chrome\\\";v=\\\"134\\\", \\\"Chromium\\\";v=\\\"134\\\", \\\"Not?A_Brand\\\";v=\\\"99\\\"","sec-ch-ua-mobile":"?0","sec-ch-ua-platform":"\\\"Windows\\\"","DNT":"1"}; /* NSE_SESSION_HARDENED_V2 */'
+              if old_headers in s:
+                  s = s.replace(old_headers, new_headers, 1)
 
-          old_headers = 'const HEADERS = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36","Accept-Language":"en-US,en;q=0.9","Accept":"application/json,text/plain,*/*","Referer":"https://www.nseindia.com/option-chain"};'
-          new_headers = 'const HEADERS = {"User-Agent":"Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36","Accept-Language":"en-US,en;q=0.9,hi;q=0.8","Accept":"*/*","Referer":"https://www.nseindia.com/option-chain","Origin":"https://www.nseindia.com","X-Requested-With":"XMLHttpRequest","sec-fetch-dest":"empty","sec-fetch-mode":"cors","sec-fetch-site":"same-origin","sec-ch-ua":"\\\"Google Chrome\\\";v=\\\"134\\\", \\\"Chromium\\\";v=\\\"134\\\", \\\"Not?A_Brand\\\";v=\\\"99\\\"","sec-ch-ua-mobile":"?0","sec-ch-ua-platform":"\\\"Windows\\\"","DNT":"1"}; /* NSE_SESSION_HARDENED_V2 */'
-          if old_headers not in s:
-              raise SystemExit('expected HEADERS block not found')
-          s = s.replace(old_headers, new_headers, 1)
+              old_warm = 'async function warm(force=false){if(!force&&cookies&&Date.now()-cookieAt<240000)return cookies;let r=await fetch(NSE+"/",{headers:HEADERS});cookies=getCookies(r);try{r=await fetch(NSE+"/option-chain",{headers:{...HEADERS,Accept:"text/html"}});const c=getCookies(r);if(c)cookies=c;}catch{}cookieAt=Date.now();return cookies;}'
+              new_warm = 'function mergeNseCookies(a,b){const m=new Map();for(const part of String(a||"").split(";")){const i=part.indexOf("=");if(i>0)m.set(part.slice(0,i).trim(),part.trim())}for(const part of String(b||"").split(";")){const i=part.indexOf("=");if(i>0)m.set(part.slice(0,i).trim(),part.trim())}return [...m.values()].join("; ")} async function warm(force=false){if(!force&&cookies&&Date.now()-cookieAt<240000)return cookies;let r=await fetch(NSE+"/",{headers:HEADERS,redirect:"follow"});cookies=mergeNseCookies(cookies,getCookies(r));try{r=await fetch(NSE+"/option-chain?symbol=NIFTY",{headers:{...HEADERS,Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},redirect:"follow"});cookies=mergeNseCookies(cookies,getCookies(r));}catch{}cookieAt=Date.now();return cookies;}'
+              if old_warm in s:
+                  s = s.replace(old_warm, new_warm, 1)
 
-          old_warm = 'async function warm(force=false){if(!force&&cookies&&Date.now()-cookieAt<240000)return cookies;let r=await fetch(NSE+"/",{headers:HEADERS});cookies=getCookies(r);try{r=await fetch(NSE+"/option-chain",{headers:{...HEADERS,Accept:"text/html"}});const c=getCookies(r);if(c)cookies=c;}catch{}cookieAt=Date.now();return cookies;}'
-          new_warm = 'function mergeNseCookies(a,b){const m=new Map();for(const part of String(a||"").split(";")){const i=part.indexOf("=");if(i>0)m.set(part.slice(0,i).trim(),part.trim())}for(const part of String(b||"").split(";")){const i=part.indexOf("=");if(i>0)m.set(part.slice(0,i).trim(),part.trim())}return [...m.values()].join("; ")} async function warm(force=false){if(!force&&cookies&&Date.now()-cookieAt<240000)return cookies;let r=await fetch(NSE+"/",{headers:HEADERS,redirect:"follow"});cookies=mergeNseCookies(cookies,getCookies(r));try{r=await fetch(NSE+"/option-chain?symbol=NIFTY",{headers:{...HEADERS,Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},redirect:"follow"});cookies=mergeNseCookies(cookies,getCookies(r));}catch{}cookieAt=Date.now();return cookies;}'
-          if old_warm not in s:
-              raise SystemExit('expected warm() block not found')
-          s = s.replace(old_warm, new_warm, 1)
+          route_old = 'app.get("/api/option-chain",async(req,res)=>{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();const expiry=req.query.expiry?String(req.query.expiry):null;'
+          route_new = 'app.get("/api/option-chain",async(req,res)=>{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();if(symbol==="SENSEX"){try{return res.json(await bseSensexChain())}catch(e){return res.status(502).json({success:false,error:e.message})}}const expiry=req.query.expiry?String(req.query.expiry):null;'
+          if route_old in s:
+              s = s.replace(route_old, route_new, 1)
+
+          exp_old = 'app.get("/api/option-expiries",async(req,res)=>{try{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();res.json({success:true,symbol,expiries:await contractInfo(symbol)});}catch(e){res.status(500).json({success:false,error:e.message});}});'
+          exp_new = 'app.get("/api/option-expiries",async(req,res)=>{try{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();if(symbol==="SENSEX")return res.json({success:true,symbol,expiries:["BSE LIVE"]});res.json({success:true,symbol,expiries:await contractInfo(symbol)});}catch(e){res.status(500).json({success:false,error:e.message});}});'
+          if exp_old in s:
+              s = s.replace(exp_old, exp_new, 1)
+
+          for name in ['.sensex-fix-trigger', '.github/workflows/fix-sensex-route.yml']:
+              q = Path(name)
+              if q.exists():
+                  q.unlink()
 
           p.write_text(s)
           print('patched server.js')
+
       - name: Commit and push
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add server.js
+          git add server.js .github/workflows/fix-nse-session.yml
+          git add -A
           if git diff --cached --quiet; then
             echo 'no changes'
             exit 0
           fi
-          git commit -m 'fix: harden NSE session for option chain'
+          git commit -m 'fix: route SENSEX option chain to BSE relay'
           git push
