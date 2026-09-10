@@ -1,0 +1,46 @@
+name: Fix SENSEX option-chain route
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.head_commit.message != 'fix: route SENSEX option chain to BSE relay'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch server.js
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server.js')
+          s = p.read_text()
+
+          old = '''app.get("/api/option-chain",async(req,res)=>{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();const expiry=req.query.expiry?String(req.query.expiry):null;'''
+          new = '''app.get("/api/option-chain",async(req,res)=>{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();if(symbol==="SENSEX"){try{return res.json(await bseSensexChain())}catch(e){return res.status(502).json({success:false,error:e.message})}}const expiry=req.query.expiry?String(req.query.expiry):null;'''
+          if old not in s:
+              raise SystemExit('option-chain route marker not found')
+          s = s.replace(old, new, 1)
+
+          old2 = '''app.get("/api/option-expiries",async(req,res)=>{try{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();res.json({success:true,symbol,expiries:await contractInfo(symbol)});}catch(e){res.status(500).json({success:false,error:e.message});}});'''
+          new2 = '''app.get("/api/option-expiries",async(req,res)=>{try{const symbol=String(req.query.symbol||"NIFTY").toUpperCase();if(symbol==="SENSEX")return res.json({success:true,symbol,expiries:["BSE LIVE"]});res.json({success:true,symbol,expiries:await contractInfo(symbol)});}catch(e){res.status(500).json({success:false,error:e.message});}});'''
+          if old2 not in s:
+              raise SystemExit('option-expiries route marker not found')
+          s = s.replace(old2, new2, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Commit and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.js
+          git rm .github/workflows/fix-sensex-route.yml
+          git commit -m "fix: route SENSEX option chain to BSE relay"
+          git push
