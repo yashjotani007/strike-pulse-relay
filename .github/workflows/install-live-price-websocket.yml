@@ -3,6 +3,7 @@ name: Install live price WebSocket relay
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -42,217 +43,48 @@ const ANGEL_LIVE_TOKENS = {
 };
 
 function broadcastLivePrice(){
-  const payload = JSON.stringify({
-    success: true,
-    source: "angel-websocket-v2",
-    updated: new Date().toISOString(),
-    markets: {
-      nifty: { price: price.nifty, change: price.niftyChange },
-      banknifty: { price: price.banknifty, change: price.bankniftyChange },
-      finnifty: { price: price.finnifty, change: price.finniftyChange },
-      vix: { price: price.vix, change: price.vixChange },
-      sensex: { price: price.sensex, change: price.sensexChange }
-    }
-  });
-  for(const res of livePriceClients){
-    try { res.write(`event: price\\ndata: ${payload}\\n\\n`); }
-    catch { livePriceClients.delete(res); }
-  }
+  const payload = JSON.stringify({success:true,source:"angel-websocket-v2",updated:new Date().toISOString(),markets:{nifty:{price:price.nifty,change:price.niftyChange},banknifty:{price:price.banknifty,change:price.bankniftyChange},finnifty:{price:price.finnifty,change:price.finniftyChange},vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}}});
+  for(const res of livePriceClients){try{res.write(`event: price\\ndata: ${payload}\\n\\n`)}catch{livePriceClients.delete(res)}}
 }
 
-app.get("/api/live-prices", (req,res)=>{
-  res.setHeader("Content-Type","text/event-stream");
-  res.setHeader("Cache-Control","no-cache, no-transform");
-  res.setHeader("Connection","keep-alive");
-  res.setHeader("Access-Control-Allow-Origin","*");
-  if(typeof res.flushHeaders === "function") res.flushHeaders();
-
-  livePriceClients.add(res);
-
-  const initial = JSON.stringify({
-    success: true,
-    source: "angel-websocket-v2",
-    updated: price.updated,
-    markets: {
-      nifty: { price: price.nifty, change: price.niftyChange },
-      banknifty: { price: price.banknifty, change: price.bankniftyChange },
-      finnifty: { price: price.finnifty, change: price.finniftyChange },
-      vix: { price: price.vix, change: price.vixChange },
-      sensex: { price: price.sensex, change: price.sensexChange }
-    }
-  });
-  res.write(`event: price\\ndata: ${initial}\\n\\n`);
-
-  const heartbeat = setInterval(()=>{
-    try { res.write(`: heartbeat ${Date.now()}\\n\\n`); }
-    catch {}
-  }, 25000);
-
-  req.on("close",()=>{
-    clearInterval(heartbeat);
-    livePriceClients.delete(res);
-  });
+app.get("/api/live-prices",(req,res)=>{
+  res.setHeader("Content-Type","text/event-stream");res.setHeader("Cache-Control","no-cache, no-transform");res.setHeader("Connection","keep-alive");res.setHeader("Access-Control-Allow-Origin","*");if(typeof res.flushHeaders==="function")res.flushHeaders();livePriceClients.add(res);
+  res.write(`event: price\\ndata: ${JSON.stringify({success:true,source:"angel-websocket-v2",updated:price.updated,markets:{nifty:{price:price.nifty,change:price.niftyChange},banknifty:{price:price.banknifty,change:price.bankniftyChange},finnifty:{price:price.finnifty,change:price.finniftyChange},vix:{price:price.vix,change:price.vixChange},sensex:{price:price.sensex,change:price.sensexChange}}})}\\n\\n`);
+  const heartbeat=setInterval(()=>{try{res.write(`: heartbeat ${Date.now()}\\n\\n`)}catch{}},25000);req.on("close",()=>{clearInterval(heartbeat);livePriceClients.delete(res)})
 });
 
-function scheduleAngelReconnect(){
-  if(angelReconnectTimer) return;
-  angelReconnectTimer = setTimeout(()=>{
-    angelReconnectTimer = null;
-    startAngelLiveFeed();
-  }, 10000);
-}
-
+function scheduleAngelReconnect(){if(angelReconnectTimer)return;angelReconnectTimer=setTimeout(()=>{angelReconnectTimer=null;startAngelLiveFeed()},10000)}
 function startAngelLiveFeed(){
-  const apiKey = process.env.ANGEL_API_KEY;
-  const clientCode = process.env.ANGEL_CLIENT_CODE;
-  const jwtToken = process.env.ANGEL_JWT_TOKEN;
-  const feedToken = process.env.ANGEL_FEED_TOKEN;
-
-  if(!apiKey || !clientCode || !jwtToken || !feedToken){
-    console.log("LIVE PRICE WS: Angel credentials not configured; existing /api/prices fallback remains active");
-    return;
-  }
-
+  const apiKey=process.env.ANGEL_API_KEY,clientCode=process.env.ANGEL_CLIENT_CODE,jwtToken=process.env.ANGEL_JWT_TOKEN,feedToken=process.env.ANGEL_FEED_TOKEN;
+  if(!apiKey||!clientCode||!jwtToken||!feedToken){console.log("LIVE PRICE WS: Angel credentials not configured; existing /api/prices fallback remains active");return}
   try{
-    const ws = new WebSocketV2({
-      jwttoken: jwtToken,
-      apikey: apiKey,
-      clientcode: clientCode,
-      feedtype: feedToken
-    });
-
-    angelLiveSocket = ws;
-
+    const ws=new WebSocketV2({jwttoken:jwtToken,apikey:apiKey,clientcode:clientCode,feedtype:feedToken});angelLiveSocket=ws;
     ws.connect().then(()=>{
-      const correlation = "strikepulse" + Date.now().toString(36).slice(-8);
-
-      // NSE indices: NIFTY, BANKNIFTY, FINNIFTY, INDIA VIX
-      ws.fetchData({
-        correlationID: correlation + "n",
-        action: 1,
-        mode: 1,
-        exchangeType: 1,
-        tokens: ["99926000","99926009","99926037","99926017"]
-      });
-
-      // BSE SENSEX
-      ws.fetchData({
-        correlationID: correlation + "b",
-        action: 1,
-        mode: 1,
-        exchangeType: 3,
-        tokens: ["99919000"]
-      });
-
+      const correlation="strikepulse"+Date.now().toString(36).slice(-8);
+      ws.fetchData({correlationID:correlation+"n",action:1,mode:1,exchangeType:1,tokens:["99926000","99926009","99926037","99926017"]});
+      ws.fetchData({correlationID:correlation+"b",action:1,mode:1,exchangeType:3,tokens:["99919000"]});
       console.log("LIVE PRICE WS: connected and subscribed");
-    }).catch(err=>{
-      console.log("LIVE PRICE WS connect error:", err?.message || err);
-      scheduleAngelReconnect();
-    });
-
-    ws.on("tick", data=>{
-      try{
-        const token = String(data?.token || "");
-        const key = ANGEL_LIVE_TOKENS[token];
-        if(!key) return;
-
-        const raw = Number(data?.last_traded_price);
-        if(!Number.isFinite(raw)) return;
-
-        const ltp = raw / 100;
-        const previous = Number(price[key]);
-        price[key] = ltp;
-        if(Number.isFinite(previous) && previous !== 0){
-          price[key + "Change"] = ((ltp - previous) / previous) * 100;
-        }
-        price.source = "angel-websocket-v2";
-        price.updated = new Date().toISOString();
-        broadcastLivePrice();
-      }catch(err){
-        console.log("LIVE PRICE WS tick error:", err?.message || err);
-      }
-    });
-
-    ws.on("error",err=>{
-      console.log("LIVE PRICE WS error:", err?.message || err);
-      scheduleAngelReconnect();
-    });
-
-    ws.on("close",()=>{
-      console.log("LIVE PRICE WS closed; reconnecting");
-      scheduleAngelReconnect();
-    });
-  }catch(err){
-    console.log("LIVE PRICE WS init error:", err?.message || err);
-    scheduleAngelReconnect();
-  }
+    }).catch(err=>{console.log("LIVE PRICE WS connect error:",err?.message||err);scheduleAngelReconnect()});
+    ws.on("tick",data=>{try{const token=String(data?.token||"");const key=ANGEL_LIVE_TOKENS[token];if(!key)return;const raw=Number(data?.last_traded_price);if(!Number.isFinite(raw))return;const ltp=raw/100,previous=Number(price[key]);price[key]=ltp;if(Number.isFinite(previous)&&previous!==0)price[key+"Change"]=((ltp-previous)/previous)*100;price.source="angel-websocket-v2";price.updated=new Date().toISOString();broadcastLivePrice()}catch(err){console.log("LIVE PRICE WS tick error:",err?.message||err)}});
+    ws.on("error",err=>{console.log("LIVE PRICE WS error:",err?.message||err);scheduleAngelReconnect()});ws.on("close",()=>{console.log("LIVE PRICE WS closed; reconnecting");scheduleAngelReconnect()});
+  }catch(err){console.log("LIVE PRICE WS init error:",err?.message||err);scheduleAngelReconnect()}
 }
-
 startAngelLiveFeed();
 '''
               needle = '\nupdatePrices();\nsetInterval(updatePrices,15000);'
-              if needle not in src:
-                  raise SystemExit('server insertion point not found')
-              src = src.replace(needle, block + needle, 1)
-              server.write_text(src)
+              if needle not in src: raise SystemExit('server insertion point not found')
+              server.write_text(src.replace(needle,block+needle,1))
 
-          js = Path('strike-pulse.js')
-          jsrc = js.read_text()
-          js_marker = '/* STRIKE_PULSE_LIVE_PRICE_CLIENT_V1 */'
+          js=Path('strike-pulse.js');jsrc=js.read_text();js_marker='/* STRIKE_PULSE_LIVE_PRICE_CLIENT_V1 */'
           if js_marker not in jsrc:
-              jblock = r'''
+              jsrc += r'''
 
 /* STRIKE_PULSE_LIVE_PRICE_CLIENT_V1 */
-(function(){
-'use strict';
-if(window.__StrikePulseLivePriceClientLoaded)return;
-window.__StrikePulseLivePriceClientLoaded=true;
-var URL='https://strike-pulse-relay.onrender.com/api/live-prices';
-function fmt(v){var n=Number(v);return Number.isFinite(n)?n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}
-function update(j){
-  var markets=j&&j.markets||{};
-  Object.keys(markets).forEach(function(k){
-    var m=markets[k]||{};
-    document.querySelectorAll('.sp-market-card[data-market-card="'+k+'"],.sp-market-'+k).forEach(function(card){
-      var priceEl=card.querySelector('.sp-price');
-      if(priceEl&&m.price!=null){
-        var old=priceEl.textContent;
-        var next=fmt(m.price);
-        priceEl.textContent=next;
-        if(old!==next){
-          card.classList.remove('sp-live-tick-up','sp-live-tick-down');
-          void card.offsetWidth;
-          var ov=Number(String(old).replace(/,/g,''));
-          var nv=Number(m.price);
-          card.classList.add(Number.isFinite(ov)&&nv>=ov?'sp-live-tick-up':'sp-live-tick-down');
-        }
-      }
-      var ch=card.querySelector('.sp-change');
-      var cv=Number(m.change);
-      if(ch&&Number.isFinite(cv)){
-        ch.textContent=(cv>0?'▲ +':cv<0?'▼ ':'● ')+Math.abs(cv).toFixed(2)+'%';
-        ch.classList.remove('sp-positive','sp-negative','sp-flat');
-        ch.classList.add(cv>0?'sp-positive':cv<0?'sp-negative':'sp-flat');
-      }
-      var up=card.querySelector('.sp-updated');
-      if(up)up.textContent='LIVE TICK';
-    });
-  });
-}
-try{
-  var es=new EventSource(URL);
-  es.addEventListener('price',function(e){try{update(JSON.parse(e.data))}catch(err){}});
-  es.onerror=function(){/* existing /api/prices polling remains fallback */};
-}catch(e){}
-})();
+(function(){'use strict';if(window.__StrikePulseLivePriceClientLoaded)return;window.__StrikePulseLivePriceClientLoaded=true;var URL='https://strike-pulse-relay.onrender.com/api/live-prices';function fmt(v){var n=Number(v);return Number.isFinite(n)?n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}function update(j){var markets=j&&j.markets||{};Object.keys(markets).forEach(function(k){var m=markets[k]||{};document.querySelectorAll('.sp-market-card[data-market-card="'+k+'"],.sp-market-'+k).forEach(function(card){var priceEl=card.querySelector('.sp-price');if(priceEl&&m.price!=null){var old=priceEl.textContent,next=fmt(m.price);priceEl.textContent=next;if(old!==next){card.classList.remove('sp-live-tick-up','sp-live-tick-down');void card.offsetWidth;var ov=Number(String(old).replace(/,/g,'')),nv=Number(m.price);card.classList.add(Number.isFinite(ov)&&nv>=ov?'sp-live-tick-up':'sp-live-tick-down')}}var ch=card.querySelector('.sp-change'),cv=Number(m.change);if(ch&&Number.isFinite(cv)){ch.textContent=(cv>0?'▲ +':cv<0?'▼ ':'● ')+Math.abs(cv).toFixed(2)+'%';ch.classList.remove('sp-positive','sp-negative','sp-flat');ch.classList.add(cv>0?'sp-positive':cv<0?'sp-negative':'sp-flat')}var up=card.querySelector('.sp-updated');if(up)up.textContent='LIVE TICK'})})}try{var es=new EventSource(URL);es.addEventListener('price',function(e){try{update(JSON.parse(e.data))}catch(err){}});es.onerror=function(){}}catch(e){}})();
 '''
-              jsrc += jblock
               js.write_text(jsrc)
 
-          pkg = Path('package.json')
-          data = json.loads(pkg.read_text())
-          data['description'] = 'Strike Pulse live market relay using Angel One SmartAPI WebSocket V2'
-          pkg.write_text(json.dumps(data, indent=2) + '\\n')
+          pkg=Path('package.json');data=json.loads(pkg.read_text());data['description']='Strike Pulse live market relay using Angel One SmartAPI WebSocket V2';pkg.write_text(json.dumps(data,indent=2)+'\n')
 
       - name: Commit generated live-feed patch
         shell: bash
@@ -260,9 +92,6 @@ try{
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add server.js strike-pulse.js package.json
-          if git diff --cached --quiet; then
-            echo "No changes needed"
-            exit 0
-          fi
+          if git diff --cached --quiet; then echo "No changes needed"; exit 0; fi
           git commit -m "feat: add live tick price streaming [skip ci]"
           git push
