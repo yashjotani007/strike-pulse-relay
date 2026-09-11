@@ -1,1 +1,0 @@
-Backup marker: original strike-pulse.js is preserved in the preceding main commit before the appended-only Trade Setup direction visual layer.
