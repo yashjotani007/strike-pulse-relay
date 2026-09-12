@@ -1,1 +1,0 @@
-Price-loading optimization requested by user. Existing Strike Pulse behavior must remain unchanged; optimize only market-price fetching for faster delivery with minimal backend load.
