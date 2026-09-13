@@ -1,0 +1,17 @@
+/* Strike Pulse — isolated Market Intelligence layer. Does not modify existing dashboard CSS. */
+#sp-market-intelligence{font-family:inherit;margin:24px 0;padding:20px;border-radius:18px;background:#fff;border:1px solid rgba(15,35,65,.10);box-shadow:0 10px 30px rgba(15,35,65,.07);color:#10233f}
+#sp-market-intelligence .sp-mi-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+#sp-market-intelligence .sp-mi-title{font-size:20px;font-weight:800;letter-spacing:-.02em}
+#sp-market-intelligence .sp-mi-sub{font-size:12px;opacity:.65;margin-top:4px}
+#sp-market-intelligence .sp-mi-status{font-size:11px;font-weight:800;padding:7px 10px;border-radius:999px;background:#eef4fb;white-space:nowrap}
+#sp-market-intelligence .sp-mi-status.live{background:#eaf8ef;color:#16803c}.sp-mi-status.closed{background:#f2f4f7;color:#667085}
+#sp-market-intelligence .sp-mi-regime{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 16px;margin-bottom:16px;border-radius:14px;background:linear-gradient(135deg,#f5f9ff,#eef5ff);border:1px solid #dce9fa}
+#sp-market-intelligence .sp-mi-regime-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;opacity:.62}.sp-mi-regime-value{font-size:19px;font-weight:900;margin-top:3px}.sp-mi-score{font-size:12px;font-weight:800;opacity:.7}
+#sp-market-intelligence .sp-mi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+#sp-market-intelligence .sp-mi-card{padding:14px;border:1px solid rgba(15,35,65,.09);border-radius:14px;background:#fff;min-width:0}.sp-mi-name{font-size:11px;font-weight:800;opacity:.62}.sp-mi-price{font-size:18px;font-weight:900;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sp-mi-change{font-size:12px;font-weight:800;margin-top:4px}.sp-mi-momentum{font-size:10px;font-weight:800;margin-top:8px;letter-spacing:.03em}
+#sp-market-intelligence .positive{color:#16803c}.sp-mi-card.negative .sp-mi-change,.sp-mi-card.negative .sp-mi-momentum{color:#c93636}.sp-mi-card.positive .sp-mi-change,.sp-mi-card.positive .sp-mi-momentum{color:#16803c}.sp-mi-card.neutral .sp-mi-change,.sp-mi-card.neutral .sp-mi-momentum{color:#667085}
+#sp-market-intelligence .sp-mi-signals{margin-top:16px}.sp-mi-signals-title{font-size:13px;font-weight:900;margin-bottom:8px}.sp-mi-signal{padding:9px 11px;margin:6px 0;border-radius:10px;background:#f7f9fc;font-size:12px;line-height:1.45}
+#sp-market-intelligence .sp-mi-foot{margin-top:12px;font-size:10px;opacity:.55;text-align:right}
+#sp-market-intelligence.sp-mi-loading{opacity:.72}.sp-mi-error{padding:12px;border-radius:10px;background:#fff4f4;color:#a62b2b;font-size:12px}
+@media(max-width:900px){#sp-market-intelligence .sp-mi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){#sp-market-intelligence{padding:15px;margin:16px 0;border-radius:15px}#sp-market-intelligence .sp-mi-head{margin-bottom:14px}.sp-mi-title{font-size:18px}#sp-market-intelligence .sp-mi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sp-mi-price{font-size:16px}.sp-mi-regime{padding:12px}.sp-mi-regime-value{font-size:16px}}
