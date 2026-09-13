@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded',()=>{
+  /* The root loader already owns market-price polling. Keep this file as a safe fallback only. */
+  if(window.__StrikePulseRootLoaded)return;
   console.log('[StrikePulse] PUBLIC JS LOADED');
   const BASE='https://strike-pulse-relay.onrender.com/api';
   const PRICE=BASE+'/prices';
