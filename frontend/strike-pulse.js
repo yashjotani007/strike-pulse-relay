@@ -26,7 +26,7 @@ const syms=[{s:"NIFTY",n:"NIFTY 50"},{s:"BANKNIFTY",n:"BANK NIFTY"},{s:"FINNIFTY
 if(searchInput)searchInput.addEventListener("input",()=>{const q=searchInput.value.trim().toUpperCase();if(!q){if(searchResults)searchResults.style.display="none";return}const m=syms.filter(x=>x.s.includes(q)||x.n.includes(q));if(!searchResults||!m.length){if(searchResults)searchResults.style.display="none";return}searchResults.innerHTML=m.map(x=>`<div class="sp-search-item" data-symbol="${x.s}">${x.n}</div>`).join("");searchResults.style.display="block";searchResults.querySelectorAll(".sp-search-item").forEach(x=>x.onclick=()=>{searchInput.value=x.textContent;searchResults.style.display="none";load(x.dataset.symbol)})});
 if(searchButton)searchButton.onclick=e=>{e.preventDefault();const q=(searchInput?.value||"").toUpperCase(),s=q.includes("BANK")?"BANKNIFTY":q.includes("FIN")?"FINNIFTY":q.includes("NIFTY")?"NIFTY":null;if(s)load(s)};
 document.addEventListener("click",e=>{if(searchResults&&!searchResults.contains(e.target)&&e.target!==searchInput)searchResults.style.display="none"});
-status();prices();load("NIFTY");setInterval(prices,2000);setInterval(()=>load(currentSymbol),30000);setInterval(status,1000);console.log("[STRIKE PULSE] INIT COMPLETE")
+status();prices();load("NIFTY");setInterval(prices,5000);setInterval(()=>load(currentSymbol),30000);setInterval(status,1000);console.log("[STRIKE PULSE] INIT COMPLETE")
 };
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
 window.StrikePulseDebug={run:boot,priceApi:"https://strike-pulse-relay.onrender.com/api/prices"};
