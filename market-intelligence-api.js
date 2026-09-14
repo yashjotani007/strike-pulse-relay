@@ -5,6 +5,7 @@
 const express = require('express');
 
 const ORIGINAL_GET = express.application.get;
+const ORIGINAL_USE = express.application.use;
 const NSE = 'https://www.nseindia.com';
 const YAHOO = 'https://query1.finance.yahoo.com';
 const HEADERS = {
@@ -170,6 +171,21 @@ async function intelligence() {
   lastAt = Date.now();
   return last;
 }
+
+// Expose the exact handler to the isolated middleware below. No existing route is changed.
+global.__SP_MARKET_INTELLIGENCE_HANDLER__ = intelligence;
+
+// Register an early middleware so the endpoint wins even if the original server has a catch-all route.
+express.application.use = function(...args) {
+  const middleware = async function(req, res, next) {
+    if (req?.path === '/api/market-intelligence' || req?.originalUrl?.split('?')[0] === '/api/market-intelligence') {
+      try { return res.json(await intelligence()); }
+      catch (e) { return res.status(502).json({ success: false, error: e.message, source: 'strike-pulse-market-intelligence' }); }
+    }
+    return next();
+  };
+  return ORIGINAL_USE.call(this, middleware, ...args);
+};
 
 express.application.get = function(path, ...handlers) {
   if (path === '/api/market-intelligence') {
