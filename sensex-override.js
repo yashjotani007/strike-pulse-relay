@@ -1,4 +1,10 @@
 'use strict';
+
+// Load the isolated Market Intelligence layers before server.js registers routes.
+// Existing SENSEX/option-chain behavior below remains unchanged.
+require('./market-intelligence-api.js');
+require('./market-intelligence-loader-route.js');
+
 const express = require('express');
 const https = require('https');
 
