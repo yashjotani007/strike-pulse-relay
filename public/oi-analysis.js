@@ -1,410 +1,60 @@
 (function () {
   'use strict';
-
   if (window.__StrikePulseOIAnalysisLoaded) return;
   window.__StrikePulseOIAnalysisLoaded = true;
 
   const BASE = 'https://strike-pulse-relay.onrender.com/api';
-  const INTERVAL = 15000;
-  let symbol = 'NIFTY';
-  let busy = false;
-  let lastData = null;
-
-  const page = () => document.querySelector('.sp-oi-intel');
-  const num = v => {
-    if (v === null || v === undefined || v === '') return null;
-    const n = Number(String(v).replace(/,/g, ''));
-    return Number.isFinite(n) ? n : null;
-  };
-  const first = (o, keys) => {
-    for (const k of keys) if (o && o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
-    return null;
-  };
-  const fmt = (v, d = 0) => {
-    const n = num(v);
-    return n === null ? '--' : n.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
-  };
-  const pct = v => {
-    const n = num(v);
-    return n === null ? '--' : (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
-  };
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-  const setText = (el, value) => { if (el) el.textContent = value; };
-  const setMany = (selector, values) => document.querySelectorAll(selector).forEach((e, i) => { if (values[i] !== undefined) e.textContent = values[i]; });
-
-  function unwrap(body) {
-    return body && body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : body;
+  const REFRESH_MS = 15000;
+  let symbol = 'NIFTY', timer = null, loading = false;
+  const $ = (s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+  const root=()=>$('.sp-oi-intel');
+  const n=v=>{if(v===null||v===undefined||v==='')return null;const x=Number(String(v).replace(/,/g,'').replace(/%/g,''));return Number.isFinite(x)?x:null};
+  const fmt=(v,d=0)=>{const x=n(v);return x===null?'--':x.toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d})};
+  const signed=(v,d=0)=>{const x=n(v);return x===null?'--':(x>0?'+':'')+fmt(x,d)};
+  const text=(e,v)=>{if(e)e.textContent=v==null||v===''?'--':String(v)};
+  const set=(s,v,r=document)=>$$(s,r).forEach((e,i)=>e.textContent=Array.isArray(v)?(v[i]??'--'):v);
+  function first(o,keys){for(const k of keys)if(o&&o[k]!==undefined&&o[k]!==null&&o[k]!=='')return o[k];return null}
+  function unwrap(b){if(!b||typeof b!=='object')return{};return b.data&&typeof b.data==='object'&&!Array.isArray(b.data)?b.data:b}
+  function normalize(body){
+    const raw=unwrap(body);
+    const source=(Array.isArray(raw.rows)&&raw.rows)||(Array.isArray(raw.data)&&raw.data)||(Array.isArray(raw.records?.data)&&raw.records.data)||(Array.isArray(raw.filtered?.data)&&raw.filtered.data)||(Array.isArray(raw.optionChain)&&raw.optionChain)||(Array.isArray(raw.options)&&raw.options)||(Array.isArray(body?.rows)&&body.rows)||[];
+    const rows=source.map(item=>{const ce=item?.CE||item?.ce||item?.call||item?.calls||{},pe=item?.PE||item?.pe||item?.put||item?.puts||{};return{strike:n(first(item,['strike','strikePrice','strike_price','StrikePrice'])),ce:{oi:n(first(ce,['oi','openInterest','OI','open_interest'])),oiChange:n(first(ce,['oiChange','changeinOpenInterest','changeOI','OIChange','change_in_oi'])),ltp:n(first(ce,['ltp','lastPrice','LTP','lastTradedPrice','price'])),change:n(first(ce,['change','pChange','percentChange'])),volume:n(first(ce,['volume','totalTradedVolume','Volume','totalVolume'])),iv:n(first(ce,['iv','impliedVolatility','IV']))},pe:{oi:n(first(pe,['oi','openInterest','OI','open_interest'])),oiChange:n(first(pe,['oiChange','changeinOpenInterest','changeOI','OIChange','change_in_oi'])),ltp:n(first(pe,['ltp','lastPrice','LTP','lastTradedPrice','price'])),change:n(first(pe,['change','pChange','percentChange'])),volume:n(first(pe,['volume','totalTradedVolume','Volume','totalVolume'])),iv:n(first(pe,['iv','impliedVolatility','IV']))}}).filter(r=>r.strike!==null).sort((a,b)=>a.strike-b.strike);
+    return{success:body?.success!==false,symbol:String(body?.symbol||raw?.symbol||symbol).toUpperCase(),spot:n(first(raw,['spot','spotPrice','underlyingValue','underlying','indexPrice','underlying_value']))??n(body?.records?.underlyingValue)??n(body?.spot),expiry:body?.expiry??raw?.expiry??body?.expiryDate??raw?.expiryDate??null,expiries:body?.expiries||raw?.expiries||[],atm:n(body?.atmStrike??body?.atm??raw?.atmStrike??raw?.atm),callOI:n(body?.callOI??raw?.callOI),putOI:n(body?.putOI??raw?.putOI),callOIChange:n(body?.callOIChange??raw?.callOIChange),putOIChange:n(body?.putOIChange??raw?.putOIChange),pcr:n(body?.pcr??raw?.pcr),maxPain:n(body?.maxPain??raw?.maxPain),rows}
   }
-
-  function normalizeRows(body) {
-    const root = unwrap(body) || {};
-    const candidates = [
-      root.rows, root.options, root.optionChain, root.records, root.chain,
-      root.data, root.filtered && root.filtered.data,
-      body && body.rows, body && body.options, body && body.optionChain,
-      body && body.records && body.records.data
-    ];
-    const arr = candidates.find(Array.isArray) || [];
-
-    return arr.map(item => {
-      const ce = item && (item.CE || item.ce || item.call || item.calls || {});
-      const pe = item && (item.PE || item.pe || item.put || item.puts || {});
-      return {
-        strike: num(first(item, ['strikePrice','strike','strike_price','StrikePrice'])),
-        ce: {
-          oi: num(first(ce, ['openInterest','oi','OI','open_interest'])),
-          oiChange: num(first(ce, ['changeinOpenInterest','oiChange','changeOI','OIChange','change_in_oi'])),
-          ltp: num(first(ce, ['lastPrice','ltp','LTP','lastTradedPrice','price'])),
-          change: num(first(ce, ['change','pChange','percentChange'])),
-          volume: num(first(ce, ['totalTradedVolume','volume','Volume','totalVolume'])),
-          iv: num(first(ce, ['impliedVolatility','iv','IV']))
-        },
-        pe: {
-          oi: num(first(pe, ['openInterest','oi','OI','open_interest'])),
-          oiChange: num(first(pe, ['changeinOpenInterest','oiChange','changeOI','OIChange','change_in_oi'])),
-          ltp: num(first(pe, ['lastPrice','ltp','LTP','lastTradedPrice','price'])),
-          change: num(first(pe, ['change','pChange','percentChange'])),
-          volume: num(first(pe, ['totalTradedVolume','volume','Volume','totalVolume'])),
-          iv: num(first(pe, ['impliedVolatility','iv','IV']))
-        }
-      };
-    }).filter(r => r.strike !== null).sort((a,b) => a.strike - b.strike);
+  function calc(d){
+    const rows=d.rows,step=rows.length>1?Math.abs(rows[1].strike-rows[0].strike):50;
+    const atm=d.atm??(rows.length&&d.spot!=null?rows.reduce((a,r)=>Math.abs(r.strike-d.spot)<Math.abs(a.strike-d.spot)?r:a,rows[0]).strike:null);
+    const near=rows.filter(r=>atm==null||Math.abs(r.strike-atm)<=Math.max(step*4,150));
+    const sum=(s,f,a=rows)=>a.reduce((x,r)=>x+(n(r?.[s]?.[f])||0),0);
+    const callOI=d.callOI??sum('ce','oi'),putOI=d.putOI??sum('pe','oi'),callChg=d.callOIChange??sum('ce','oiChange'),putChg=d.putOIChange??sum('pe','oiChange'),pcr=d.pcr??(callOI?putOI/callOI:null);
+    const state=(s,r)=>{const o=n(r?.[s]?.oiChange),p=n(r?.[s]?.change);if(o==null||p==null)return'NEUTRAL';if(o>0&&p<0)return'WRITING';if(o<0&&p>0)return'COVERING';if(o>0&&p>0)return'LONG BUILDUP';if(o<0&&p<0)return'LONG UNWINDING';return'NEUTRAL'};
+    const behaviour=s=>{const c={'WRITING':0,'COVERING':0,'LONG BUILDUP':0,'LONG UNWINDING':0,'NEUTRAL':0};rows.forEach(r=>c[state(s,r)]++);const z=Object.entries(c).filter(x=>x[0]!=='NEUTRAL').sort((a,b)=>b[1]-a[1])[0]||['NEUTRAL',0];return{state:z[0],count:z[1],counts:c}};
+    const cb=behaviour('ce'),pb=behaviour('pe');
+    const walls={call:rows.filter(r=>r.ce.oi!=null).sort((a,b)=>b.ce.oi-a.ce.oi).slice(0,3),put:rows.filter(r=>r.pe.oi!=null).sort((a,b)=>b.pe.oi-a.pe.oi).slice(0,3)};
+    const activity=near.flatMap(r=>[{side:'CE',strike:r.strike,type:state('ce',r),oi:r.ce.oi,oiChange:r.ce.oiChange,change:r.ce.change},{side:'PE',strike:r.strike,type:state('pe',r),oi:r.pe.oi,oiChange:r.pe.oiChange,change:r.pe.change}]).filter(x=>x.oiChange!=null).sort((a,b)=>Math.abs(b.oiChange)-Math.abs(a.oiChange));
+    const pressure=near.map(r=>({strike:r.strike,ce:n(r.ce.oiChange)||0,pe:n(r.pe.oiChange)||0,total:Math.abs(n(r.ce.oiChange)||0)+Math.abs(n(r.pe.oiChange)||0)})).sort((a,b)=>b.total-a.total).slice(0,6);
+    let structure='BALANCED STRUCTURE';if(cb.state==='WRITING'&&pb.state==='WRITING')structure='TWO-SIDED WRITING';else if(cb.state==='WRITING')structure='CALL-SIDE PRESSURE';else if(pb.state==='WRITING')structure='PUT-SIDE SUPPORT';else if(pcr!=null&&pcr>1.15)structure='PUT-HEAVY STRUCTURE';else if(pcr!=null&&pcr<0.85)structure='CALL-HEAVY STRUCTURE';
+    return{...d,rows,near,atm,step,callOI,putOI,callChg,putChg,pcr,cb,pb,walls,activity,pressure,structure,expiry:d.expiry||d.expiries?.[0]||'--'}
   }
-
-  function getSpot(body) {
-    const d = unwrap(body) || {};
-    return num(first(d, ['spot','spotPrice','underlyingValue','underlying','indexPrice','underlying_value'])) || num(body?.records?.underlyingValue);
+  const label=()=>symbol==='BANKNIFTY'?'BANK NIFTY':symbol==='FINNIFTY'?'FIN NIFTY':symbol==='MIDCPNIFTY'?'MIDCAP':symbol;
+  function render(d){
+    const r=root();if(!r||!d.rows.length)throw Error('No option-chain rows received');
+    set('.sp-oi-kicker',`${label()} • OI POSITIONING`,r);set('.sp-oi-live-pill','LIVE OI',r);
+    const core=$('.sp-pulse-core',r);text($('strong',core),d.structure);text($('span',core),`${d.near.length} near-ATM strikes analysed`);
+    set('.sp-pulse-orbit.orbit-ce',`CE ${fmt(d.callOI)}`,r);set('.sp-pulse-orbit.orbit-pe',`PE ${fmt(d.putOI)}`,r);
+    const copy=$('.sp-pulse-copy',r);if(copy){text($('h2',copy),`${label()} • ${d.structure}`);text($('p',copy),`Spot ${fmt(d.spot,2)} • ATM ${fmt(d.atm)} • PCR ${d.pcr==null?'--':d.pcr.toFixed(2)} • Expiry ${d.expiry}`)}
+    $$('.sp-oi-behaviour-card',r).forEach((c,i)=>{const b=i?d.pb:d.cb;c.className=c.className.replace(/\bis-[a-z-]+\b/g,'').trim();c.classList.add('is-'+b.state.toLowerCase().replace(/ /g,'-'));text($('.sp-behaviour-result',c),b.state);const s=$$('.sp-behaviour-row strong',c);if(s[0])s[0].textContent=`${b.count} strikes show ${b.state.toLowerCase()} characteristics`;if(s[1])s[1].textContent=`${b.count} activity`;const bar=$('.sp-behaviour-track span',c);if(bar)bar.style.width=Math.max(12,Math.min(100,b.count/Math.max(1,d.rows.length)*100))+'%'});
+    const mc=$$('.sp-matrix-cell',r),cnt={'LONG BUILDUP':0,'SHORT COVERING':0,'SHORT BUILDUP':0,'LONG UNWINDING':0};d.near.forEach(x=>['ce','pe'].forEach(s=>{const o=x[s].oiChange,p=x[s].change,k=o>0&&p<0?'SHORT BUILDUP':o<0&&p>0?'SHORT COVERING':o>0&&p>0?'LONG BUILDUP':o<0&&p<0?'LONG UNWINDING':null;if(k)cnt[k]++}));Object.keys(cnt).forEach((k,i)=>{const c=mc[i];if(c){text($('strong',c),k);text($('span',c),`${cnt[k]} signals near ATM`);c.dataset.state=k.toLowerCase().replace(/ /g,'-')}});text($('.sp-matrix-note',r),`Near-ATM scan: ${d.near.length} strikes • Spot ${fmt(d.spot,2)} • ATM ${fmt(d.atm)}`);
+    const wl=$$('.sp-wall-level',r);if(wl[0])wl[0].textContent=d.walls.call[0]?`CALL WALL • ${fmt(d.walls.call[0].strike)} • ${fmt(d.walls.call[0].ce.oi)}`:'CALL WALL • --';if(wl[1])wl[1].textContent=d.walls.put[0]?`PUT WALL • ${fmt(d.walls.put[0].strike)} • ${fmt(d.walls.put[0].pe.oi)}`:'PUT WALL • --';set('.sp-wall-label',`ATM ${fmt(d.atm)}`,r);
+    const total=Math.abs(d.callChg)+Math.abs(d.putChg)||1,ce=Math.round(Math.abs(d.callChg)/total*100),pe=100-ce,m=$('.sp-shift-meter',r);if(m)m.style.setProperty('--sp-shift',ce+'%');set('.sp-shift-copy strong',[`${ce}% CE`,`${pe}% PE`],r);text($('.sp-shift-copy p',r),`${signed(d.callChg)} Call OI change vs ${signed(d.putChg)} Put OI change across the near-ATM zone.`);
+    const acts=$$('.sp-activity-item',r);d.activity.slice(0,acts.length||6).forEach((x,i)=>{const e=acts[i];if(!e)return;const s=$$('strong',e),sp=$$('span',e);if(s[0])s[0].textContent=`${x.side} ${fmt(x.strike)} • ${x.type}`;if(sp[0])sp[0].textContent=`OI ${signed(x.oiChange)}`;if(sp[1])sp[1].textContent=`Price ${signed(x.change,2)}%`});
+    const pr=$$('.sp-pressure-row',r);d.pressure.forEach((x,i)=>{const e=pr[i];if(!e)return;const s=$$('span',e);if(s[0])s[0].textContent=fmt(x.strike);if(s[1])s[1].textContent=`CE ${signed(x.ce)} • PE ${signed(x.pe)}`;const bar=$('i',e);if(bar)bar.style.width=Math.min(100,Math.max(4,x.total/Math.max(1,d.pressure[0]?.total||1)*100))+'%'});
+    const an=[];d.rows.forEach(x=>['ce','pe'].forEach(s=>{const z=x[s];if(z.oiChange!=null&&z.oi!=null&&Math.abs(z.oiChange)>Math.max(1,z.oi*.12))an.push({strike:x.strike,side:s.toUpperCase(),change:z.oiChange})}));an.sort((a,b)=>Math.abs(b.change)-Math.abs(a.change));$$('.sp-anomaly-card',r).forEach((e,i)=>{const x=an[i];if(!x)return;text($('strong',e),`${x.side} ${fmt(x.strike)} • OI spike`);text($('p',e),`${signed(x.change)} OI change detected near the active zone.`)});
+    set('.sp-expiry-line',`EXPIRY • ${d.expiry}`,r);set('.sp-expiry-points',[`Spot ${fmt(d.spot,2)}`,`ATM ${fmt(d.atm)}`,`Max Pain ${fmt(d.maxPain)}`],r);const story=$('.sp-story',r);if(story)text($('p',story),`${label()} is showing ${d.cb.state.toLowerCase()} on calls and ${d.pb.state.toLowerCase()} on puts. Near-ATM OI shift is ${d.callChg>=d.putChg?'more call-side':'more put-side'}, with PCR ${d.pcr==null?'--':d.pcr.toFixed(2)}.`);
+    window.__SP_OI_ANALYSIS_LAST__=d;document.documentElement.dataset.spOiReady='1';
   }
-
-  function nearestATM(rows, spot) {
-    if (!rows.length || spot === null) return null;
-    return rows.reduce((best, r) => Math.abs(r.strike - spot) < Math.abs(best.strike - spot) ? r : best, rows[0]);
-  }
-
-  function top(rows, side, field, n = 3) {
-    return rows.filter(r => num(r[side]?.[field]) !== null).sort((a,b) => (b[side][field] || 0) - (a[side][field] || 0)).slice(0,n);
-  }
-
-  function classify(priceChange, oiChange) {
-    const p = num(priceChange), o = num(oiChange);
-    if (p === null || o === null || (Math.abs(p) < 0.0001 && Math.abs(o) < 0.0001)) return { key:'neutral', label:'NEUTRAL', text:'No clear positioning shift' };
-    if (o > 0 && p > 0) return { key:'long', label:'LONG BUILDUP', text:'Price and OI rising together' };
-    if (o > 0 && p < 0) return { key:'short', label:'SHORT BUILDUP', text:'OI rising while price softens' };
-    if (o < 0 && p > 0) return { key:'cover', label:'SHORT COVERING', text:'OI falling while price rises' };
-    if (o < 0 && p < 0) return { key:'unwind', label:'LONG UNWINDING', text:'Price and OI falling together' };
-    return { key:'neutral', label:'NEUTRAL', text:'Mixed positioning' };
-  }
-
-  function sideBehaviour(rows, side) {
-    const active = rows.filter(r => r[side] && r[side].oi !== null && r[side].oiChange !== null && r[side].ltp !== null);
-    if (!active.length) return { state:'NO DATA', detail:'Live OI behaviour unavailable', score:0 };
-    let writing = 0, unwinding = 0, buildup = 0, covering = 0;
-    active.forEach(r => {
-      const c = classify(r[side].change, r[side].oiChange);
-      if (r[side].oiChange > 0 && r[side].ltp !== null) {
-        if (r[side].change !== null && r[side].change < 0) writing++;
-        if (r[side].change !== null && r[side].change > 0) buildup++;
-      }
-      if (r[side].oiChange < 0) {
-        if (r[side].change !== null && r[side].change > 0) covering++;
-        if (r[side].change !== null && r[side].change < 0) unwinding++;
-      }
-      if (c.key === 'short') writing += 0.5;
-    });
-    const score = writing - unwinding + (side === 'pe' ? covering * .2 : buildup * .2);
-    if (writing > unwinding && writing >= buildup) return { state:'WRITING', detail:`${writing} strikes show rising OI with softer option price`, score };
-    if (unwinding > writing) return { state:'UNWINDING', detail:`${unwinding} strikes show falling OI with weaker option price`, score };
-    if (covering > writing) return { state:'COVERING', detail:`${covering} strikes show falling OI with firmer option price`, score };
-    return { state:'BUILDUP', detail:`${buildup} strikes show rising OI with firmer option price`, score };
-  }
-
-  function updateHeader(data, spot, atm) {
-    const root = page();
-    if (!root) return;
-    const label = symbol === 'BANKNIFTY' ? 'BANK NIFTY' : symbol === 'FINNIFTY' ? 'FIN NIFTY' : symbol === 'MIDCPNIFTY' ? 'MIDCAP' : symbol;
-    root.querySelectorAll('.sp-oi-kicker').forEach(e => e.textContent = `${label} • OI POSITIONING`);
-    root.querySelectorAll('.sp-oi-live-pill').forEach(e => e.textContent = 'LIVE OI');
-    root.querySelectorAll('.sp-pulse-core').forEach(e => {
-      const state = dataState(data);
-      const strong = e.querySelector('strong');
-      const small = e.querySelector('span');
-      setText(strong, state.label);
-      setText(small, state.detail);
-    });
-    root.querySelectorAll('.sp-pulse-orbit.orbit-ce').forEach(e => e.textContent = `CE ${fmt(data.callOI)}`);
-    root.querySelectorAll('.sp-pulse-orbit.orbit-pe').forEach(e => e.textContent = `PE ${fmt(data.putOI)}`);
-    const copy = root.querySelector('.sp-pulse-copy');
-    if (copy) {
-      const h = copy.querySelector('h2');
-      const p = copy.querySelector('p');
-      setText(h, stateTitle(data, spot, atm));
-      setText(p, stateDescription(data, spot, atm));
-    }
-  }
-
-  function dataState(data) {
-    const p = num(data.pcr);
-    const ce = data.callBehaviour?.state, pe = data.putBehaviour?.state;
-    if (ce === 'WRITING' && pe === 'WRITING') return { label:'TWO-SIDED WRITING', detail:'Both option sides show fresh writing activity' };
-    if (ce === 'WRITING') return { label:'CALL-SIDE PRESSURE', detail:'Call-side OI is building with writing characteristics' };
-    if (pe === 'WRITING') return { label:'PUT-SIDE SUPPORT', detail:'Put-side OI is building with writing characteristics' };
-    if (p !== null && p > 1.15) return { label:'PUT-HEAVY STRUCTURE', detail:'Put OI is larger relative to Call OI' };
-    if (p !== null && p < 0.85) return { label:'CALL-HEAVY STRUCTURE', detail:'Call OI is larger relative to Put OI' };
-    return { label:'BALANCED STRUCTURE', detail:'Call and Put positioning is relatively balanced' };
-  }
-
-  function stateTitle(data, spot, atm) {
-    const s = dataState(data).label;
-    return `${symbol === 'BANKNIFTY' ? 'BANK NIFTY' : symbol === 'FINNIFTY' ? 'FIN NIFTY' : symbol} • ${s}`;
-  }
-
-  function stateDescription(data, spot, atm) {
-    const parts = [];
-    if (spot !== null) parts.push(`Spot ${fmt(spot,2)}`);
-    if (atm) parts.push(`ATM ${fmt(atm.strike)}`);
-    if (num(data.pcr) !== null) parts.push(`PCR ${num(data.pcr).toFixed(2)}`);
-    return parts.join(' • ');
-  }
-
-  function renderBehaviour(rows) {
-    const root = page();
-    if (!root) return;
-    const cb = sideBehaviour(rows, 'ce');
-    const pb = sideBehaviour(rows, 'pe');
-    const cards = root.querySelectorAll('.sp-oi-behaviour-card');
-    [cb,pb].forEach((b,i) => {
-      const card = cards[i];
-      if (!card) return;
-      card.classList.remove('is-writing','is-unwinding','is-covering','is-buildup');
-      card.classList.add('is-' + b.state.toLowerCase());
-      setText(card.querySelector('.sp-behaviour-result'), b.state);
-      setMany(card.querySelectorAll('.sp-behaviour-row strong'), [b.detail, `${Math.max(0, Math.round(Math.abs(b.score) * 10))} activity`]);
-      const track = card.querySelector('.sp-behaviour-track span');
-      if (track) track.style.width = Math.min(100, Math.max(12, 50 + b.score * 8)) + '%';
-    });
-  }
-
-  function renderMatrix(rows, spot) {
-    const root = page();
-    const cells = root?.querySelectorAll('.sp-matrix-cell');
-    if (!cells?.length) return;
-    const atm = nearestATM(rows, spot);
-    const near = atm ? rows.filter(r => Math.abs(r.strike - atm.strike) <= Math.max(100, Math.abs(rows[1]?.strike - rows[0]?.strike || 50) * 3)) : rows.slice(0,7);
-    const counts = { long:0, short:0, cover:0, unwind:0, neutral:0 };
-    near.forEach(r => { const c = classify(r.ce.change, r.ce.oiChange); counts[c.key]++; const p = classify(r.pe.change, r.pe.oiChange); counts[p.key]++; });
-    const vals = [
-      ['LONG BUILDUP', counts.long], ['SHORT COVERING', counts.cover],
-      ['SHORT BUILDUP', counts.short], ['LONG UNWINDING', counts.unwind]
-    ];
-    vals.forEach((v,i) => {
-      const cell = cells[i]; if (!cell) return;
-      setText(cell.querySelector('strong'), v[0]);
-      setText(cell.querySelector('span'), `${v[1]} signals near ATM`);
-      cell.dataset.state = v[0].toLowerCase().replace(/ /g,'-');
-    });
-    const note = root.querySelector('.sp-matrix-note');
-    if (note) note.textContent = `Near-ATM scan: ${near.length} strikes • Spot ${fmt(spot,2)} • ATM ${atm ? fmt(atm.strike) : '--'}`;
-  }
-
-  function renderWalls(rows, spot) {
-    const root = page(); if (!root) return;
-    const call = top(rows, 'ce', 'oi', 2), put = top(rows, 'pe', 'oi', 2);
-    const levels = root.querySelectorAll('.sp-wall-level');
-    const values = [
-      call[0] ? `CALL WALL • ${fmt(call[0].strike)} • ${fmt(call[0].ce.oi)}` : 'CALL WALL • --',
-      put[0] ? `PUT WALL • ${fmt(put[0].strike)} • ${fmt(put[0].pe.oi)}` : 'PUT WALL • --'
-    ];
-    levels.forEach((e,i) => setText(e, values[i] || ''));
-    const atm = nearestATM(rows, spot);
-    root.querySelectorAll('.sp-wall-label').forEach(e => e.textContent = `ATM ${atm ? fmt(atm.strike) : '--'}`);
-    const line = root.querySelector('.sp-wall-line');
-    if (line && call[0] && put[0]) {
-      const lo = Math.min(call[0].strike, put[0].strike), hi = Math.max(call[0].strike, put[0].strike);
-      const pos = hi === lo ? 50 : ((spot - lo) / (hi - lo)) * 100;
-      line.style.setProperty('--sp-wall-pos', Math.max(5, Math.min(95, pos)) + '%');
-    }
-  }
-
-  function renderShift(rows, spot) {
-    const root = page(); if (!root) return;
-    const atm = nearestATM(rows, spot);
-    const near = atm ? rows.filter(r => Math.abs(r.strike - atm.strike) <= Math.max(150, Math.abs(rows[1]?.strike - rows[0]?.strike || 50) * 4)) : rows;
-    let ce = 0, pe = 0;
-    near.forEach(r => { ce += r.ce.oiChange || 0; pe += r.pe.oiChange || 0; });
-    const total = Math.abs(ce) + Math.abs(pe) || 1;
-    const callShare = Math.round(Math.abs(ce) / total * 100), putShare = 100 - callShare;
-    const meter = root.querySelector('.sp-shift-meter');
-    if (meter) meter.style.setProperty('--sp-shift', callShare + '%');
-    setMany(root.querySelectorAll('.sp-shift-copy strong'), [callShare + '% CE', putShare + '% PE']);
-    setText(root.querySelector('.sp-shift-copy p'), `${fmt(ce)} Call OI change vs ${fmt(pe)} Put OI change across the near-ATM zone.`);
-  }
-
-  function renderActivity(rows, spot) {
-    const root = page(); if (!root) return;
-    const atm = nearestATM(rows, spot);
-    const near = atm ? rows.filter(r => Math.abs(r.strike - atm.strike) <= Math.max(200, Math.abs(rows[1]?.strike - rows[0]?.strike || 50) * 5)) : rows;
-    const events = [];
-    near.forEach(r => {
-      ['ce','pe'].forEach(side => {
-        const x = r[side];
-        if (x.oiChange === null || x.oiChange === 0) return;
-        const c = classify(x.change, x.oiChange);
-        events.push({ side:side.toUpperCase(), strike:r.strike, change:x.oiChange, type:c.label, abs:Math.abs(x.oiChange) });
-      });
-    });
-    events.sort((a,b) => b.abs - a.abs);
-    const items = root.querySelectorAll('.sp-activity-item');
-    items.forEach((e,i) => {
-      const a = events[i];
-      if (!a) { setText(e, 'No fresh activity detected'); return; }
-      e.innerHTML = `<strong>${esc(a.side)} ${esc(fmt(a.strike))}</strong><span>${esc(a.type)}</span><em>${esc(a.change > 0 ? '+' : '')}${esc(fmt(a.change))} OI</em>`;
-    });
-  }
-
-  function renderPressure(rows, spot) {
-    const root = page(); if (!root) return;
-    const atm = nearestATM(rows, spot);
-    const near = atm ? rows.filter(r => Math.abs(r.strike - atm.strike) <= Math.max(250, Math.abs(rows[1]?.strike - rows[0]?.strike || 50) * 6)) : rows;
-    const ranked = near.map(r => ({
-      strike:r.strike,
-      ce:Math.abs(r.ce.oiChange || 0),
-      pe:Math.abs(r.pe.oiChange || 0),
-      net:(r.pe.oiChange || 0) - (r.ce.oiChange || 0)
-    })).sort((a,b) => Math.abs(b.net) - Math.abs(a.net)).slice(0,5);
-    const rowsEl = root.querySelectorAll('.sp-pressure-row');
-    rowsEl.forEach((e,i) => {
-      const r = ranked[i];
-      if (!r) return;
-      setMany(e.querySelectorAll('strong'), [fmt(r.strike), r.net >= 0 ? 'PUT OI PRESSURE' : 'CALL OI PRESSURE']);
-      const bar = e.querySelector('.sp-pressure-chart span');
-      if (bar) bar.style.width = Math.min(100, Math.max(8, Math.abs(r.net) / Math.max(1, Math.max(...ranked.map(x => Math.abs(x.net)))) * 100)) + '%';
-    });
-  }
-
-  function renderAnomalies(rows) {
-    const root = page(); if (!root) return;
-    const events = [];
-    rows.forEach(r => ['ce','pe'].forEach(side => {
-      const x = r[side];
-      if (x.volume !== null && x.oiChange !== null) {
-        const ratio = Math.abs(x.oiChange) / Math.max(1, x.oi || 1);
-        const intensity = x.volume / Math.max(1, Math.abs(x.oiChange));
-        if (ratio > 0.08 || intensity > 5) events.push({strike:r.strike,side:side.toUpperCase(),ratio,intensity,oi:x.oiChange,volume:x.volume});
-      }
-    }));
-    events.sort((a,b) => (b.ratio + b.intensity/10) - (a.ratio + a.intensity/10));
-    root.querySelectorAll('.sp-anomaly-card').forEach((e,i) => {
-      const a = events[i];
-      if (!a) return;
-      setText(e.querySelector('strong'), `${a.side} ${fmt(a.strike)} • ACTIVITY SPIKE`);
-      setText(e.querySelector('p'), `OI change ${a.oi > 0 ? '+' : ''}${fmt(a.oi)} with volume ${fmt(a.volume)}.`);
-    });
-  }
-
-  function renderExpiry(data) {
-    const root = page(); if (!root) return;
-    const exp = data.expiry || (Array.isArray(data.expiries) ? data.expiries[0] : null) || 'LIVE';
-    root.querySelectorAll('.sp-expiry-line').forEach(e => e.textContent = `Expiry • ${exp}`);
-    root.querySelectorAll('.sp-expiry-points').forEach(e => e.textContent = `PCR ${num(data.pcr) !== null ? num(data.pcr).toFixed(2) : '--'} • Max Pain ${fmt(data.maxPain)}`);
-  }
-
-  function renderStory(data, rows, spot) {
-    const root = page(); if (!root) return;
-    const atm = nearestATM(rows, spot);
-    const call = top(rows,'ce','oi',1)[0], put = top(rows,'pe','oi',1)[0];
-    const cb = data.callBehaviour?.state || 'NO DATA', pb = data.putBehaviour?.state || 'NO DATA';
-    const story = [
-      `${symbol} is showing ${cb.toLowerCase()} on the Call side and ${pb.toLowerCase()} on the Put side.`,
-      call ? `Largest Call OI is concentrated near ${fmt(call.strike)}.` : '',
-      put ? `Largest Put OI is concentrated near ${fmt(put.strike)}.` : '',
-      atm ? `The near-ATM positioning scan is centered on ${fmt(atm.strike)}.` : ''
-    ].filter(Boolean).join(' ');
-    const el = root.querySelector('.sp-story p') || root.querySelector('.sp-story');
-    if (el) el.textContent = story;
-  }
-
-  function render(data, rows, spot) {
-    const atm = nearestATM(rows, spot);
-    data.callBehaviour = sideBehaviour(rows,'ce');
-    data.putBehaviour = sideBehaviour(rows,'pe');
-    updateHeader(data, spot, atm);
-    renderBehaviour(rows);
-    renderMatrix(rows, spot);
-    renderWalls(rows, spot);
-    renderShift(rows, spot);
-    renderActivity(rows, spot);
-    renderPressure(rows, spot);
-    renderAnomalies(rows);
-    renderExpiry(data);
-    renderStory(data, rows, spot);
-
-    const root = page();
-    if (!root) return;
-    root.querySelectorAll('.sp-oi-intel-footer').forEach(e => {
-      const updated = data.updated ? new Date(data.updated) : new Date();
-      e.textContent = `Live OI analysis • ${updated.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} IST`;
-    });
-    console.log('[StrikePulse OI] updated', symbol, { rows:rows.length, spot, atm:atm?.strike });
-  }
-
-  async function load() {
-    const root = page();
-    if (!root || busy) return;
-    busy = true;
-    try {
-      const url = `${BASE}/option-chain?symbol=${encodeURIComponent(symbol)}&t=${Date.now()}`;
-      const r = await fetch(url, { cache:'no-store' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const body = await r.json();
-      if (!body || body.success === false) throw new Error(body?.error || 'Option-chain unavailable');
-      const rows = normalizeRows(body);
-      if (!rows.length) throw new Error('No option rows');
-      const d = unwrap(body) || body;
-      const spot = getSpot(body);
-      const data = {
-        ...body,
-        ...d,
-        spot,
-        callOI:num(first(d,['callOI','totalCallOI','totalCEOI','totalCallOpenInterest'])),
-        putOI:num(first(d,['putOI','totalPutOI','totalPEOI','totalPutOpenInterest'])),
-        pcr:num(first(d,['pcr','PCR','putCallRatio'])),
-        maxPain:num(first(d,['maxPain','maxpain','MaxPain','max_pain'])),
-        expiry:first(d,['expiry','selectedExpiry','nextExpiry','next_expiry']),
-        expiries:d.expiries
-      };
-      if (data.callOI === null) data.callOI = rows.reduce((s,r) => s + (r.ce.oi || 0), 0);
-      if (data.putOI === null) data.putOI = rows.reduce((s,r) => s + (r.pe.oi || 0), 0);
-      if (data.pcr === null && data.callOI) data.pcr = data.putOI / data.callOI;
-      if (data.maxPain === null) data.maxPain = null;
-      lastData = data;
-      render(data, rows, spot);
-    } catch (e) {
-      console.error('[StrikePulse OI] data error:', e.message);
-    } finally {
-      busy = false;
-    }
-  }
-
-  function bindSymbols() {
-    const root = page(); if (!root) return;
-    root.querySelectorAll('.sp-oi-market-switch button,[data-oi-symbol]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const s = btn.dataset.symbol || btn.dataset.oiSymbol || btn.textContent.trim().toUpperCase().replace(/\s+/g,'');
-        const map = { 'NIFTY':'NIFTY', 'BANKNIFTY':'BANKNIFTY', 'FINNIFTY':'FINNIFTY', 'MIDCAP':'MIDCPNIFTY', 'SENSEX':'SENSEX', 'BANKNIFTYINDEX':'BANKNIFTY' };
-        symbol = map[s] || s;
-        root.querySelectorAll('.sp-oi-market-switch button').forEach(x => x.classList.toggle('active', x === btn));
-        load();
-      });
-    });
-  }
-
-  function start() {
-    if (!page()) return;
-    bindSymbols();
-    load();
-    setInterval(load, INTERVAL);
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
-  else start();
+  async function load(){if(loading||!root())return;loading=true;try{const res=await fetch(`${BASE}/option-chain?symbol=${encodeURIComponent(symbol)}&_=${Date.now()}`,{cache:'no-store'});const body=await res.json();if(!res.ok||body?.success===false)throw Error(body?.error||body?.message||`HTTP ${res.status}`);render(calc(normalize(body)));console.log(`[OI Analysis] ${symbol}: live values loaded`)}catch(e){console.error('[OI Analysis] load failed:',e);document.documentElement.dataset.spOiReady='0'}finally{loading=false}}
+  function bind(){const r=root();if(!r)return;$$('.sp-oi-market-switch button,.sp-oi-market-switch [data-symbol],[data-oi-symbol]',r).forEach(t=>{if(t.dataset.spOiBound)return;t.dataset.spOiBound='1';t.addEventListener('click',()=>{const v=String(t.dataset.symbol||t.dataset.oiSymbol||t.textContent||'').toUpperCase();symbol=v.includes('BANK')?'BANKNIFTY':v.includes('FIN')?'FINNIFTY':v.includes('MID')?'MIDCPNIFTY':v.includes('SENSEX')?'SENSEX':'NIFTY';load()})})}
+  function start(){if(!root())return setTimeout(start,300);bind();load();clearInterval(timer);timer=setInterval(()=>{bind();load()},REFRESH_MS)}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
