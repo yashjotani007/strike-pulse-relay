@@ -172,13 +172,18 @@ async function intelligence() {
   return last;
 }
 
-// Expose the exact handler to the isolated middleware below. No existing route is changed.
 global.__SP_MARKET_INTELLIGENCE_HANDLER__ = intelligence;
 
-// Register an early middleware so the endpoint wins even if the original server has a catch-all route.
 express.application.use = function(...args) {
   const middleware = async function(req, res, next) {
     if (req?.path === '/api/market-intelligence' || req?.originalUrl?.split('?')[0] === '/api/market-intelligence') {
+      // This middleware runs before the original server's CORS middleware,
+      // so the isolated endpoint must provide its own CORS headers.
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      if (req.method === 'OPTIONS') return res.sendStatus(204);
       try { return res.json(await intelligence()); }
       catch (e) { return res.status(502).json({ success: false, error: e.message, source: 'strike-pulse-market-intelligence' }); }
     }
