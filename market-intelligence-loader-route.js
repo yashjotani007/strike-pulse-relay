@@ -9,7 +9,6 @@ const LOADER = String.raw`(function(){
 if(window.__SP_MARKET_INTELLIGENCE_LOADER__)return;
 window.__SP_MARKET_INTELLIGENCE_LOADER__=true;
 var API=(window.STRIKE_PULSE_API||'https://strike-pulse-relay.onrender.com').replace(/\/$/,'');
-function esc(v){return String(v==null?'':v).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}
 function num(v){var n=Number(v);return Number.isFinite(n)?n:null}
 function fmt(v){var n=num(v);return n==null?'—':n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function pct(v){var n=num(v);return n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%'}
@@ -41,8 +40,12 @@ function update(d){
   var gauge=document.querySelector('.spmi-vix-track span');if(gauge)gauge.style.width=vixGauge(i.vix&&i.vix.price)+'%';
   var vb=document.querySelector('.spmi-vol-badge');if(vb)vb.textContent=volatilityLabel(i.vix).toUpperCase();
   var session=d.market&&d.market.session||'UNKNOWN';
-  var ss=document.getElementById('spmi-session-status');if(ss)ss.textContent=session==='LIVE'?'LIVE SESSION':session==='PRE-OPEN'?'PRE-OPEN':'MARKET CLOSED';
-  var chip=page.querySelector('.spmi-snapshot .spmi-chip');if(chip)chip.textContent=session==='LIVE'?'LIVE':session;
+  var isClosed=session==='CLOSED';
+  var sessionText=isClosed?'MARKET CLOSED':session==='LIVE'?'LIVE SESSION':session==='PRE-OPEN'?'PRE-OPEN':'MARKET CLOSED';
+  var liveText=isClosed?'CLOSED':session==='PRE-OPEN'?'PRE-OPEN':'LIVE';
+  var ss=document.getElementById('spmi-session-status');if(ss)ss.textContent=sessionText;
+  var chip=page.querySelector('.spmi-snapshot .spmi-chip');if(chip)chip.textContent=liveText;
+  page.querySelectorAll('.spmi-live, [data-market-status="live"]').forEach(function(el){el.textContent=liveText;});
   console.log('[Strike Pulse] existing Market Intelligence updated',d);
   return true;
 }
