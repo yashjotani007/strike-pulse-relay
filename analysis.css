@@ -159,3 +159,243 @@
 @media(max-width:480px){.sp-analysis-shell{width:calc(100% - 12px)}.sp-analysis-hero{padding:24px 17px}.sp-hero-content h1{font-size:42px}.sp-hero-content p{font-size:12px}.sp-data-chip{flex:1;justify-content:center}.sp-analysis-section{margin-top:43px}.sp-index-grid,.sp-driver-grid,.sp-two-column,.sp-oi-grid{gap:10px}.sp-index-card,.sp-driver-card,.sp-analysis-panel,.sp-oi-card{border-radius:18px}.sp-section-heading h2,.sp-panel-head h2,.sp-summary-content h2{font-size:23px}.sp-regime-card{padding:25px 18px}.sp-regime-orbit{width:170px;height:170px}.sp-regime-content h3{font-size:27px}.sp-regime-content p{font-size:12px}.sp-regime-center{width:108px;height:108px}.sp-regime-center strong{font-size:34px}.sp-vix-layout{display:block}.sp-vix-ring{margin:22px auto 0}.sp-oi-card{padding:18px}.sp-oi-card strong{font-size:21px}.sp-matrix td,.sp-matrix th{padding:13px}.sp-breadth-chart{height:165px}}
 
 @media(prefers-reduced-motion:reduce){.sp-analysis-page *,.sp-analysis-page *:before,.sp-analysis-page *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ============================================================
+   STRIKE PULSE — ADVANCED MOTION LAYER
+   Visual-only enhancement. No HTML / JS / data changes.
+   ============================================================ */
+
+@keyframes spAurora{0%,100%{transform:translate3d(-2%,0,0) scale(1);opacity:.55}50%{transform:translate3d(3%,2%,0) scale(1.08);opacity:.9}}
+@keyframes spBorderFlow{0%{background-position:0 50%}100%{background-position:200% 50%}}
+@keyframes spScan{0%{transform:translateY(-120%) rotate(8deg);opacity:0}15%{opacity:.45}55%{opacity:.18}100%{transform:translateY(120%) rotate(8deg);opacity:0}}
+@keyframes spOrbitPulse{0%,100%{box-shadow:0 0 0 0 rgba(22,119,255,.12),0 0 34px rgba(22,119,255,.12)}50%{box-shadow:0 0 0 15px rgba(22,119,255,0),0 0 65px rgba(22,119,255,.25)}}
+@keyframes spCenterBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+@keyframes spDotTravel{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes spWaveMove{0%{transform:translateX(-4%) rotate(-3deg)}50%{transform:translateX(4%) rotate(3deg)}100%{transform:translateX(-4%) rotate(-3deg)}}
+@keyframes spCardLift{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes spProgressGlow{0%,100%{filter:brightness(1);box-shadow:0 0 10px rgba(22,119,255,.15)}50%{filter:brightness(1.15);box-shadow:0 0 22px rgba(22,119,255,.35)}}
+
+/* ambient page atmosphere */
+.sp-analysis-page:before{
+  content:"";
+  position:fixed;
+  z-index:0;
+  width:42vw;
+  height:42vw;
+  min-width:280px;
+  min-height:280px;
+  left:-16vw;
+  top:28vh;
+  border-radius:50%;
+  pointer-events:none;
+  background:radial-gradient(circle,rgba(61,164,255,.065),transparent 68%);
+  filter:blur(12px);
+  animation:spAurora 13s ease-in-out infinite;
+}
+.sp-analysis-page:after{
+  content:"";
+  position:fixed;
+  z-index:0;
+  width:38vw;
+  height:38vw;
+  min-width:260px;
+  min-height:260px;
+  right:-14vw;
+  top:58vh;
+  border-radius:50%;
+  pointer-events:none;
+  background:radial-gradient(circle,rgba(22,119,255,.055),transparent 68%);
+  filter:blur(14px);
+  animation:spAurora 16s ease-in-out infinite reverse;
+}
+.sp-analysis-shell{position:relative;z-index:1}
+
+/* hero becomes a living glass surface */
+.sp-analysis-hero{transform:translateZ(0);transition:transform .5s cubic-bezier(.22,1,.36,1),box-shadow .5s ease,border-color .5s ease}
+.sp-analysis-hero:hover{transform:translateY(-2px);border-color:rgba(22,119,255,.20);box-shadow:0 32px 90px rgba(25,65,105,.12),0 0 0 1px rgba(61,164,255,.035)}
+.sp-analysis-hero:after{animation:spDrift 7s ease-in-out infinite,spAurora 11s ease-in-out infinite}
+
+/* stronger interactive cards */
+.sp-index-card,.sp-driver-card,.sp-analysis-panel,.sp-oi-card,.sp-signals-panel,.sp-matrix-wrap,.sp-summary-card{transform:translateZ(0);will-change:transform}
+.sp-index-card:after,.sp-driver-card:after,.sp-analysis-panel:after,.sp-oi-card:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:0;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.52) 48%,transparent 66%);
+  background-size:240% 100%;
+  transition:opacity .35s ease;
+}
+.sp-index-card:hover:after,.sp-driver-card:hover:after,.sp-analysis-panel:hover:after,.sp-oi-card:hover:after{opacity:1;animation:spShimmer 1.15s ease forwards}
+.sp-index-card:hover,.sp-driver-card:hover,.sp-analysis-panel:hover,.sp-oi-card:hover{transform:translateY(-9px) scale(1.008)}
+
+/* ============================================================
+   SCORE CARD — ORBITAL HUD / LIVE MARKET PULSE
+   ============================================================ */
+.sp-regime-card{
+  isolation:isolate;
+  background:
+    radial-gradient(circle at 16% 50%,rgba(139,212,255,.13),transparent 28%),
+    radial-gradient(circle at 84% 15%,rgba(22,119,255,.10),transparent 30%),
+    linear-gradient(145deg,#ffffff 0%,#f8fbff 52%,#edf6ff 100%);
+  border-color:rgba(22,119,255,.14);
+  box-shadow:0 28px 80px rgba(25,65,105,.12),0 0 0 1px rgba(255,255,255,.7) inset;
+  transition:transform .5s cubic-bezier(.22,1,.36,1),box-shadow .5s ease,border-color .5s ease;
+}
+.sp-regime-card:hover{transform:translateY(-5px);border-color:rgba(22,119,255,.25);box-shadow:0 38px 100px rgba(25,65,105,.16),0 0 55px rgba(22,119,255,.08)}
+.sp-regime-card:before{inset:-35% auto auto 24%;width:620px;height:620px;opacity:.8;animation:spAurora 10s ease-in-out infinite}
+.sp-regime-card:after{width:520px;height:520px;right:-170px;bottom:-260px;animation:spAurora 13s ease-in-out infinite reverse}
+
+/* animated scanning light across the entire score module */
+.sp-regime-card .sp-regime-orbit:after{
+  content:"";
+  position:absolute;
+  z-index:3;
+  left:-28%;
+  top:-30%;
+  width:156%;
+  height:26%;
+  border-radius:999px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);
+  filter:blur(4px);
+  transform:rotate(8deg);
+  pointer-events:none;
+  animation:spScan 4.8s ease-in-out infinite;
+}
+
+/* score ring: layered halo + slow energy pulse */
+.sp-regime-orbit{
+  width:224px;
+  height:224px;
+  background:
+    conic-gradient(from -35deg,#dff4ff 0deg,#62bcff 52deg,#1677ff 132deg,#3da4ff 164deg,#e7f3ff 168deg,#f7fbff 360deg);
+  box-shadow:
+    0 0 0 7px rgba(255,255,255,.88),
+    0 0 0 10px rgba(22,119,255,.035),
+    0 0 38px rgba(22,119,255,.17),
+    0 0 85px rgba(61,164,255,.10),
+    inset 0 0 30px rgba(255,255,255,.82);
+  animation:spFloat 5s ease-in-out infinite,spOrbitPulse 3.8s ease-in-out infinite;
+}
+.sp-regime-orbit:before{
+  inset:13px;
+  background:
+    radial-gradient(circle at 30% 20%,rgba(255,255,255,1),rgba(249,252,255,.98) 50%,rgba(233,243,255,.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(22,119,255,.09),
+    inset 0 0 35px rgba(22,119,255,.055),
+    0 0 25px rgba(255,255,255,.9);
+}
+
+/* extra concentric HUD ring using the existing orbit element */
+.sp-orbit-ring{
+  inset:-18px;
+  border:1px solid rgba(61,164,255,.22);
+  border-top-color:rgba(22,119,255,.75);
+  border-right-color:rgba(61,164,255,.38);
+  border-bottom-color:rgba(139,212,255,.18);
+  border-left-color:transparent;
+  box-shadow:0 0 18px rgba(22,119,255,.08),inset 0 0 18px rgba(22,119,255,.025);
+  animation:spSpin 12s linear infinite;
+}
+.sp-orbit-ring:before{width:10px;height:10px;top:9px;left:50%;background:#1677ff;box-shadow:0 0 0 4px rgba(22,119,255,.10),0 0 12px rgba(22,119,255,.95),0 0 28px rgba(22,119,255,.45);animation:spPulse 1.8s ease-in-out infinite}
+.sp-orbit-ring:after{width:8px;height:8px;right:19px;bottom:22px;background:#55b5ff;box-shadow:0 0 0 4px rgba(61,164,255,.08),0 0 12px rgba(61,164,255,.9),0 0 25px rgba(61,164,255,.42);animation:spPulse 2.2s ease-in-out infinite .4s}
+
+/* score center gets a soft heartbeat without moving the score text */
+.sp-regime-center{
+  width:132px;
+  height:132px;
+  background:
+    radial-gradient(circle at 35% 22%,#ffffff 0%,#ffffff 48%,#f1f7ff 100%);
+  border:2px solid rgba(255,255,255,.98);
+  box-shadow:
+    0 0 0 1px rgba(22,119,255,.10),
+    0 0 0 7px rgba(22,119,255,.025),
+    0 17px 40px rgba(30,70,110,.15),
+    inset 0 2px 5px #fff,
+    inset 0 -8px 18px rgba(22,119,255,.035);
+  animation:spCenterBreath 4s ease-in-out infinite;
+}
+.sp-regime-center:before{
+  content:"";
+  position:absolute;
+  inset:-9px;
+  border-radius:50%;
+  border:1px solid rgba(22,119,255,.10);
+  box-shadow:0 0 22px rgba(22,119,255,.06);
+  animation:spOrbitPulse 3.6s ease-in-out infinite reverse;
+  pointer-events:none;
+}
+.sp-regime-center strong{
+  color:#0b4f9f!important;
+  font-size:44px;
+  text-shadow:0 4px 13px rgba(22,119,255,.16),0 0 24px rgba(61,164,255,.10);
+}
+.sp-regime-center span{color:#4d739a!important;letter-spacing:.24em}
+
+/* tiny live label above score area if an existing small label is present */
+.sp-regime-content .sp-small-label{display:inline-flex;align-items:center;gap:8px}
+.sp-regime-content .sp-small-label:before{content:"";width:6px;height:6px;border-radius:50%;background:#16bd79;box-shadow:0 0 0 4px rgba(22,189,121,.10),0 0 13px rgba(22,189,121,.55);animation:spPulse 1.8s ease-in-out infinite}
+
+/* market meter becomes a live signal track */
+.sp-meter-track{
+  height:10px;
+  overflow:visible;
+  background:linear-gradient(90deg,#e45770 0%,#c6b4b8 48%,#18a873 100%);
+  box-shadow:inset 0 1px 3px rgba(15,23,42,.13),0 4px 15px rgba(22,119,255,.07);
+}
+.sp-meter-fill{position:relative;overflow:hidden}
+.sp-meter-fill:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent);
+  background-size:180% 100%;
+  animation:spShimmer 2.4s linear infinite;
+}
+.sp-meter-dot{
+  width:20px;
+  height:20px;
+  background:radial-gradient(circle at 35% 30%,#8bd4ff,#1677ff 58%,#0b5ecf 100%);
+  box-shadow:0 0 0 4px rgba(255,255,255,.92),0 0 0 7px rgba(22,119,255,.10),0 0 24px rgba(22,119,255,.58);
+  animation:spPulse 2.1s ease-in-out infinite;
+}
+
+/* driver/progress sections breathe subtly */
+.sp-progress-fill{animation:spProgressGlow 2.8s ease-in-out infinite}
+.sp-card-wave{animation:spWaveMove 6s ease-in-out infinite}
+.sp-index-card:nth-child(2),.sp-driver-card:nth-child(2),.sp-oi-card:nth-child(2){animation:spCardLift 5.2s ease-in-out infinite .5s}
+.sp-index-card:nth-child(3),.sp-driver-card:nth-child(3),.sp-oi-card:nth-child(3){animation:spCardLift 5.8s ease-in-out infinite 1s}
+
+/* matrix rows feel responsive */
+.sp-matrix tbody tr{transition:background .25s ease,transform .25s ease,box-shadow .25s ease}
+.sp-matrix tbody tr:hover{transform:translateX(4px);box-shadow:inset 3px 0 0 #3da4ff}
+
+/* VIX ring gets a subtle data-pulse */
+.sp-vix-ring{box-shadow:0 12px 30px rgba(22,119,255,.12),0 0 30px rgba(22,119,255,.05);animation:spFloat 5s ease-in-out infinite,spOrbitPulse 4.5s ease-in-out infinite}
+
+/* summary card has moving light + lift */
+.sp-summary-card{transition:transform .45s cubic-bezier(.22,1,.36,1),box-shadow .45s ease}
+.sp-summary-card:hover{transform:translateY(-5px);box-shadow:0 34px 85px rgba(8,20,38,.20),0 0 45px rgba(61,164,255,.10)}
+
+/* mobile score remains dramatic but compact */
+@media(max-width:760px){
+  .sp-regime-orbit{width:194px;height:194px}
+  .sp-regime-center{width:120px;height:120px}
+  .sp-regime-center strong{font-size:40px}
+  .sp-regime-card:hover{transform:translateY(-3px)}
+}
+@media(max-width:480px){
+  .sp-regime-orbit{width:184px;height:184px}
+  .sp-regime-center{width:114px;height:114px}
+  .sp-regime-center strong{font-size:37px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .sp-analysis-page:before,.sp-analysis-page:after,
+  .sp-analysis-page .sp-regime-card,.sp-analysis-page .sp-regime-orbit,
+  .sp-analysis-page .sp-regime-center,.sp-analysis-page .sp-orbit-ring,
+  .sp-analysis-page .sp-meter-dot,.sp-analysis-page .sp-progress-fill,
+  .sp-analysis-page .sp-card-wave{animation:none!important}
+}
