@@ -4,6 +4,30 @@
 if(window.__StrikePulseAnalysisLoaded)return;
 window.__StrikePulseAnalysisLoaded=true;
 
+/* Analysis-only text visibility fix. It does not modify any other page. */
+(function(){
+  const id='sp-analysis-text-visibility-fix';
+  if(document.getElementById(id))return;
+  const css=`
+    .sp-analysis-page .sp-regime-card,
+    .sp-analysis-page .sp-regime-card *{color-scheme:dark}
+    .sp-analysis-page .sp-regime-content h3,
+    .sp-analysis-page #analysis-regime{color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;text-shadow:0 1px 10px rgba(0,0,0,.18)}
+    .sp-analysis-page #analysis-score,
+    .sp-analysis-page #analysis-pressure-label{color:#ffffff !important;-webkit-text-fill-color:#ffffff !important}
+    .sp-analysis-page #analysis-regime-text{color:#d7e5f3 !important;-webkit-text-fill-color:#d7e5f3 !important}
+    .sp-analysis-page .sp-regime-content .sp-small-label{color:#79baff !important;-webkit-text-fill-color:#79baff !important}
+    .sp-analysis-page .sp-meter-labels{color:#b9cce0 !important}
+    .sp-analysis-page .sp-meter-labels span:nth-child(2){color:#ffffff !important}
+    .sp-analysis-page .sp-regime-center strong{color:#ffffff !important;-webkit-text-fill-color:#ffffff !important}
+    .sp-analysis-page .sp-regime-center span{color:#9fc0df !important;-webkit-text-fill-color:#9fc0df !important}
+  `;
+  const style=document.createElement('style');
+  style.id=id;
+  style.textContent=css;
+  (document.head||document.documentElement).appendChild(style);
+})();
+
 const API='https://strike-pulse-relay.onrender.com/api';
 const $=id=>document.getElementById(id);
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
@@ -51,7 +75,6 @@ function render(d){
  const signals=Array.isArray(d.signals)?d.signals:[];const box=$('analysis-signals');if(box){box.innerHTML=signals.length?signals.map(s=>'<div class="sp-signal-item"><span class="sp-signal-indicator"></span><span>'+String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))+'</span></div>').join(''):'<div class="sp-signal-item"><span class="sp-signal-indicator"></span><span>No new market signal is available.</span></div>'}
  set('analysis-summary',signals.length?signals.join('. ')+'.':'Current market intelligence is available; monitor the latest index, breadth and volatility readings.');
 
- // Option-chain metrics are populated separately when the existing API responds.
  loadOptionChain();
 }
 
@@ -65,10 +88,7 @@ async function loadOptionChain(){
   set('analysis-put-oi',num(d.putOI)!=null?Number(d.putOI).toLocaleString('en-IN'):'--');
   set('analysis-pcr',num(d.pcr)!=null?Number(d.pcr).toFixed(2):'--');
   set('analysis-max-pain',num(d.maxPain)!=null?Number(d.maxPain).toLocaleString('en-IN'):'--');
- }catch(e){
-  // Keep placeholders rather than inventing option-chain values.
-  console.warn('[StrikePulse Analysis] Option-chain metrics unavailable:',e.message);
- }
+ }catch(e){console.warn('[StrikePulse Analysis] Option-chain metrics unavailable:',e.message)}
 }
 
 async function load(){
