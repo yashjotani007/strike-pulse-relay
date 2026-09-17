@@ -1,22 +1,59 @@
 'use strict';
 const express = require('express');
 
-// One self-contained browser loader: CSS + UI + API logic are all returned here.
+// Single-file Market Intelligence data loader.
+// It ONLY updates the existing .spmi-* Market page HTML. It does not create new cards,
+// does not inject a duplicate UI, and does not modify option-chain routes.
 const LOADER = String.raw`(function(){
 'use strict';
 if(window.__SP_MARKET_INTELLIGENCE_LOADER__)return;
 window.__SP_MARKET_INTELLIGENCE_LOADER__=true;
 var API=(window.STRIKE_PULSE_API||'https://strike-pulse-relay.onrender.com').replace(/\/$/,'');
-var css='.sp-mi{width:100%;max-width:1540px;margin:24px auto;padding:22px;box-sizing:border-box;border-radius:20px;background:#0b1328;color:#fff;font-family:inherit;box-shadow:0 18px 45px rgba(2,8,23,.22)}.sp-mi *{box-sizing:border-box}.sp-mi-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}.sp-mi-title{font-size:25px;font-weight:850}.sp-mi-sub{margin-top:5px;color:#8fa2bd;font-size:13px}.sp-mi-status{padding:7px 11px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:1px;background:rgba(255,255,255,.08);color:#b8c5d8}.sp-mi-status.live{color:#4ade80;background:rgba(25,135,84,.12)}.sp-mi-status.closed{color:#ff7185;background:rgba(220,53,69,.10)}.sp-mi-regime{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(13,110,253,.3);border-radius:18px;background:linear-gradient(145deg,#101d38,#0a1730)}.sp-mi-regime-label{font-size:11px;color:#8fa2bd;text-transform:uppercase;letter-spacing:1.2px}.sp-mi-regime-value{margin-top:4px;font-size:24px;font-weight:900}.sp-mi-score{font-size:13px;color:#b8c5d8}.sp-mi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}.sp-mi-card{position:relative;overflow:hidden;min-height:190px;padding:22px;border-radius:18px;background:linear-gradient(145deg,#0b1328,#101d38);border:1px solid rgba(13,110,253,.3);box-shadow:0 14px 35px rgba(2,8,23,.24)}.sp-mi-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:#0d6efd}.sp-mi-card.positive:after{background:#20c997}.sp-mi-card.negative:after{background:#dc3545}.sp-mi-name{font-size:15px;font-weight:850;letter-spacing:.7px}.sp-mi-price{margin-top:24px;font-size:30px;line-height:1;font-weight:900;white-space:nowrap}.sp-mi-change{display:inline-block;margin-top:10px;padding:5px 9px;border-radius:7px;background:rgba(255,255,255,.07);font-size:13px;font-weight:850}.sp-mi-card.positive .sp-mi-change{color:#4ade80}.sp-mi-card.negative .sp-mi-change{color:#ff7185}.sp-mi-card.neutral .sp-mi-change{color:#cbd5e1}.sp-mi-momentum{margin-top:12px;color:#8fa2bd;font-size:10px;font-weight:800;letter-spacing:.8px}.sp-mi-breadth{margin-top:16px;padding:13px 16px;border-radius:12px;background:#0b1328;color:#b8c5d8;font-size:13px}.sp-mi-signals{margin-top:14px;padding:16px;border-radius:14px;background:#0b1328;border:1px solid rgba(255,255,255,.07)}.sp-mi-signals-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}.sp-mi-signal{padding:5px 0;color:#dbe7f5;font-size:13px}.sp-mi-foot{margin-top:12px;color:#71839d;font-size:10px}@media(max-width:1100px){.sp-mi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.sp-mi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.sp-mi-card{min-height:165px;padding:17px}.sp-mi-price{font-size:25px}.sp-mi-title{font-size:21px}}@media(max-width:450px){.sp-mi-grid{grid-template-columns:1fr}.sp-mi-head{flex-direction:column}.sp-mi-regime{align-items:flex-start;flex-direction:column}}';
-function addCss(){if(document.getElementById('sp-mi-inline-css'))return;var s=document.createElement('style');s.id='sp-mi-inline-css';s.textContent=css;document.head.appendChild(s)}
 function esc(v){return String(v==null?'':v).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}
-function fmt(v){return Number.isFinite(Number(v))?Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}):'—'}
-function pct(v){if(!Number.isFinite(Number(v)))return '—';var n=Number(v);return(n>=0?'+':'')+n.toFixed(2)+'%'}
-function cls(v){return /BULLISH/.test(v)?'positive':/BEARISH/.test(v)?'negative':'neutral'}
-function root(){var e=document.getElementById('sp-market-intelligence');if(e)return e;e=document.createElement('section');e.id='sp-market-intelligence';e.className='sp-mi';(document.querySelector('main')||document.querySelector('.site-main')||document.body).prepend(e);return e}
-function render(d){var e=root(),r=d.regime||{},i=d.indices||{},b=d.breadth||{},a=[['nifty','NIFTY'],['banknifty','BANK NIFTY'],['finnifty','FIN NIFTY'],['sensex','SENSEX'],['vix','INDIA VIX']],cards='';a.forEach(function(q){var x=i[q[0]]||{},z=x.direction||'UNKNOWN';cards+='<div class="sp-mi-card '+cls(z)+'"><div class="sp-mi-name">'+q[1]+'</div><div class="sp-mi-price">'+fmt(x.price)+'</div><div class="sp-mi-change">'+pct(x.change)+'</div><div class="sp-mi-momentum">'+esc(String(z).replace(/_/g,' '))+'</div></div>'});var sig=Array.isArray(d.signals)?d.signals:[],session=d.market&&d.market.session||'UNKNOWN',bt=Number.isFinite(Number(b.advances))?'Adv '+b.advances+' · Dec '+b.declines+' · Unch '+b.unchanged:'NIFTY 50 breadth unavailable';e.innerHTML='<div class="sp-mi-head"><div><div class="sp-mi-title">Market Intelligence</div><div class="sp-mi-sub">Cross-index momentum, breadth & volatility regime</div></div><div class="sp-mi-status '+(session==='LIVE'?'live':'closed')+'">'+esc(session)+'</div></div><div class="sp-mi-regime"><div><div class="sp-mi-regime-label">Overall Market Regime</div><div class="sp-mi-regime-value">'+esc(r.label||'UNKNOWN')+'</div></div><div class="sp-mi-score">Score '+fmt(r.score)+'</div></div><div class="sp-mi-grid">'+cards+'</div><div class="sp-mi-breadth">'+bt+'</div><div class="sp-mi-signals"><div class="sp-mi-signals-title">Live Signals</div>'+(sig.length?sig.map(function(x){return '<div class="sp-mi-signal">'+esc(x)+'</div>'}).join(''):'<div class="sp-mi-signal">No additional signals available.</div>')+'</div><div class="sp-mi-foot">Source: '+esc(d.source||'Strike Pulse')+' · Updated '+(d.generatedAt?new Date(d.generatedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—')+'</div>'}
-async function load(){try{var r=await fetch(API+'/api/market-intelligence',{cache:'no-store'}),d=await r.json();if(!r.ok||!d.success)throw Error(d.error||('HTTP '+r.status));render(d);console.log('[Strike Pulse] Market Intelligence loaded',d)}catch(e){console.error('[Strike Pulse] Market Intelligence error',e);root().innerHTML='<div class="sp-mi-title">Market Intelligence</div><div>'+esc(e.message)+'</div>'}}
-function start(){addCss();load();setInterval(load,15000)}
+function num(v){var n=Number(v);return Number.isFinite(n)?n:null}
+function fmt(v){var n=num(v);return n==null?'—':n.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function pct(v){var n=num(v);return n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%'}
+function set(id,value){var e=document.getElementById(id);if(e)e.textContent=value}
+function setChange(id,value){var e=document.getElementById(id);if(!e)return;e.textContent=pct(value);e.classList.remove('spmi-up','spmi-down');var n=num(value);if(n>0)e.classList.add('spmi-up');else if(n<0)e.classList.add('spmi-down')}
+function score100(v){var n=num(v);if(n==null)return 50;return Math.max(0,Math.min(100,(n+100)/2))}
+function momentumLabel(d){var n=num(d&&d.regime&&d.regime.averageChange);if(n==null)return 'Unavailable';return n>0.05?'Positive':n<-0.05?'Negative':'Neutral'}
+function breadthLabel(b){if(!b||num(b.advances)==null)return 'Unavailable';if(num(b.advances)>num(b.declines))return 'Healthy';if(num(b.declines)>num(b.advances))return 'Weak';return 'Balanced'}
+function volatilityLabel(v){var n=num(v&&v.change);if(n==null)return 'Unavailable';if(n>3)return 'Elevated';if(n<-3)return 'Easing';return 'Moderate'}
+function vixGauge(v){var n=num(v);if(n==null)return 30;return Math.max(0,Math.min(100,((n-5)/25)*100))}
+function update(d){
+  var page=document.querySelector('.spmi-page');
+  if(!page)return false;
+  var r=d.regime||{},i=d.indices||{},b=d.breadth||null;
+  var score=score100(r.score),bias=String(r.label||'UNKNOWN');
+  set('spmi-bias',bias);
+  set('spmi-score',Math.round(score));
+  set('spmi-final-bias',bias);
+  set('spmi-final-score',Math.round(score)+'/100');
+  set('spmi-momentum',momentumLabel(d));
+  set('spmi-breadth-state',breadthLabel(b));
+  set('spmi-vol-state',volatilityLabel(i.vix));
+  var pointer=document.getElementById('spmi-meter-pointer'),fill=document.getElementById('spmi-meter-fill');
+  if(pointer)pointer.style.left=score+'%';
+  if(fill)fill.style.width=score+'%';
+  var rows=[['nifty','spmi-nifty'],['banknifty','spmi-banknifty'],['finnifty','spmi-finnifty'],['vix','spmi-vix']];
+  rows.forEach(function(x){var q=i[x[0]]||{};set(x[1],fmt(q.price));var el=document.getElementById(x[1]);if(el&&el.parentElement)setChange(el.parentElement.querySelector('em'),q.change)});
+  set('spmi-vix-big',fmt(i.vix&&i.vix.price));
+  var gauge=document.querySelector('.spmi-vix-track span');if(gauge)gauge.style.width=vixGauge(i.vix&&i.vix.price)+'%';
+  var vb=document.querySelector('.spmi-vol-badge');if(vb)vb.textContent=volatilityLabel(i.vix).toUpperCase();
+  var session=d.market&&d.market.session||'UNKNOWN';
+  var ss=document.getElementById('spmi-session-status');if(ss)ss.textContent=session==='LIVE'?'LIVE SESSION':session==='PRE-OPEN'?'PRE-OPEN':'MARKET CLOSED';
+  var chip=page.querySelector('.spmi-snapshot .spmi-chip');if(chip)chip.textContent=session==='LIVE'?'LIVE':session;
+  console.log('[Strike Pulse] existing Market Intelligence updated',d);
+  return true;
+}
+async function load(){
+  try{
+    var r=await fetch(API+'/api/market-intelligence',{cache:'no-store'}),d=await r.json();
+    if(!r.ok||!d.success)throw Error(d.error||('HTTP '+r.status));
+    if(!update(d))console.warn('[Strike Pulse] .spmi-page not found; no UI created');
+  }catch(e){console.error('[Strike Pulse] Market Intelligence error',e)}
+}
+function start(){load();setInterval(load,15000)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();`;
 
@@ -34,4 +71,4 @@ express.application.use=function(...args){
   }
   return ORIGINAL_USE.call(this,...args);
 };
-console.log('[MARKET INTELLIGENCE] single-file loader route installed');
+console.log('[MARKET INTELLIGENCE] existing-page loader installed');
