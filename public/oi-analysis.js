@@ -12,9 +12,30 @@ function T(x,s){const o=x[s].oiC,p=x[s].ch;if(o==null||p==null)return'NEUTRAL';i
 function oiFlow(rows,s){let up=0,down=0;rows.forEach(x=>{const v=x[s].oiC;if(v!=null){if(v>0)up+=Math.abs(v);if(v<0)down+=Math.abs(v)}});return{up,down}}
 function pct(v,total){return total?Math.round(v/total*100):0}
 function draw(d){const r=R();if(!r||!d.rows.length)throw Error('No option-chain rows');const near=d.rows.filter(x=>d.atm==null||Math.abs(x.strike-d.atm)<=200),ceFlow=oiFlow(near,'ce'),peFlow=oiFlow(near,'pe'),classified=d.rows.filter(x=>T(x,'ce')!=='NEUTRAL'||T(x,'pe')!=='NEUTRAL'),cnt=(s,t)=>classified.filter(x=>T(x,s)===t).length,cw=cnt('ce','WRITING'),cu=cnt('ce','LONG UNWINDING'),pw=cnt('pe','WRITING'),pu=cnt('pe','LONG UNWINDING');let side='BALANCED';if(d.pcr!=null){if(d.pcr>1.05)side='PUT';else if(d.pcr<0.95)side='CALL'}if(Math.abs(peFlow.up-peFlow.down)>Math.max(ceFlow.up,ceFlow.down)*0.15&&peFlow.up>peFlow.down&&peFlow.up>ceFlow.up)side='PUT';if(Math.abs(ceFlow.up-ceFlow.down)>Math.max(peFlow.up,peFlow.down)*0.15&&ceFlow.up>ceFlow.down&&ceFlow.up>peFlow.up)side='CALL';const structure=side==='PUT'?'PUT DOMINANCE':side==='CALL'?'CALL DOMINANCE':'BALANCED STRUCTURE';P('[data-oi-structure]',structure);P('[data-oi-structure-text]',`Spot ${F(d.spot,2)} • ATM ${F(d.atm)} • PCR ${d.pcr==null?'--':d.pcr.toFixed(2)} • Expiry ${d.exp}`);P('[data-oi-strength]',Math.abs((d.pcr||1)-1)>=.2?'HIGH':'MODERATE');P('[data-oi-side]',side);P('[data-oi-activity]',near.length?'ACTIVE':'QUIET');P('[data-oi-score]',Math.min(100,Math.round(Math.max(d.pcr||1,1/(d.pcr||1))*50)));
-  /* Restore live CE/PE OI totals on the orbit badges. */
-  P('.orbit-ce',`CE ${F(d.co)}`);
-  P('.orbit-pe',`PE ${F(d.po)}`);
+  /* Keep the live CE/PE values inside the orbit badges.
+     The change sign alone is color-coded: + = green, - = red. */
+  const orbit=(selector,label,total,change)=>{
+    const e=Q(selector,r);if(!e)return;
+    const n=N(change),sign=n==null?'':n>0?'+':n<0?'-':'';
+    const value=n==null?F(total):F(Math.abs(n));
+    e.innerHTML='<span>'+label+'</span><strong>'+sign+value+'</strong>';
+    e.style.width='74px';
+    e.style.height='74px';
+    e.style.display='flex';
+    e.style.flexDirection='column';
+    e.style.alignItems='center';
+    e.style.justifyContent='center';
+    e.style.gap='2px';
+    e.style.padding='5px';
+    e.style.overflow='hidden';
+    e.style.textAlign='center';
+    e.style.lineHeight='1.05';
+    const l=Q('span',e),v=Q('strong',e);
+    if(l){l.style.fontSize='9px';l.style.fontWeight='900';l.style.color='#1677ff';l.style.whiteSpace='nowrap'}
+    if(v){v.style.fontSize='9px';v.style.fontWeight='900';v.style.color=n==null?'#17385e':n>0?'#16a873':n<0?'#e85b70':'#536b82';v.style.whiteSpace='nowrap'}
+  };
+  orbit('.orbit-ce','CE',d.co,d.cc);
+  orbit('.orbit-pe','PE',d.po,d.pc);
   P('[data-oi-updated]',new Date().toLocaleTimeString('en-IN'));
   const ceTotal=classified.length||d.rows.length,peTotal=classified.length||d.rows.length,ceWriting=pct(cw,ceTotal),ceUnwind=pct(cu,ceTotal),peWriting=pct(pw,peTotal),peUnwind=pct(pu,peTotal);
   [['[data-call-writing]',ceWriting],['[data-call-writing-value]',ceWriting],['[data-call-unwinding]',ceUnwind],['[data-call-unwinding-value]',ceUnwind],['[data-put-writing]',peWriting],['[data-put-writing-value]',peWriting],['[data-put-unwinding]',peUnwind],['[data-put-unwinding-value]',peUnwind]].forEach(x=>P(x[0],x[1]+'%'));
