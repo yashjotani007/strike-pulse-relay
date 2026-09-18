@@ -11,8 +11,30 @@ function parse(b){const r=b?.data&&typeof b.data==='object'&&!Array.isArray(b.da
 function T(x,s){const o=x[s].oiC,p=x[s].ch;if(o==null||p==null)return'NEUTRAL';if(o>0&&p<0)return s==='ce'?'CALL WRITING':'PUT WRITING';if(o<0&&p>0)return s==='ce'?'CALL COVERING':'PUT COVERING';if(o>0&&p>0)return s==='ce'?'LONG BUILDUP':'LONG BUILDUP';if(o<0&&p<0)return'LONG UNWINDING';return'NEUTRAL'}
 function oiFlow(rows,s){let up=0,down=0;rows.forEach(x=>{const v=x[s].oiC;if(v!=null){if(v>0)up+=Math.abs(v);if(v<0)down+=Math.abs(v)}});return{up,down}}
 function pct(v,total){return total?Math.round(v/total*100):0}
-function ensureLoader(){const r=R();if(!r)return null;let l=Q('.sp-oi-loader',r);if(!l){l=document.createElement('div');l.className='sp-oi-loader';l.innerHTML='<div class="sp-oi-loader-box"><i></i><strong>Loading OI Analysis</strong><span>Fetching live option-chain data...</span></div>';r.insertBefore(l,r.firstChild);const st=document.createElement('style');st.textContent='.sp-oi-intel .sp-oi-loader{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(247,250,252,.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:inherit;transition:opacity .25s ease,visibility .25s ease}.sp-oi-intel .sp-oi-loader.is-hidden{opacity:0;visibility:hidden;pointer-events:none}.sp-oi-intel .sp-oi-loader-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px 30px;border:1px solid #e0e9f2;border-radius:18px;background:rgba(255,255,255,.95);box-shadow:0 18px 50px rgba(25,70,110,.12);text-align:center}.sp-oi-intel .sp-oi-loader-box i{width:34px;height:34px;border:3px solid #dce8f5;border-top-color:#1677ff;border-radius:50%;animation:spOiLoaderSpin .8s linear infinite}.sp-oi-intel .sp-oi-loader-box strong{font-size:12px;font-weight:900;color:#102a43}.sp-oi-intel .sp-oi-loader-box span{font-size:10px;font-weight:600;color:#536b82}.sp-oi-intel .sp-oi-loader-box:after{content:"";width:90px;height:3px;border-radius:999px;background:linear-gradient(90deg,transparent,#1677ff,transparent);animation:spOiLoaderShine 1.3s ease-in-out infinite}@keyframes spOiLoaderSpin{to{transform:rotate(360deg)}}@keyframes spOiLoaderShine{0%,100%{opacity:.25;transform:scaleX(.55)}50%{opacity:1;transform:scaleX(1)}}@media(prefers-reduced-motion:reduce){.sp-oi-intel .sp-oi-loader-box i,.sp-oi-intel .sp-oi-loader-box:after{animation:none}}';document.head.appendChild(st)}l.classList.remove('is-hidden');return l}
-function hideLoader(){const r=R();const l=r?Q('.sp-oi-loader',r):null;if(l)l.classList.add('is-hidden')}
+function ensureLoader(){
+  const root=R();
+  if(!root)return null;
+  let l=Q('.sp-oi-loader',root);
+  if(!l){
+    l=document.createElement('div');
+    l.className='sp-oi-loader';
+    l.innerHTML='<div class="sp-oi-loader-box"><div class="sp-oi-loader-ring"></div><strong>Loading OI Analysis</strong><span>Fetching live option-chain data...</span></div>';
+    root.insertBefore(l,root.firstChild);
+    if(!document.getElementById('spOiLoaderStyles')){
+      const st=document.createElement('style');
+      st.id='spOiLoaderStyles';
+      st.textContent='.sp-oi-intel .sp-oi-loader{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:transparent;border-radius:inherit;pointer-events:auto}.sp-oi-intel .sp-oi-loader-box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-width:190px;padding:24px 30px;border:1px solid #e0e9f2;border-radius:18px;background:rgba(255,255,255,.96);box-shadow:0 20px 60px rgba(20,60,100,.16);text-align:center}.sp-oi-intel .sp-oi-loader-ring{width:42px;height:42px;margin-bottom:3px;border:4px solid #dce8f5;border-top-color:#1677ff;border-right-color:#16a873;border-radius:50%;animation:spOiGlobalSpin .8s linear infinite}.sp-oi-intel .sp-oi-loader-box strong{font-size:13px;font-weight:900;color:#102a43}.sp-oi-intel .sp-oi-loader-box span{font-size:10px;font-weight:600;color:#536b82}@keyframes spOiGlobalSpin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(st);
+    }
+  }
+  l.classList.remove('is-hidden');
+  return l;
+}
+function hideLoader(){
+  const root=R();
+  const l=root?Q('.sp-oi-loader',root):null;
+  if(l){l.classList.add('is-hidden');l.style.opacity='0';l.style.visibility='hidden';l.style.pointerEvents='none'}
+}
 function draw(d){const r=R();if(!r||!d.rows.length)throw Error('No option-chain rows');const near=d.rows.filter(x=>d.atm==null||Math.abs(x.strike-d.atm)<=200),ceFlow=oiFlow(near,'ce'),peFlow=oiFlow(near,'pe'),classified=d.rows.filter(x=>T(x,'ce')!=='NEUTRAL'||T(x,'pe')!=='NEUTRAL'),cnt=(s,t)=>classified.filter(x=>T(x,s)===t).length,cw=cnt('ce','WRITING'),cu=cnt('ce','LONG UNWINDING'),pw=cnt('pe','WRITING'),pu=cnt('pe','LONG UNWINDING');let side='BALANCED';if(d.pcr!=null){if(d.pcr>1.05)side='PUT';else if(d.pcr<0.95)side='CALL'}if(Math.abs(peFlow.up-peFlow.down)>Math.max(ceFlow.up,ceFlow.down)*0.15&&peFlow.up>peFlow.down&&peFlow.up>ceFlow.up)side='PUT';if(Math.abs(ceFlow.up-ceFlow.down)>Math.max(peFlow.up,peFlow.down)*0.15&&ceFlow.up>ceFlow.down&&ceFlow.up>peFlow.up)side='CALL';const structure=side==='PUT'?'PUT DOMINANCE':side==='CALL'?'CALL DOMINANCE':'BALANCED STRUCTURE';P('[data-oi-structure]',structure);P('[data-oi-structure-text]',`Spot ${F(d.spot,2)} • ATM ${F(d.atm)} • PCR ${d.pcr==null?'--':d.pcr.toFixed(2)} • Expiry ${d.exp}`);P('[data-oi-strength]',Math.abs((d.pcr||1)-1)>=.2?'HIGH':'MODERATE');P('[data-oi-side]',side);P('[data-oi-activity]',near.length?'ACTIVE':'QUIET');P('[data-oi-score]',Math.min(100,Math.round(Math.max(d.pcr||1,1/(d.pcr||1))*50)));
   /* Keep the live CE/PE values inside the orbit badges.
      The change sign alone is color-coded: + = green, - = red. */
