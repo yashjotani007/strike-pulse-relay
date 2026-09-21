@@ -113,9 +113,10 @@ async function intelligence() {
   if (last && Date.now() - lastAt < 10000) return { ...last, cached: true };
 
   const data = {};
+  let list = [];
   try {
     const body = await nse('/api/allIndices');
-    const list = Array.isArray(body?.data) ? body.data : [];
+    list = Array.isArray(body?.data) ? body.data : [];
     const aliases = {
       nifty: ['NIFTY 50', 'NIFTY'],
       banknifty: ['NIFTY BANK', 'BANK NIFTY', 'NIFTY BANK 50'],
