@@ -1,8 +1,14 @@
 (() => {
   'use strict';
+
+  // Prevent duplicate/legacy WordPress copies from winning the final DOM state.
+  if (window.__SP_MI_RENDER_CONTROLLER__) return;
+  window.__SP_MI_RENDER_CONTROLLER__ = true;
   const API='https://strike-pulse-relay.onrender.com/api/market-intelligence';
   const REFRESH_MS=15000;
   let busy=false;
+  let lastData=null;
+  let lastComputed=null;
   const $=id=>document.getElementById(id);
   const text=(id,value)=>{const el=$(id);if(el)el.textContent=value??'—';};
   const cls=(el,name)=>{if(!el)return;el.classList.remove('spmi-up','spmi-down','spmi-neutral');if(name)el.classList.add(name);};
@@ -136,6 +142,20 @@
     });
   }
 
+  function enforceFinalState(){
+    if(!lastData || !lastComputed) return;
+    const indices=lastData.indices||lastData.data?.indices||{};
+    const regime=lastData.regime||{};
+    const breadth=lastComputed.breadth;
+    const vix=lastComputed.vix;
+    setSignals(lastData,indices,breadth,vix,regime);
+    setStory(lastData,regime,breadth,vix);
+    text('spmi-final-bias',lastComputed.regime.label==='BULLISH'?'BULLISH':lastComputed.regime.label==='BEARISH'?'BEARISH':'MIXED');
+    text('spmi-final-score',Math.round(lastComputed.regime.score100)+'/100');
+    text('spmi-final-momentum',n(regime.averageChange)==null?'—':n(regime.averageChange)>0?'Positive':n(regime.averageChange)<0?'Negative':'Neutral');
+    text('spmi-final-volatility',vix.condition||'—');
+  }
+
   function setStory(data,regime,breadth,vix){
     if(data?.signals?.length){text('spmi-story',data.signals.join(' • ')+'.');return;}
     const label=regime?.label||'MIXED';
@@ -158,6 +178,8 @@
       const breadth=setBreadth(data.breadth||{}),vix=setVix(indices.vix||{});
       const finalRegime=setRegime(regime,breadth.state,vix);
       setPressure(breadth,regime);setSignals(data,indices,breadth,vix,regime);
+      lastData=data;
+      lastComputed={regime:finalRegime,breadth,vix};
 
       setIndex('nifty',indices.nifty||{});setIndex('banknifty',indices.banknifty||{});setIndex('finnifty',indices.finnifty||{});
       setIndex('sensex',indices.sensex||{});setIndex('vix',indices.vix||{});
@@ -189,6 +211,14 @@
     document.querySelectorAll('.spmi-time-item').forEach(item=>item.classList.toggle('active',mins>=Number(item.dataset.time)));
   }
 
-  function init(){updateClock();timeline();load();setInterval(updateClock,1000);setInterval(timeline,30000);setInterval(load,REFRESH_MS);}
+  function init(){
+    updateClock();timeline();load();
+    setInterval(updateClock,1000);
+    setInterval(timeline,30000);
+    setInterval(load,REFRESH_MS);
+    // A legacy WordPress copy may still run on the page. Re-assert only the
+    // intelligence fields so that the live Render controller remains authoritative.
+    setInterval(enforceFinalState,1000);
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
