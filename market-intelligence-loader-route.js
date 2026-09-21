@@ -7,7 +7,7 @@ if(window.__StrikePulseMarketPageBridge__)return;
 window.__StrikePulseMarketPageBridge__=true;
 
 var common='https://yashjotani007.github.io/strike-pulse-relay/strike-pulse.js';
-var page='https://yashjotani007.github.io/strike-pulse-relay/market-intelligence-page.js';
+var page=(window.location.origin||'https://strike-pulse-relay.onrender.com')+'/market-intelligence-page.js';
 
 function loadPage(){
   if(document.querySelector('script[data-sp-market-page]'))return;
