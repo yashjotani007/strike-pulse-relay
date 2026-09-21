@@ -23,7 +23,71 @@
     (document.head || document.documentElement).appendChild(s);
   }
 
+  function startClockAndTimeline() {
+    function updateClock() {
+      var now = new Date();
+
+      var time = now.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+
+      var date = now.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+
+      var clock = document.getElementById('spmi-clock');
+      var dateBox = document.getElementById('spmi-date');
+
+      if (clock) clock.textContent = time;
+      if (dateBox) dateBox.textContent = date;
+    }
+
+    function updateTimeline() {
+      var now = new Date();
+
+      var istText = now.toLocaleString('en-US', {
+        timeZone: 'Asia/Kolkata'
+      });
+
+      var ist = new Date(istText);
+      var minutes = ist.getHours() * 60 + ist.getMinutes();
+
+      var points = [
+        9 * 60 + 15,
+        11 * 60,
+        13 * 60,
+        14 * 60 + 30,
+        15 * 60 + 30
+      ];
+
+      var items = document.querySelectorAll('.spmi-time-item');
+
+      items.forEach(function (item, index) {
+        if (minutes >= points[index]) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+    }
+
+    updateClock();
+    updateTimeline();
+
+    setInterval(updateClock, 1000);
+    setInterval(updateTimeline, 30000);
+  }
+
   load(COMMON, function () {
-    load(MARKET);
+    load(MARKET, function () {
+      startClockAndTimeline();
+    });
   });
 })();
