@@ -134,6 +134,37 @@ async function intelligence() {
     data.nseError = e.message;
   }
 
+  // Sector/index momentum from the same NSE allIndices response.
+  // Only publish sectors that NSE actually returned; no placeholder values.
+  const sectorAliases = {
+    banking: ['NIFTY BANK'],
+    it: ['NIFTY IT'],
+    energy: ['NIFTY ENERGY'],
+    auto: ['NIFTY AUTO'],
+    finance: ['NIFTY FINANCIAL SERVICES'],
+    fmcg: ['NIFTY FMCG'],
+    metal: ['NIFTY METAL'],
+    pharma: ['NIFTY PHARMA'],
+    realty: ['NIFTY REALTY'],
+    media: ['NIFTY MEDIA']
+  };
+  data.sectors = {};
+  for (const [key, names] of Object.entries(sectorAliases)) {
+    const item = list.find(x => {
+      const idx = String(x?.index || '').trim().toUpperCase();
+      return names.some(name => idx === name);
+    });
+    if (item) {
+      const change = num(item.percentChange ?? item.pChange ?? item.change);
+      data.sectors[key] = {
+        price: num(item.last ?? item.lastPrice ?? item.value),
+        change,
+        direction: classify(change),
+        name: String(item.index || names[0])
+      };
+    }
+  }
+
   const fallback = { nifty: '^NSEI', banknifty: '^NSEBANK', finnifty: '^CNXFIN', sensex: '^BSESN', vix: '^INDIAVIX' };
   for (const [key, symbol] of Object.entries(fallback)) {
     if (!data[key]?.price) {
@@ -157,6 +188,16 @@ async function intelligence() {
     breadth = { advances, declines, unchanged, total: advances + declines + unchanged };
   } catch (e) {}
 
+  const sectorEntries = Object.entries(data.sectors || {})
+    .filter(([, v]) => v && v.change != null)
+    .sort((a, b) => b[1].change - a[1].change);
+
+  data.drivers = {
+    strongest: sectorEntries[0] ? { key: sectorEntries[0][0], ...sectorEntries[0][1] } : null,
+    weakest: sectorEntries.length ? { key: sectorEntries[sectorEntries.length - 1][0], ...sectorEntries[sectorEntries.length - 1][1] } : null,
+    sectors: sectorEntries.slice(0, 4).map(([key, v]) => ({ key, ...v }))
+  };
+
   const regime = buildRegime(data);
   const signals = [];
   if (regime.label === 'BULLISH') signals.push('Index momentum is broadly positive');
@@ -166,6 +207,8 @@ async function intelligence() {
   if (breadth && breadth.declines > breadth.advances) signals.push('NIFTY 50 breadth is negative');
   if (data.vix?.change != null && data.vix.change > 3) signals.push('India VIX is rising; volatility is elevated');
   if (data.vix?.change != null && data.vix.change < -3) signals.push('India VIX is falling; volatility pressure is easing');
+  if (data.drivers?.strongest?.name) signals.push(data.drivers.strongest.name + ' is showing the strongest sector momentum');
+  if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
   last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, indices: data, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
