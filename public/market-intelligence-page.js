@@ -209,10 +209,65 @@
       text('spmi-weakest-index', weakest[0] + ' ' + pct(weakest[1]));
     }
 
-    // Sector API is not currently returned by /api/market-intelligence.
-    // Keep these fields honest instead of inventing sector data.
-    text('spmi-top-sector', 'Index-led');
-    text('spmi-bottom-sector', 'Sector data unavailable');
+    const sectors = data?.sectors || {};
+    const sectorNames = {
+      banking: 'BANKING',
+      it: 'IT',
+      energy: 'ENERGY',
+      auto: 'AUTO',
+      finance: 'FINANCE',
+      fmcg: 'FMCG',
+      metal: 'METAL',
+      pharma: 'PHARMA',
+      realty: 'REALTY',
+      media: 'MEDIA'
+    };
+
+    document.querySelectorAll('.spmi-heat').forEach(card => {
+      const label = card.querySelector('small');
+      if (!label) return;
+      const key = Object.keys(sectorNames).find(k => sectorNames[k] === label.textContent.trim().toUpperCase());
+      const sector = key ? sectors[key] : null;
+      const value = card.querySelector('strong');
+      const state = card.querySelector('span');
+      if (sector && n(sector.change) != null) {
+        if (value) value.textContent = pct(sector.change);
+        if (state) state.textContent = direction(sector.change);
+        card.classList.remove('spmi-positive-strong','spmi-positive','spmi-neutral','spmi-negative');
+        const ch = n(sector.change);
+        card.classList.add(ch >= 0.5 ? 'spmi-positive-strong' : ch >= 0.1 ? 'spmi-positive' : ch <= -0.1 ? 'spmi-negative' : 'spmi-neutral');
+      } else {
+        if (value) value.textContent = '—';
+        if (state) state.textContent = 'Unavailable';
+      }
+    });
+
+    const sectorEntries = Object.entries(sectors)
+      .filter(([,v]) => v && n(v.change) != null)
+      .sort((a,b) => n(b[1].change) - n(a[1].change));
+
+    const strongest = sectorEntries[0];
+    const weakestSector = sectorEntries[sectorEntries.length - 1];
+    text('spmi-top-sector', strongest ? (strongest[1].name || sectorNames[strongest[0]] || strongest[0]) + ' ' + pct(strongest[1].change) : '—');
+    text('spmi-bottom-sector', weakestSector ? (weakestSector[1].name || sectorNames[weakestSector[0]] || weakestSector[0]) + ' ' + pct(weakestSector[1].change) : '—');
+
+    // Live driver cards use the same verified sector values.
+    const driverCards = [...document.querySelectorAll('.spmi-driver')];
+    sectorEntries.slice(0, driverCards.length).forEach(([key, sector], i) => {
+      const card = driverCards[i];
+      const title = card.querySelector('strong');
+      const desc = card.querySelector('span');
+      const badge = card.querySelector('b');
+      const ch = n(sector.change);
+      if (title) title.textContent = sectorNames[key] || sector.name || key.toUpperCase();
+      if (desc) desc.textContent = (ch >= 0.5 ? 'Strong momentum' : ch >= 0.1 ? 'Positive participation' : ch <= -0.1 ? 'Under pressure' : 'Near flat') + ' • ' + pct(ch);
+      if (badge) badge.textContent = ch >= 0.5 ? 'Strong' : ch >= 0.1 ? 'Positive' : ch <= -0.1 ? 'Weak' : 'Neutral';
+      card.classList.remove('positive','negative');
+      card.classList.add(ch >= 0.1 ? 'positive' : ch <= -0.1 ? 'negative' : 'positive');
+      const icon = card.querySelector('i');
+      if (icon) icon.textContent = ch >= 0 ? '↑' : '↓';
+    });
+
     return { best, worst };
   }
 
@@ -257,8 +312,24 @@
       setIndex('banknifty', indices.banknifty || {});
       setIndex('finnifty', indices.finnifty || {});
       setIndex('sensex', indices.sensex || {});
+      setIndex('vix', indices.vix || {});
 
       setMarketStatus(data.market);
+
+      // Give every timeline point a current state instead of leaving the HTML static.
+      const timelineItems = document.querySelectorAll('.spmi-time-item');
+      const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+      const minsIST = nowIST.getHours() * 60 + nowIST.getMinutes();
+      timelineItems.forEach(item => {
+        const t = Number(item.dataset.time);
+        const label = item.querySelector('span');
+        item.classList.toggle('active', minsIST >= t);
+        if (label) {
+          if (minsIST < t) label.textContent = 'Upcoming';
+          else if (t === 930 && minsIST >= 930) label.textContent = 'Market Closed';
+          else label.textContent = 'Completed';
+        }
+      });
       text('spmi-updated', data.generatedAt ? 'Updated ' + new Date(data.generatedAt).toLocaleTimeString('en-IN') : 'Updated just now');
 
       const finalBias =
