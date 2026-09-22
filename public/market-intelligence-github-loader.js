@@ -6,7 +6,7 @@
 
   var BASE = 'https://raw.githubusercontent.com/yashjotani007/strike-pulse-relay/main/public/';
   var COMMON = BASE + 'strike-pulse.js?v=20260921';
-  var MARKET = BASE + 'market-intelligence-page.js?v=20260921';
+  var MARKET = BASE + 'market-intelligence-page.js?v=20260922';
 
   function load(src, done) {
     var s = document.createElement('script');
