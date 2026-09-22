@@ -1,6 +1,10 @@
 (() => {
   'use strict';
 
+  // SELF-CONTAINED MARKET INTELLIGENCE ENGINE
+  // This file includes clock, timeline, API fetch, rendering and refresh logic.
+  // No separate Market Intelligence loader is required.
+
   // Prevent duplicate/legacy WordPress copies from winning the final DOM state.
   if (window.__SP_MI_RENDER_CONTROLLER__) return;
   window.__SP_MI_RENDER_CONTROLLER__ = true;
