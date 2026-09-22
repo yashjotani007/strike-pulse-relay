@@ -4,6 +4,11 @@
   // Prevent duplicate/legacy WordPress copies from winning the final DOM state.
   if (window.__SP_MI_RENDER_CONTROLLER__) return;
   window.__SP_MI_RENDER_CONTROLLER__ = true;
+
+  // Make the Market page visible immediately. Data loading must never control
+  // whether the HTML itself is displayed.
+  document.documentElement.dataset.spMiReady = '1';
+
   const API='https://strike-pulse-relay.onrender.com/api/market-intelligence';
   const REFRESH_MS=15000;
   let busy=false;
@@ -198,7 +203,6 @@
       text('spmi-final-momentum',n(regime.averageChange)==null?'—':n(regime.averageChange)>0?'Positive':n(regime.averageChange)<0?'Negative':'Neutral');
       text('spmi-final-volatility',vix.condition||'—');
       setStory(data,regime,breadth,vix);
-      document.documentElement.dataset.spMiReady='1';
       console.log('[STRIKE PULSE] Market Intelligence live data updated',data);
     }catch(err){
       console.error('[STRIKE PULSE] Market Intelligence error:',err);
@@ -212,6 +216,9 @@
   }
 
   function init(){
+    // The page must stay visible even when the live API is unavailable.
+    document.documentElement.dataset.spMiReady='1';
+
     updateClock();timeline();load();
     setInterval(updateClock,1000);
     setInterval(timeline,30000);
@@ -220,5 +227,6 @@
     // intelligence fields so that the live Render controller remains authoritative.
     setInterval(enforceFinalState,1000);
   }
+
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
