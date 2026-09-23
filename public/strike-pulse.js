@@ -1,5 +1,18 @@
 document.addEventListener('DOMContentLoaded',()=>{
   console.log('[StrikePulse] PUBLIC JS LOADED');
+
+  // Market Intelligence is GitHub-only. Load its controller from the common
+  // site-wide script so WordPress does not need to execute another script tag
+  // inside the Custom HTML block.
+  if(document.querySelector('.sp-market-page') && !window.__SP_MI_RENDER_CONTROLLER__){
+    const s=document.createElement('script');
+    s.src='https://raw.githubusercontent.com/yashjotani007/strike-pulse-relay/main/public/market-intelligence-page.js?v=20260923';
+    s.async=false;
+    s.onload=()=>console.log('[StrikePulse] MARKET JS LOADED FROM COMMON JS');
+    s.onerror=e=>console.error('[StrikePulse] MARKET JS LOAD FAILED',e);
+    (document.head||document.documentElement).appendChild(s);
+  }
+
   const BASE='https://strike-pulse-relay.onrender.com/api';
   const PRICE=BASE+'/prices';
   let priceBusy=false;
