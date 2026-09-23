@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     }
   }
 
-  async function prices(){
+  async function prices(){forceSensexAttach();
     forceSensexAttach();
     if(!hasPriceCards())return;
     if(priceBusy)return;
