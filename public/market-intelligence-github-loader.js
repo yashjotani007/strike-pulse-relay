@@ -4,7 +4,8 @@
   if (window.__SP_GITHUB_MARKET_LOADER__) return;
   window.__SP_GITHUB_MARKET_LOADER__ = true;
 
-  var BASE = 'https://raw.githubusercontent.com/yashjotani007/strike-pulse-relay/main/public/';
+  // Source remains GitHub. jsDelivr only serves the GitHub files to the browser.
+  var BASE = 'https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/';
   var COMMON = BASE + 'strike-pulse.js?v=20260921';
   var MARKET = BASE + 'market-intelligence-page.js?v=20260923';
 
@@ -13,11 +14,11 @@
     s.src = src;
     s.async = false;
     s.onload = function () {
-      console.log('[StrikePulse] GitHub loaded:', src);
+      console.log('[StrikePulse] GitHub CDN loaded:', src);
       if (done) done();
     };
     s.onerror = function (e) {
-      console.error('[StrikePulse] GitHub script failed:', src, e);
+      console.error('[StrikePulse] GitHub CDN script failed:', src, e);
       if (done) done();
     };
     (document.head || document.documentElement).appendChild(s);
@@ -51,36 +52,20 @@
 
     function updateTimeline() {
       var now = new Date();
-
-      var istText = now.toLocaleString('en-US', {
-        timeZone: 'Asia/Kolkata'
-      });
-
+      var istText = now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
       var ist = new Date(istText);
       var minutes = ist.getHours() * 60 + ist.getMinutes();
 
-      var points = [
-        9 * 60 + 15,
-        11 * 60,
-        13 * 60,
-        14 * 60 + 30,
-        15 * 60 + 30
-      ];
-
+      var points = [555, 660, 780, 870, 930];
       var items = document.querySelectorAll('.spmi-time-item');
 
       items.forEach(function (item, index) {
-        if (minutes >= points[index]) {
-          item.classList.add('active');
-        } else {
-          item.classList.remove('active');
-        }
+        item.classList.toggle('active', minutes >= points[index]);
       });
     }
 
     updateClock();
     updateTimeline();
-
     setInterval(updateClock, 1000);
     setInterval(updateTimeline, 30000);
   }
