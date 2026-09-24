@@ -114,8 +114,9 @@ async function intelligence() {
 
   const data = {};
   let list = [];
+  let body = null;
   try {
-    const body = await nse('/api/allIndices');
+    body = await nse('/api/allIndices');
     list = Array.isArray(body?.data) ? body.data : [];
     const aliases = {
       nifty: ['NIFTY 50', 'NIFTY'],
@@ -154,7 +155,7 @@ async function intelligence() {
     .toUpperCase()
     .replace(/&/g, ' AND ')
     .replace(/[^A-Z0-9]+/g, ' ')
-    .replace(/\\s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
   for (const [key, names] of Object.entries(sectorAliases)) {
