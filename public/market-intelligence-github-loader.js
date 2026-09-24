@@ -3,8 +3,8 @@
   'use strict';
 
   // Separate guard so an older WordPress-cached loader cannot block this version.
-  if (window.__SP_MARKET_LOADER_20260924_R3__) return;
-  window.__SP_MARKET_LOADER_20260924_R3__ = true;
+  if (window.__SP_MARKET_LOADER_20260924_R4__) return;
+  window.__SP_MARKET_LOADER_20260924_R4__ = true;
 
   const API = 'https://strike-pulse-relay.onrender.com/api/market-intelligence';
   window.__SP_MI_RENDER_CONTROLLER__ = true;
@@ -109,7 +109,7 @@
     load();
     setInterval(clock, 1000);
     setInterval(load, 15000);
-    console.log('[StrikePulse] MARKET LOADER READY v20260924-r3');
+    console.log('[StrikePulse] MARKET LOADER READY v20260924-r4');
   }
 
   if (document.readyState === 'loading') {
