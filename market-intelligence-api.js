@@ -150,18 +150,54 @@ async function intelligence() {
     media: ['NIFTY MEDIA']
   };
   data.sectors = {};
+  const normalizeIndexName = value => String(value || '')
+    .toUpperCase()
+    .replace(/&/g, ' AND ')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+
   for (const [key, names] of Object.entries(sectorAliases)) {
+    const wanted = names.map(normalizeIndexName);
     const item = list.find(x => {
-      const idx = String(x?.index || '').trim().toUpperCase();
-      return names.some(name => idx === name);
+      const idx = normalizeIndexName(x?.index || x?.indexName || x?.name);
+      return wanted.some(name => idx === name || idx.includes(name) || name.includes(idx));
     });
     if (item) {
       const change = num(item.percentChange ?? item.pChange ?? item.change);
+      const itemPrice = num(item.last ?? item.lastPrice ?? item.value ?? item.close);
       data.sectors[key] = {
-        price: num(item.last ?? item.lastPrice ?? item.value),
+        price: itemPrice,
         change,
         direction: classify(change),
-        name: String(item.index || names[0])
+        name: String(item.index || item.indexName || item.name || names[0])
+      };
+    }
+  }
+
+  const extraRows = [
+    ...(Array.isArray(body?.sectorData) ? body.sectorData : []),
+    ...(Array.isArray(body?.sectorIndices) ? body.sectorIndices : []),
+    ...(Array.isArray(body?.indices) ? body.indices : [])
+  ];
+  for (const row of extraRows) {
+    const idx = normalizeIndexName(row?.index || row?.indexName || row?.name);
+    const match = Object.entries(sectorAliases).find(([, names]) =>
+      names.some(name => {
+        const wanted = normalizeIndexName(name);
+        return idx === wanted || idx.includes(wanted) || wanted.includes(idx);
+      })
+    );
+    if (!match) continue;
+    const [key, names] = match;
+    const change = num(row?.percentChange ?? row?.pChange ?? row?.change);
+    const itemPrice = num(row?.last ?? row?.lastPrice ?? row?.value ?? row?.close);
+    if (!data.sectors[key] || data.sectors[key].change == null) {
+      data.sectors[key] = {
+        price: itemPrice,
+        change,
+        direction: classify(change),
+        name: String(row?.index || row?.indexName || row?.name || names[0])
       };
     }
   }
