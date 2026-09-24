@@ -1,4 +1,4 @@
-// Market loader v20260924-r3
+// Market loader v20260924-r4
 (() => {
   'use strict';
 
@@ -31,7 +31,7 @@
     set('spmi-date', now.toLocaleDateString('en-IN', {timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric'}));
   }
 
-  function render(data) {
+\n  function drawSnapshotChart(id, rows) {\n    const canvas = $(id);\n    if (!canvas) return;\n    const ctx = canvas.getContext('2d');\n    if (!ctx) return;\n    const rect = canvas.getBoundingClientRect();\n    const dpr = window.devicePixelRatio || 1;\n    const w = Math.max(280, Math.round(rect.width || canvas.clientWidth || 600));\n    const h = Math.max(180, Math.round(rect.height || canvas.clientHeight || 240));\n    canvas.width = w * dpr; canvas.height = h * dpr;\n    ctx.setTransform(dpr,0,0,dpr,0,0);\n    ctx.clearRect(0,0,w,h);\n    if (!rows.length) { ctx.font='14px Arial'; ctx.fillStyle='#7A8799'; ctx.fillText('Live breadth data unavailable',16,28); return; }\n    const vals = rows.map(r=>num(r[1])).filter(v=>v!=null);\n    if (!vals.length) { ctx.font='14px Arial'; ctx.fillStyle='#7A8799'; ctx.fillText('Live chart data unavailable',16,28); return; }\n    const maxAbs = Math.max(1, ...vals.map(v=>Math.abs(v)));\n    const pad = {l:72,r:18,t:18,b:34};\n    const innerW = w-pad.l-pad.r, innerH=h-pad.t-pad.b, zeroY=pad.t+innerH/2;\n    ctx.strokeStyle='#E3EAF3'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad.l,zeroY); ctx.lineTo(w-pad.r,zeroY); ctx.stroke();\n    const gap=8, barW=Math.max(18,(innerW-gap*(rows.length-1))/rows.length);\n    rows.forEach((r,idx)=>{\n      const v=num(r[1]); if(v==null)return;\n      const x=pad.l+idx*(barW+gap); const barH=Math.max(2,Math.abs(v)/maxAbs*(innerH/2-8)); const y=v>=0?zeroY-barH:zeroY;\n      ctx.fillStyle=v>=0?'#20B86B':'#E05252'; ctx.fillRect(x,y,barW,barH);\n      ctx.fillStyle='#17243A'; ctx.font='11px Arial'; ctx.textAlign='center'; ctx.fillText(r[0],x+barW/2,h-10);\n      ctx.fillText((v>=0?'+':'')+v.toFixed(2)+'%',x+barW/2,v>=0?Math.max(12,y-5):Math.min(h-20,y+barH+14));\n    });\n    ctx.textAlign='left';\n  }\n\n  function render(data) {
     const i = data.indices || {}, regime = data.regime || {}, vix = i.vix || {};
     set('spmi-market-status', String(data.market?.session || 'CLOSED').toUpperCase());
     set('spmi-nifty', price(i.nifty?.price)); set('spmi-nifty-change', change(i.nifty?.change)); set('spmi-nifty-state', i.nifty?.direction || 'NEUTRAL');
@@ -61,6 +61,30 @@
     const label = String(regime.label || 'MIXED').toUpperCase();
     set('spmi-final-bias', label); set('spmi-final-score', score);
     set('spmi-final-message', 'Market regime is ' + label.toLowerCase() + '; ' + (b ? 'breadth data available' : 'breadth data unavailable') + ', ' + (num(vix.price) == null ? 'VIX unavailable' : 'India VIX ' + price(vix.price)) + '.');
+    // Sector cards (HTML has no IDs, so map them by their existing card order).
+    const sectorOrder = ['banking','it','auto','pharma','energy','fmcg','metal','realty'];
+    const sectorCards = document.querySelectorAll('.sp-sector-card');
+    sectorCards.forEach((card, idx) => {
+      const key = sectorOrder[idx];
+      const item = sectors[key];
+      if (!item) return;
+      const valueEl = card.querySelector('strong');
+      const stateEl = card.querySelector('small');
+      if (valueEl) valueEl.textContent = change(item.change);
+      if (stateEl) stateEl.textContent = item.direction || 'Momentum';
+    });
+
+    // Current snapshot charts. Historical series are not provided by this API, so do not invent history.
+    drawSnapshotChart('sp-market-performance-chart', [
+      ['NIFTY', i.nifty?.change], ['BANK NIFTY', i.banknifty?.change], ['FIN NIFTY', i.finnifty?.change], ['SENSEX', i.sensex?.change]
+    ]);
+    drawSnapshotChart('sp-relative-strength-chart', [
+      ['NIFTY', i.nifty?.change], ['BANK NIFTY', i.banknifty?.change], ['FIN NIFTY', i.finnifty?.change], ['SENSEX', i.sensex?.change]
+    ]);
+    drawSnapshotChart('sp-market-breadth-chart', b ? [
+      ['ADVANCES', b.advances], ['DECLINES', b.declines]
+    ] : []);
+
     console.log('[STRIKE PULSE] LIVE MARKET DATA UPDATED', data);
   }
 
