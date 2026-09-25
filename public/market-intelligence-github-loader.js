@@ -1,10 +1,10 @@
-// Market loader v20260925-r5
+// Market loader v20260925-r6 dark-chart contrast
 (() => {
   'use strict';
 
   // Separate guard so an older WordPress-cached loader cannot block this version.
-  if (window.__SP_MARKET_LOADER_20260925_R5__) return;
-  window.__SP_MARKET_LOADER_20260925_R5__ = true;
+  if (window.__SP_MARKET_LOADER_20260925_R6__) return;
+  window.__SP_MARKET_LOADER_20260925_R6__ = true;
 
   const API = 'https://strike-pulse-relay.onrender.com/api/market-intelligence';
   window.__SP_MI_RENDER_CONTROLLER__ = true;
@@ -64,23 +64,26 @@
 
   function drawIntradayChart(history) {
     const c=$('sp-market-performance-chart'); if(!c)return;
-    const ctx=c.getContext('2d');if(!ctx)return;
-    const rect=c.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
-    const w=Math.max(280,Math.round(rect.width||600)),h=Math.max(220,Math.round(rect.height||330));
-    c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
-    const colors={nifty:'#2878F0',banknifty:'#20B86B',finnifty:'#E9A23B',sensex:'#9A78DB'};
-    const entries=Object.entries(colors).map(([key,color])=>({key,color,points:(history?.series?.[key]||[]).filter(p=>num(p.timestamp)!=null&&num(p.change)!=null)})).filter(e=>e.points.length);
-    if(!entries.length){ctx.fillStyle='#64748B';ctx.font='13px Arial';ctx.fillText('Real intraday history unavailable',16,30);return;}
+    const ctx=c.getContext('2d'); if(!ctx)return;
+    const rect=c.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
+    const w=Math.max(280,Math.round(rect.width||600)),h=Math.max(220,Math.round(rect.height||300));
+    c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle='#0d1d32';ctx.fillRect(0,0,w,h);
+    const colors={nifty:'#65a9ff',banknifty:'#39e5a2',finnifty:'#ffc36b',sensex:'#c2a3ff'};
+    const entries=Object.entries(colors).map(([key,color])=>({key,color,points:(history?.series?.[key]||[]).filter(p=>num(p.timestamp)!=null&&num(p.change)!=null).sort((a,b)=>a.timestamp-b.timestamp)})).filter(e=>e.points.length);
+    ctx.font='12px Arial,sans-serif';
+    if(!entries.length){ctx.fillStyle='#d6e6fa';ctx.fillText('Historical data unavailable from provider',16,35);return;}
     const all=entries.flatMap(e=>e.points),lo=Math.min(...all.map(p=>p.timestamp)),hi=Math.max(...all.map(p=>p.timestamp)),limit=Math.max(.15,...all.map(p=>Math.abs(p.change)));
-    const left=50,right=18,top=22,bottom=38,iw=w-left-right,ih=h-top-bottom;
+    const left=58,right=19,top=24,bottom=43,iw=Math.max(100,w-left-right),ih=h-top-bottom;
     const x=t=>left+(t-lo)/Math.max(1,hi-lo)*iw,y=v=>top+(limit-v)/(2*limit)*ih;
-    ctx.font='11px Arial';ctx.fillStyle='#64748B';ctx.strokeStyle='#E3EAF3';ctx.lineWidth=1;ctx.textAlign='right';
-    [-limit,0,limit].forEach(v=>{ctx.beginPath();ctx.moveTo(left,y(v));ctx.lineTo(w-right,y(v));ctx.stroke();ctx.fillText((v>=0?'+':'')+v.toFixed(2)+'%',left-6,y(v)+4);});
-    ctx.textAlign='center';
-    for(let n=0;n<=4;n++){const t=lo+(hi-lo)*n/4;ctx.fillText(new Date(t).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}),x(t),h-12);}
-    entries.forEach(e=>{ctx.beginPath();ctx.strokeStyle=e.color;ctx.lineWidth=2.4;e.points.forEach((p,n)=>n?ctx.lineTo(x(p.timestamp),y(p.change)):ctx.moveTo(x(p.timestamp),y(p.change)));ctx.stroke();});
+    ctx.font='11px Arial,sans-serif';ctx.textAlign='right';ctx.lineWidth=1;
+    [-limit,-limit/2,0,limit/2,limit].forEach(v=>{ctx.strokeStyle=v===0?'#607a9b':'#29405b';ctx.beginPath();ctx.moveTo(left,y(v));ctx.lineTo(w-right,y(v));ctx.stroke();ctx.fillStyle='#c7d8ed';ctx.fillText((v>=0?'+':'')+v.toFixed(2)+'%',left-8,y(v)+4);});
+    ctx.textAlign='center';ctx.fillStyle='#c7d8ed';
+    for(let n=0;n<=4;n++){const t=lo+(hi-lo)*n/4;ctx.fillText(new Date(t).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}),x(t),h-14);}
+    entries.forEach(e=>{ctx.beginPath();ctx.strokeStyle=e.color;ctx.lineWidth=2.6;ctx.lineJoin='round';e.points.forEach((p,n)=>n?ctx.lineTo(x(p.timestamp),y(p.change)):ctx.moveTo(x(p.timestamp),y(p.change)));ctx.stroke();const last=e.points[e.points.length-1];ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(x(last.timestamp),y(last.change),3.2,0,Math.PI*2);ctx.fill();});
+    ctx.textAlign='left';
   }
-  
+
 function render(data) {
     const i = data.indices || {}, regime = data.regime || {}, vix = i.vix || {};
     set('spmi-market-status', String(data.market?.session || 'CLOSED').toUpperCase());
