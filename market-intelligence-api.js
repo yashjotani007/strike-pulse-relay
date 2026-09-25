@@ -90,14 +90,14 @@ async function intradayHistory() {
       if (!r.ok) throw Error('Yahoo HTTP '+r.status);
       const j=await r.json(), q=j?.chart?.result?.[0];
       const baseline=num(q?.meta?.chartPreviousClose ?? q?.meta?.previousClose);
-      const times=q?.timestamp||[], closes=q?.indicators?.quote?.[0]?.close||[];
+      const times=q?.timestamp||[], quote=q?.indicators?.quote?.[0]||{}, closes=quote.close||[];
       if (!baseline) throw Error('Previous close unavailable');
       const points=times.map((t,i)=>{
         const p=num(closes[i]); if(p==null)return null;
         const dt=new Date(t*1000);
         const time=dt.toLocaleTimeString('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false});
         if(time<'09:15'||time>'15:30')return null;
-        return {timestamp:t*1000,change:Number(((p-baseline)/baseline*100).toFixed(4))};
+        return {timestamp:t*1000,change:Number(((p-baseline)/baseline*100).toFixed(4)),open:num(quote.open?.[i]),high:num(quote.high?.[i]),low:num(quote.low?.[i]),close:p,volume:num(quote.volume?.[i])};
       }).filter(Boolean);
       if(points.length)series[key]=points;
     } catch(e) {console.warn('[INTRADAY]',key,e.message);}
