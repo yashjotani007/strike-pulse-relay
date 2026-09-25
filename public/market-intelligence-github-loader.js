@@ -1,10 +1,10 @@
-// Market loader v20260924-r4
+// Market loader v20260925-r5
 (() => {
   'use strict';
 
   // Separate guard so an older WordPress-cached loader cannot block this version.
-  if (window.__SP_MARKET_LOADER_20260924_R4__) return;
-  window.__SP_MARKET_LOADER_20260924_R4__ = true;
+  if (window.__SP_MARKET_LOADER_20260925_R5__) return;
+  window.__SP_MARKET_LOADER_20260925_R5__ = true;
 
   const API = 'https://strike-pulse-relay.onrender.com/api/market-intelligence';
   window.__SP_MI_RENDER_CONTROLLER__ = true;
@@ -62,7 +62,26 @@
     ctx.textAlign='left';
   }
 
-  function render(data) {
+  function drawIntradayChart(history) {
+    const c=$('sp-market-performance-chart'); if(!c)return;
+    const ctx=c.getContext('2d');if(!ctx)return;
+    const rect=c.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+    const w=Math.max(280,Math.round(rect.width||600)),h=Math.max(220,Math.round(rect.height||330));
+    c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+    const colors={nifty:'#2878F0',banknifty:'#20B86B',finnifty:'#E9A23B',sensex:'#9A78DB'};
+    const entries=Object.entries(colors).map(([key,color])=>({key,color,points:(history?.series?.[key]||[]).filter(p=>num(p.timestamp)!=null&&num(p.change)!=null)})).filter(e=>e.points.length);
+    if(!entries.length){ctx.fillStyle='#64748B';ctx.font='13px Arial';ctx.fillText('Real intraday history unavailable',16,30);return;}
+    const all=entries.flatMap(e=>e.points),lo=Math.min(...all.map(p=>p.timestamp)),hi=Math.max(...all.map(p=>p.timestamp)),limit=Math.max(.15,...all.map(p=>Math.abs(p.change)));
+    const left=50,right=18,top=22,bottom=38,iw=w-left-right,ih=h-top-bottom;
+    const x=t=>left+(t-lo)/Math.max(1,hi-lo)*iw,y=v=>top+(limit-v)/(2*limit)*ih;
+    ctx.font='11px Arial';ctx.fillStyle='#64748B';ctx.strokeStyle='#E3EAF3';ctx.lineWidth=1;ctx.textAlign='right';
+    [-limit,0,limit].forEach(v=>{ctx.beginPath();ctx.moveTo(left,y(v));ctx.lineTo(w-right,y(v));ctx.stroke();ctx.fillText((v>=0?'+':'')+v.toFixed(2)+'%',left-6,y(v)+4);});
+    ctx.textAlign='center';
+    for(let n=0;n<=4;n++){const t=lo+(hi-lo)*n/4;ctx.fillText(new Date(t).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}),x(t),h-12);}
+    entries.forEach(e=>{ctx.beginPath();ctx.strokeStyle=e.color;ctx.lineWidth=2.4;e.points.forEach((p,n)=>n?ctx.lineTo(x(p.timestamp),y(p.change)):ctx.moveTo(x(p.timestamp),y(p.change)));ctx.stroke();});
+  }
+  
+function render(data) {
     const i = data.indices || {}, regime = data.regime || {}, vix = i.vix || {};
     set('spmi-market-status', String(data.market?.session || 'CLOSED').toUpperCase());
     set('spmi-nifty', price(i.nifty?.price)); set('spmi-nifty-change', change(i.nifty?.change)); set('spmi-nifty-state', i.nifty?.direction || 'NEUTRAL');
@@ -106,9 +125,7 @@
     });
 
     // Current snapshot charts. Historical series are not provided by this API, so do not invent history.
-    drawSnapshotChart('sp-market-performance-chart', [
-      ['NIFTY', i.nifty?.change], ['BANK NIFTY', i.banknifty?.change], ['FIN NIFTY', i.finnifty?.change], ['SENSEX', i.sensex?.change]
-    ]);
+    drawIntradayChart(data.intraday);
     drawSnapshotChart('sp-relative-strength-chart', [
       ['NIFTY', i.nifty?.change], ['BANK NIFTY', i.banknifty?.change], ['FIN NIFTY', i.finnifty?.change], ['SENSEX', i.sensex?.change]
     ]);
