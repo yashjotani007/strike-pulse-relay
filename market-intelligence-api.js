@@ -21,6 +21,7 @@ let last = null;
 let lastAt = 0;
 
 function num(v) {
+  if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
@@ -200,6 +201,40 @@ async function intelligence() {
         direction: classify(change),
         name: String(row?.index || row?.indexName || row?.name || names[0])
       };
+    }
+  }
+
+  // When NSE allIndices omits sector rows, use individually quoted sector
+  // index symbols. Only publish real quotes with a valid price and change.
+  const sectorFallbacks = {
+    banking: ['^NSEBANK'],
+    it: ['^CNXIT'],
+    auto: ['^CNXAUTO'],
+    pharma: ['^CNXPHARMA'],
+    energy: ['^CNXENERGY'],
+    fmcg: ['^CNXFMCG'],
+    metal: ['^CNXMETAL'],
+    realty: ['^CNXREALTY']
+  };
+  const missingSectors = Object.entries(sectorFallbacks)
+    .filter(([key]) => data.sectors[key]?.change == null);
+  const sectorQuotes = await Promise.allSettled(missingSectors.map(async ([key, symbols]) => {
+    for (const symbol of symbols) {
+      try {
+        const quote = await yahoo(symbol);
+        if (quote.price != null && quote.change != null) {
+          return [key, { price: quote.price, change: quote.change,
+            direction: classify(quote.change), name: sectorAliases[key][0],
+            source: 'yahoo-fallback' }];
+        }
+      } catch (_) { /* An unavailable quote is not a zero-percent move. */ }
+    }
+    return null;
+  }));
+  for (const result of sectorQuotes) {
+    if (result.status === 'fulfilled' && result.value) {
+      const [key, quote] = result.value;
+      data.sectors[key] = quote;
     }
   }
 
