@@ -19,6 +19,7 @@ let cookies = '';
 let cookieAt = 0;
 let last = null;
 let lastAt = 0;
+let historyCache = null, historyAt = 0;
 
 function num(v) {
   if (v == null || v === '') return null;
@@ -79,6 +80,32 @@ async function yahoo(symbol) {
   return { price, change: price != null && previous ? ((price - previous) / previous) * 100 : null };
 }
 
+async function intradayHistory() {
+  if (historyCache && Date.now() - historyAt < 60000) return historyCache;
+  const symbols = { nifty:'^NSEI', banknifty:'^NSEBANK', finnifty:'^CNXFIN', sensex:'^BSESN' };
+  const series = {};
+  await Promise.all(Object.entries(symbols).map(async ([key,symbol]) => {
+    try {
+      const r = await fetch(YAHOO+'/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=1d&interval=5m', {headers:{'User-Agent':HEADERS['User-Agent']},signal:AbortSignal.timeout(9000)});
+      if (!r.ok) throw Error('Yahoo HTTP '+r.status);
+      const j=await r.json(), q=j?.chart?.result?.[0];
+      const baseline=num(q?.meta?.chartPreviousClose ?? q?.meta?.previousClose);
+      const times=q?.timestamp||[], closes=q?.indicators?.quote?.[0]?.close||[];
+      if (!baseline) throw Error('Previous close unavailable');
+      const points=times.map((t,i)=>{
+        const p=num(closes[i]); if(p==null)return null;
+        const dt=new Date(t*1000);
+        const time=dt.toLocaleTimeString('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false});
+        if(time<'09:15'||time>'15:30')return null;
+        return {timestamp:t*1000,change:Number(((p-baseline)/baseline*100).toFixed(4))};
+      }).filter(Boolean);
+      if(points.length)series[key]=points;
+    } catch(e) {console.warn('[INTRADAY]',key,e.message);}
+  }));
+  historyCache={source:'yahoo-5m',series};
+  historyAt=Date.now();
+  return historyCache;
+}
 function marketStatus() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
   const day = now.getDay();
@@ -271,6 +298,7 @@ async function intelligence() {
     sectors: sectorEntries.slice(0, 4).map(([key, v]) => ({ key, ...v }))
   };
 
+  const intraday = await intradayHistory();
   const regime = buildRegime(data);
   const signals = [];
   if (regime.label === 'BULLISH') signals.push('Index momentum is broadly positive');
@@ -283,7 +311,7 @@ async function intelligence() {
   if (data.drivers?.strongest?.name) signals.push(data.drivers.strongest.name + ' is showing the strongest sector momentum');
   if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
-  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, indices: data, signals, generatedAt: new Date().toISOString(), cached: false };
+  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, intraday, indices: data, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
 }
