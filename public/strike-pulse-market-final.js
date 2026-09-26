@@ -202,7 +202,32 @@ if(vols.length){state.volume=L.createChart(vb,{width:vb.clientWidth,height:vb.cl
 state.chart.timeScale().fitContent();if(state.zoom>1){const count=Math.max(12,Math.round(points.length/state.zoom));state.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,points.length-count),to:points.length})}
 drawIndicators(points,closes)}
 function drawIndicators(points,closes){const r=rsi(closes),m=macd(closes);message('sp3-rsi-value',r.at(-1)==null?'N/A':r.at(-1).toFixed(1));message('sp3-macd-value',m.hist.at(-1)==null?'N/A':m.hist.at(-1).toFixed(2));canvasChart('sp3-rsi-chart',[{data:r,color:'#377af0'}],{min:0,max:100});canvasChart('sp3-macd-chart',[{data:m.line,color:'#2878f0'},{data:m.signal,color:'#efad46'},{data:m.hist,color:'#23b782'}],{decimals:2})}
-function renderExtras(d){state.data=d;message('sp3-data-status',d.success?'Market feed connected':'Market feed unavailable');message('sp3-last-updated',d.generatedAt?'Updated '+new Date(d.generatedAt).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'}):'Update unavailable');const i=d.indices||{},q=i[state.symbol]||{};message('sp3-symbol-title',names[state.symbol]);message('sp3-chart-price',n(q.price)==null?'—':q.price.toLocaleString('en-IN',{maximumFractionDigits:2}));message('sp3-chart-change',n(q.change)==null?'—':(q.change>=0?'+':'')+q.change.toFixed(2)+'%');Object.entries(i.sectors||{}).forEach(([key,item])=>{const card=root.querySelector('[data-sp3-sector="'+key+'"]');if(!card||n(item.change)==null)return;const v=item.change;card.classList.remove('sp3-positive','sp3-negative','sp3-flat');card.classList.add(v>.05?'sp3-positive':v<-.05?'sp3-negative':'sp3-flat');card.style.setProperty('--sector-bg',v>.05?'rgba(18,166,106,'+Math.min(.35,.1+Math.abs(v)*.08)+')':v<-.05?'rgba(227,76,97,'+Math.min(.35,.1+Math.abs(v)*.08)+')':'#e9f2ff')});const score=n(d.regime?.score);if(score!=null)$('sp3-score-ring').style.background='conic-gradient(#2878f0 '+Math.max(0,Math.min(100,50+score/2))+'%,#e6eef8 0)';root.querySelectorAll('.sp3-delta').forEach(el=>{const x=parseFloat(el.textContent);el.classList.toggle('sp3-up',Number.isFinite(x)&&x>0);el.classList.toggle('sp3-down',Number.isFinite(x)&&x<0)});drawPrice()}
+function renderOptions(d){
+  const o=d.options||{},box=$('sp3-oi-chart');
+  if(!o.available||!Array.isArray(o.strikes)||!o.strikes.length){
+    message('sp3-pcr','N/A');message('sp3-max-pain','N/A');message('sp3-oi-status','UNAVAILABLE');
+    if(box)box.textContent='Verified NIFTY option-chain data unavailable'+(o.error?' ('+o.error+')':'')+'.';
+    return;
+  }
+  message('sp3-pcr',n(o.pcr)==null?'N/A':o.pcr.toFixed(3));
+  message('sp3-max-pain',n(o.maxPain)==null?'N/A':o.maxPain.toLocaleString('en-IN'));
+  message('sp3-oi-status','NSE · '+(o.expiry||'LATEST'));
+  if(!box)return;
+  const rows=o.strikes.filter(x=>n(x.strike)!=null&&n(x.callOI)!=null&&n(x.putOI)!=null);
+  const atm=n(d.indices?.nifty?.price);
+  const near=rows.slice().sort((a,b)=>Math.abs(a.strike-atm)-Math.abs(b.strike-atm)).slice(0,13).sort((a,b)=>a.strike-b.strike);
+  box.replaceChildren();
+  const heading=document.createElement('p');heading.textContent='NIFTY '+(o.expiry||'')+' · NSE verified open interest';heading.style.cssText='font-size:12px;color:#60758c;margin:0 0 10px';box.appendChild(heading);
+  const max=Math.max(1,...near.flatMap(x=>[x.callOI,x.putOI]));
+  near.forEach(x=>{
+    const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:76px 1fr 1fr;gap:8px;align-items:center;margin:8px 0;font-size:12px;color:#193450';
+    const strike=document.createElement('strong');strike.textContent=x.strike.toLocaleString('en-IN');
+    const bar=(v,color)=>{const wrap=document.createElement('div');wrap.style.cssText='height:23px;background:#eaf0f8;border-radius:5px;position:relative;overflow:hidden';const fill=document.createElement('div');fill.style.cssText='height:100%;width:'+Math.max(1,v/max*100)+'%;background:'+color+';opacity:.75';const label=document.createElement('span');label.style.cssText='position:absolute;inset:0;display:flex;align-items:center;padding:0 5px;font-weight:700;color:#12283f';label.textContent=v.toLocaleString('en-IN');wrap.append(fill,label);return wrap};
+    row.append(strike,bar(x.callOI,'#ed6b79'),bar(x.putOI,'#42c69b'));box.appendChild(row);
+  });
+  const legend=document.createElement('small');legend.textContent='Red: Call OI · Green: Put OI · nearest available strikes';legend.style.cssText='display:block;color:#60758c;margin-top:12px';box.appendChild(legend);
+}
+function renderExtras(d){state.data=d;renderOptions(d);message('sp3-data-status',d.success?'Market feed connected':'Market feed unavailable');message('sp3-last-updated',d.generatedAt?'Updated '+new Date(d.generatedAt).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'}):'Update unavailable');const i=d.indices||{},q=i[state.symbol]||{};message('sp3-symbol-title',names[state.symbol]);message('sp3-chart-price',n(q.price)==null?'—':q.price.toLocaleString('en-IN',{maximumFractionDigits:2}));message('sp3-chart-change',n(q.change)==null?'—':(q.change>=0?'+':'')+q.change.toFixed(2)+'%');Object.entries(i.sectors||{}).forEach(([key,item])=>{const card=root.querySelector('[data-sp3-sector="'+key+'"]');if(!card||n(item.change)==null)return;const v=item.change;card.classList.remove('sp3-positive','sp3-negative','sp3-flat');card.classList.add(v>.05?'sp3-positive':v<-.05?'sp3-negative':'sp3-flat');card.style.setProperty('--sector-bg',v>.05?'rgba(18,166,106,'+Math.min(.35,.1+Math.abs(v)*.08)+')':v<-.05?'rgba(227,76,97,'+Math.min(.35,.1+Math.abs(v)*.08)+')':'#e9f2ff')});const score=n(d.regime?.score);if(score!=null)$('sp3-score-ring').style.background='conic-gradient(#2878f0 '+Math.max(0,Math.min(100,50+score/2))+'%,#e6eef8 0)';root.querySelectorAll('.sp3-delta').forEach(el=>{const x=parseFloat(el.textContent);el.classList.toggle('sp3-up',Number.isFinite(x)&&x>0);el.classList.toggle('sp3-down',Number.isFinite(x)&&x<0)});drawPrice()}
 async function load(){try{const r=await fetch(API+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('API HTTP '+r.status);const d=await r.json();if(!d.success)throw Error(d.error||'Feed unavailable');renderExtras(d)}catch(e){message('sp3-data-status','Feed unavailable: '+e.message)}}
 root.querySelectorAll('[data-sp3-symbol]').forEach(btn=>btn.addEventListener('click',()=>{state.symbol=btn.dataset.sp3Symbol;root.querySelectorAll('[data-sp3-symbol]').forEach(b=>b.classList.toggle('is-active',b===btn));state.zoom=1;if(state.data)renderExtras(state.data)}));
 ['ema9','ema21','ema50','vwap'].forEach(key=>$('sp3-'+key)?.addEventListener('change',()=>state.overlays.find(x=>x.key===key)?.line.applyOptions({visible:$('sp3-'+key).checked})));
