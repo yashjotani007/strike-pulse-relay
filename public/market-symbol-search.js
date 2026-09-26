@@ -8,7 +8,7 @@ function init(){
  toolbar.parentNode.insertBefore(wrap,toolbar);
  const input=wrap.querySelector('input'),list=wrap.querySelector('#sp3-symbol-results');let matches=[],active=0,searchId=0;
  function close(){list.hidden=true;input.setAttribute('aria-expanded','false');}
- function choose(key){const btn=root.querySelector('[data-sp3-symbol="'+key+'"]');if(btn){btn.click();input.value=symbols.find(s=>s.key===key).name;close();input.blur();root.querySelector('#sp3-price-chart')?.scrollIntoView({behavior:'smooth',block:'nearest'});}}
+ function choose(key){const btn=root.querySelector('[data-sp3-symbol="'+key+'"]');if(btn){btn.click();input.value=symbols.find(s=>s.key===key)?.name||key;}else{const selected=matches.find(s=>s.key===key);input.value=selected?.name||key;window.dispatchEvent(new CustomEvent('sp3:stock-selected',{detail:{symbol:key}}));}close();input.blur();root.querySelector('#sp3-price-chart')?.scrollIntoView({behavior:'smooth',block:'nearest'});}
  function paint(){list.replaceChildren();if(!matches.length){const empty=document.createElement('div');empty.className='sp3-search-empty';empty.textContent='No matching NSE symbol found. Try its exact ticker.';list.appendChild(empty);}else matches.forEach((s,i)=>{const b=document.createElement('button');b.type='button';b.setAttribute('role','option');b.setAttribute('aria-selected',String(i===active));b.textContent=s.name+(s.exchange==='NSE'?' · NSE':'');b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>choose(s.key));list.appendChild(b)});list.hidden=false;input.setAttribute('aria-expanded','true');}
  async function draw(){const id=++searchId,q=input.value.trim().toLowerCase();matches=symbols.filter(s=>(s.name+' '+s.alias).toLowerCase().includes(q));active=0;paint();if(!q)return;try{const r=await fetch('https://strike-pulse-relay.onrender.com/api/stock-search?q='+encodeURIComponent(q));if(!r.ok)throw Error('Search unavailable');const data=await r.json();if(id!==searchId)return;const stock=(data.results||[]).map(s=>({key:s.symbol,name:s.name+' ('+s.symbol+')',exchange:'NSE'}));matches=[...matches,...stock.filter(s=>!matches.some(m=>m.key===s.key))];paint()}catch(e){if(id===searchId&&matches.length===0){list.textContent='Stock search temporarily unavailable. Try a popular NSE ticker later.';list.hidden=false;}}}
 
@@ -17,7 +17,7 @@ function init(){
  document.addEventListener('pointerdown',e=>{if(!wrap.contains(e.target))close()});
  document.addEventListener('keydown',e=>{if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)){e.preventDefault();input.focus()}});
  const style=document.createElement('style');style.textContent=`
-.sp3 .sp3-symbol-search{position:relative;z-index:8;padding:17px 21px 0;background:#fbfdff}
+.sp3 .sp3-symbol-search{position:relative;z-index:100;padding:17px 21px 0;background:#fbfdff}
 .sp3 .sp3-symbol-search>label{display:block;margin-bottom:7px;color:#71839b;font-size:10px;font-weight:800;letter-spacing:1.1px}
 .sp3 .sp3-symbol-search-box{display:flex;align-items:center;gap:10px;border:1px solid #c7d8ec;border-radius:11px;padding:9px 12px;background:#fff;box-shadow:0 4px 18px rgba(12,44,80,.04)}
 .sp3 .sp3-symbol-search-box:focus-within{border-color:#2878f0;box-shadow:0 0 0 3px rgba(40,120,240,.13)}
@@ -25,7 +25,7 @@ function init(){
 .sp3 #sp3-symbol-search{min-width:0;width:100%;padding:3px 0;border:0!important;outline:0!important;box-shadow:none!important;background:transparent;color:#142c48;font:600 13px Inter,system-ui,sans-serif}
 .sp3 #sp3-symbol-search::placeholder{color:#8194aa;font-weight:400}
 .sp3 .sp3-symbol-search kbd{border:1px solid #e0e9f4;border-radius:5px;padding:2px 7px;color:#71839b;background:#f2f6fb}
-.sp3 #sp3-symbol-results{position:absolute;top:calc(100% - 2px);left:21px;right:21px;padding:5px;border:1px solid #c7d8ec;border-radius:10px;background:#fff;box-shadow:0 18px 35px rgba(11,29,52,.17);max-height:240px;overflow:auto}
+.sp3 #sp3-symbol-results{position:absolute;z-index:101;top:calc(100% - 2px);left:21px;right:21px;padding:5px;border:1px solid #c7d8ec;border-radius:10px;background:#fff;box-shadow:0 18px 35px rgba(11,29,52,.17);max-height:240px;overflow:auto}
 .sp3 #sp3-symbol-results[hidden]{display:none}
 .sp3 #sp3-symbol-results button{display:block;width:100%;padding:12px 14px;text-align:left;border:0;border-radius:7px;background:#fff;color:#142c48;font-weight:750;font-size:12px}
 .sp3 #sp3-symbol-results button:hover,.sp3 #sp3-symbol-results button[aria-selected=true]{background:#eaf3ff;color:#236ac8}
