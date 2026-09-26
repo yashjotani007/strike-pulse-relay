@@ -285,8 +285,42 @@ async function intelligence() {
       if (c == null) continue;
       if (c > 0.05) advances++; else if (c < -0.05) declines++; else unchanged++;
     }
-    breadth = { advances, declines, unchanged, total: advances + declines + unchanged };
+    if (advances + declines + unchanged >= 45) breadth = { advances, declines, unchanged, total: advances + declines + unchanged, source:'nse-nifty50-constituents' };
   } catch (e) {}
+
+  // Use NSE's published index-level breadth only if the constituent feed is blocked.
+  if (!breadth) {
+    const niftyRow = list.find(x => String(x?.index || '').trim().toUpperCase() === 'NIFTY 50');
+    const advances = num(niftyRow?.advances ?? niftyRow?.advance);
+    const declines = num(niftyRow?.declines ?? niftyRow?.decline);
+    const unchanged = num(niftyRow?.unchanged) ?? 0;
+    if (advances != null && declines != null && advances + declines + unchanged >= 45 && advances + declines + unchanged <= 51) {
+      breadth = {advances,declines,unchanged,total:advances+declines+unchanged,source:'nse-index-summary'};
+    }
+  }
+
+  // Verified NSE strike-wise NIFTY OI. If NSE denies access, expose no values.
+  let options = {available:false,source:null,symbol:'NIFTY',strikes:[],pcr:null,maxPain:null,error:null};
+  try {
+    const chain = await nse('/api/option-chain-indices?symbol=NIFTY');
+    const rows = Array.isArray(chain?.records?.data) ? chain.records.data : [];
+    const expiries = chain?.records?.expiryDates || [];
+    const expiry = expiries[0];
+    const strikes = rows.filter(row => row.expiryDate === expiry && num(row.strikePrice) != null)
+      .map(row => ({strike:num(row.strikePrice),callOI:num(row.CE?.openInterest),putOI:num(row.PE?.openInterest)}))
+      .filter(row => row.callOI != null && row.putOI != null)
+      .sort((a,b) => a.strike-b.strike);
+    if (strikes.length >= 10) {
+      const calls = strikes.reduce((v,x)=>v+x.callOI,0), puts=strikes.reduce((v,x)=>v+x.putOI,0);
+      const pain = strikes.map(candidate => ({
+        strike:candidate.strike,
+        payout:strikes.reduce((sum,x)=>sum + Math.max(0,x.strike-candidate.strike)*x.callOI + Math.max(0,candidate.strike-x.strike)*x.putOI,0)
+      })).sort((a,b)=>a.payout-b.payout);
+      options={available:true,source:'nse-option-chain',symbol:'NIFTY',expiry,strikes,
+        totalCallOI:calls,totalPutOI:puts,pcr:calls>0?Number((puts/calls).toFixed(3)):null,
+        maxPain:pain.length?pain[0].strike:null,error:null};
+    } else options.error='Verified strike-wise OI unavailable';
+  } catch(e) {options.error=e.message;}
 
   const sectorEntries = Object.entries(data.sectors || {})
     .filter(([, v]) => v && v.change != null)
@@ -311,7 +345,7 @@ async function intelligence() {
   if (data.drivers?.strongest?.name) signals.push(data.drivers.strongest.name + ' is showing the strongest sector momentum');
   if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
-  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, intraday, indices: data, signals, generatedAt: new Date().toISOString(), cached: false };
+  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
 }
