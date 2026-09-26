@@ -1,10 +1,10 @@
-// Market loader v20260925-r6 dark-chart contrast
+// Market loader v20260926-r7 unified WordPress entry
 (() => {
   'use strict';
 
   // Separate guard so an older WordPress-cached loader cannot block this version.
-  if (window.__SP_MARKET_LOADER_20260925_R6__) return;
-  window.__SP_MARKET_LOADER_20260925_R6__ = true;
+  if (window.__SP_MARKET_LOADER_20260926_R7__) return;
+  window.__SP_MARKET_LOADER_20260926_R7__ = true;
 
   const API = 'https://strike-pulse-relay.onrender.com/api/market-intelligence';
   window.__SP_MI_RENDER_CONTROLLER__ = true;
@@ -153,11 +153,24 @@ function render(data) {
     }
   }
 
+  // One WordPress script tag now loads both the core dashboard and advanced terminal.
+  function loadAdvancedTerminal() {
+    if (!document.querySelector('.sp3') || window.__SP_TERMINAL_V3__) return;
+    if (document.querySelector('script[data-sp-advanced-loader]')) return;
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/market-terminal-v3.js?v=20260926';
+    script.dataset.spAdvancedLoader = '1';
+    script.defer = true;
+    script.onerror = () => console.error('[StrikePulse] Advanced terminal script could not load');
+    document.head.appendChild(script);
+  }
+
   function init() {
     // WordPress can execute this loader before the Market HTML exists.
     // Wait until the DOM is parsed, then render immediately and refresh every 15s.
     clock();
     load();
+    loadAdvancedTerminal();
     setInterval(clock, 1000);
     setInterval(load, 15000);
     console.log('[StrikePulse] MARKET LOADER READY v20260924-r4');
