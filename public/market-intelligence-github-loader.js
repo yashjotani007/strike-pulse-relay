@@ -1,10 +1,10 @@
-// Market loader v20260926-r7 unified WordPress entry
+// Market loader v20260926-r8 unified WordPress entry
 (() => {
   'use strict';
 
   // Separate guard so an older WordPress-cached loader cannot block this version.
-  if (window.__SP_MARKET_LOADER_20260926_R7__) return;
-  window.__SP_MARKET_LOADER_20260926_R7__ = true;
+  if (window.__SP_MARKET_LOADER_20260926_R8__) return;
+  window.__SP_MARKET_LOADER_20260926_R8__ = true;
 
   const API = 'https://strike-pulse-relay.onrender.com/api/market-intelligence';
   window.__SP_MI_RENDER_CONTROLLER__ = true;
@@ -158,10 +158,10 @@ function render(data) {
     if (!document.querySelector('.sp3') || window.__SP_TERMINAL_V3__) return;
     if (document.querySelector('script[data-sp-advanced-loader]')) return;
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/market-terminal-v3.js?v=20260926';
+    script.src = 'https://cdn.jsdelivr.net/gh/yashjotani007/strike-pulse-relay@main/public/market-terminal-v3.js?v=8';
     script.dataset.spAdvancedLoader = '1';
     script.defer = true;
-    script.onerror = () => console.error('[StrikePulse] Advanced terminal script could not load');
+    script.onerror = () => { console.error('[StrikePulse] Advanced terminal script could not load'); set('sp3-data-status','Advanced charts could not load — check CDN or browser console'); };
     document.head.appendChild(script);
   }
 
@@ -173,7 +173,7 @@ function render(data) {
     loadAdvancedTerminal();
     setInterval(clock, 1000);
     setInterval(load, 15000);
-    console.log('[StrikePulse] MARKET LOADER READY v20260924-r4');
+    console.log('[StrikePulse] MARKET LOADER READY v20260926-r8');
   }
 
   if (document.readyState === 'loading') {
