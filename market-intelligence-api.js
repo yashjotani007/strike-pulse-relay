@@ -299,26 +299,20 @@ async function intelligence() {
     }
   }
 
-  // Verified NSE strike-wise NIFTY OI. If NSE denies access, expose no values.
+  // Reuse the site's existing, verified option-chain relay with v3 endpoint fallback.
   let options = {available:false,source:null,symbol:'NIFTY',strikes:[],pcr:null,maxPain:null,error:null};
   try {
-    const chain = await nse('/api/option-chain-indices?symbol=NIFTY');
-    const rows = Array.isArray(chain?.records?.data) ? chain.records.data : [];
-    const expiries = chain?.records?.expiryDates || [];
-    const expiry = expiries[0];
-    const strikes = rows.filter(row => row.expiryDate === expiry && num(row.strikePrice) != null)
-      .map(row => ({strike:num(row.strikePrice),callOI:num(row.CE?.openInterest),putOI:num(row.PE?.openInterest)}))
-      .filter(row => row.callOI != null && row.putOI != null)
-      .sort((a,b) => a.strike-b.strike);
-    if (strikes.length >= 10) {
-      const calls = strikes.reduce((v,x)=>v+x.callOI,0), puts=strikes.reduce((v,x)=>v+x.putOI,0);
-      const pain = strikes.map(candidate => ({
-        strike:candidate.strike,
-        payout:strikes.reduce((sum,x)=>sum + Math.max(0,candidate.strike-x.strike)*x.callOI + Math.max(0,x.strike-candidate.strike)*x.putOI,0)
-      })).sort((a,b)=>a.payout-b.payout);
-      options={available:true,source:'nse-option-chain',symbol:'NIFTY',expiry,strikes,
-        totalCallOI:calls,totalPutOI:puts,pcr:calls>0?Number((puts/calls).toFixed(3)):null,
-        maxPain:pain.length?pain[0].strike:null,error:null};
+    if (typeof global.__SP_LOAD_CHAIN__ !== 'function') throw Error('Option-chain relay unavailable');
+    const chain = await global.__SP_LOAD_CHAIN__('NIFTY',null,true);
+    const strikes = (chain.rows || []).map(row=>({
+      strike:num(row.strike),
+      callOI:num(row.ce?.oi),
+      putOI:num(row.pe?.oi)
+    })).filter(row=>row.strike!=null && (row.callOI!=null || row.putOI!=null));
+    if (chain.success && strikes.length >= 10) {
+      options={available:true,source:chain.source||'nse-option-chain',symbol:'NIFTY',
+        expiry:chain.expiry,strikes,totalCallOI:num(chain.callOI),totalPutOI:num(chain.putOI),
+        pcr:num(chain.pcr),maxPain:num(chain.maxPain),error:null};
     } else options.error='Verified strike-wise OI unavailable';
   } catch(e) {options.error=e.message;}
 
