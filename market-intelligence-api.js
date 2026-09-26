@@ -314,7 +314,7 @@ async function intelligence() {
       const calls = strikes.reduce((v,x)=>v+x.callOI,0), puts=strikes.reduce((v,x)=>v+x.putOI,0);
       const pain = strikes.map(candidate => ({
         strike:candidate.strike,
-        payout:strikes.reduce((sum,x)=>sum + Math.max(0,x.strike-candidate.strike)*x.callOI + Math.max(0,candidate.strike-x.strike)*x.putOI,0)
+        payout:strikes.reduce((sum,x)=>sum + Math.max(0,candidate.strike-x.strike)*x.callOI + Math.max(0,x.strike-candidate.strike)*x.putOI,0)
       })).sort((a,b)=>a.payout-b.payout);
       options={available:true,source:'nse-option-chain',symbol:'NIFTY',expiry,strikes,
         totalCallOI:calls,totalPutOI:puts,pcr:calls>0?Number((puts/calls).toFixed(3)):null,
