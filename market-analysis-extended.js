@@ -10,6 +10,46 @@ function stats(rows){if(rows.length<21)throw Error('Insufficient history');const
 function pearson(a,b){const n=Math.min(a.length,b.length);if(n<20)return null;const x=a.slice(-n),y=b.slice(-n),mx=x.reduce((s,v)=>s+v,0)/n,my=y.reduce((s,v)=>s+v,0)/n;let top=0,xx=0,yy=0;for(let i=0;i<n;i++){const dx=x[i]-mx,dy=y[i]-my;top+=dx*dy;xx+=dx*dx;yy+=dy*dy}return xx&&yy?top/Math.sqrt(xx*yy):null}
 async function correlate(q){const symbols=String(q.symbols||'RELIANCE,TCS,NIFTY').toUpperCase().split(',').map(s=>s.trim()).filter(Boolean).slice(0,5);if(symbols.length<2)throw Error('Select at least two symbols');const data=await Promise.all(symbols.map(async s=>({symbol:s,rows:await candles(s,'6mo','1d')})));const changes=data.map(x=>{const m=new Map();for(let i=1;i<x.rows.length;i++)m.set(x.rows[i].t,x.rows[i].c/x.rows[i-1].c-1);return m});const times=[...changes[0].keys()].filter(t=>changes.every(m=>m.has(t)));if(times.length<20)throw Error('Insufficient overlapping sessions');const matrix=data.map((x,i)=>({symbol:x.symbol,correlations:data.map((y,j)=>({symbol:y.symbol,value:pearson(times.map(t=>changes[i].get(t)),times.map(t=>changes[j].get(t)))}))}));return {success:true,source:'yahoo-finance',sessions:times.length,matrix,updated:new Date().toISOString()}}
 async function backtest(q){const symbol=String(q.symbol||'RELIANCE').toUpperCase(),fast=Math.max(2,Math.min(100,+q.fast||10)),slow=Math.max(fast+1,Math.min(200,+q.slow||30));const rows=await candles(symbol,'2y','1d');if(rows.length<slow+10)throw Error('Insufficient historical candles');let equity=1,position=false,trades=0,wins=0,entry=0,peak=1,drawdown=0;const cost=Math.max(0,Math.min(.05,(+q.cost||0)/100));const curve=[];const sma=(i,n)=>rows.slice(i-n+1,i+1).reduce((s,x)=>s+x.c,0)/n;for(let i=slow;i<rows.length;i++){const prevFast=sma(i-1,fast),prevSlow=sma(i-1,slow),f=sma(i,fast),s=sma(i,slow);if(position)equity*=rows[i].c/rows[i-1].c;if(!position&&prevFast<=prevSlow&&f>s){position=true;entry=equity;equity*=1-cost;trades++}else if(position&&prevFast>=prevSlow&&f<s){position=false;equity*=1-cost;if(equity>entry)wins++}peak=Math.max(peak,equity);drawdown=Math.min(drawdown,equity/peak-1);curve.push({t:rows[i].t,equity})}return {success:true,symbol,method:'Long-only SMA crossover; close-to-close illustrative execution; no intraday fills',fast,slow,trades,closedWins:wins,totalReturn:(equity-1)*100,maxDrawdown:drawdown*100,curve,source:'yahoo-finance',updated:new Date().toISOString()}}
-const handlers={'/api/analysis/universe':async q=>{const rows=await universe(),term=String(q.q||'').toUpperCase().trim(),offset=Math.max(0,Math.min(10000,+q.offset||0)),limit=Math.max(1,Math.min(100,+q.limit||30)),matches=term?rows.filter(x=>x.symbol.includes(term)||x.name.toUpperCase().includes(term)):rows;return {success:true,total:matches.length,offset,limit,results:matches.slice(offset,offset+limit),source:'NSE equity directory',updated:new Date(cache.at).toISOString()}},'/api/analysis/scan-batch':async q=>{const rows=await universe(),offset=Math.max(0,Math.min(rows.length,+q.offset||0)),limit=Math.max(1,Math.min(8,+q.limit||5)),symbols=String(q.symbols||'').trim()?String(q.symbols).toUpperCase().split(',').slice(0,8).filter(s=>rows.some(x=>x.symbol===s)):rows.slice(offset,offset+limit).map(x=>x.symbol),done=await Promise.allSettled(symbols.map(async symbol=>({symbol,...stats(await candles(symbol,'1mo','1d'))})));const results=done.filter(x=>x.status==='fulfilled').map(x=>x.value);return {success:true,results,requested:symbols.length,failed:done.filter(x=>x.status==='rejected').map((x,i)=>({error:x.reason?.message||'Provider unavailable'})),nextOffset:offset+limit,total:rows.length,hasMore:offset+limit<rows.length,source:'NSE directory / Yahoo daily candles',updated:new Date().toISOString()}},'/api/analysis/correlation':correlate,'/api/analysis/backtest':backtest};
+
+// Historical volume research and descriptive statistics; daily adjusted provider availability may vary.
+async function volumeLab(q){
+ const symbol=String(q.symbol||'TCS').trim().toUpperCase();
+ const lookback=Math.max(10,Math.min(120,Number(q.lookback)||20));
+ const rows=(await candles(symbol,'1y','1d')).filter(x=>x.v!=null&&x.v>=0);
+ if(rows.length<lookback+2)throw Error('Insufficient historical volume data');
+ const latest=rows.at(-1),history=rows.slice(-lookback-1,-1),avgVolume=history.reduce((a,x)=>a+x.v,0)/history.length;
+ const prior=rows.at(-2),volumeRatio=avgVolume>0?latest.v/avgVolume:null;
+ const recent=rows.slice(-Math.min(rows.length,60));
+ const points=recent.map(x=>({t:x.t,volume:x.v,close:x.c}));
+ const up=history.filter((x,i)=>i>0&&x.c>history[i-1].c);
+ const down=history.filter((x,i)=>i>0&&x.c<history[i-1].c);
+ const average=a=>a.length?a.reduce((sum,x)=>sum+x.v,0)/a.length:null;
+ return {success:true,symbol,lookback,sessions:rows.length,source:'yahoo-finance',updated:new Date().toISOString(),
+  latest:{t:latest.t,close:latest.c,volume:latest.v,priceChangePct:prior?(latest.c/prior.c-1)*100:null},
+  averageVolume:avgVolume,relativeVolume:volumeRatio,highestVolume:Math.max(...history.map(x=>x.v)),
+  averageUpDayVolume:average(up),averageDownDayVolume:average(down),points,
+  note:'Historical daily volume; the most recent candle can be incomplete. Not real-time or exchange-certified.'};
+}
+async function statisticsLab(q){
+ const symbol=String(q.symbol||'TCS').trim().toUpperCase();
+ const requested=Math.max(20,Math.min(240,Number(q.sessions)||60));
+ const rows=await candles(symbol,'2y','1d');
+ const selected=rows.slice(-requested-1);
+ if(selected.length<21)throw Error('Insufficient daily historical sessions');
+ const changes=selected.slice(1).map((x,i)=>({t:x.t,close:x.c,returnPct:(x.c/selected[i].c-1)*100})).filter(x=>Number.isFinite(x.returnPct));
+ const vals=changes.map(x=>x.returnPct),n=vals.length,mean=vals.reduce((a,b)=>a+b,0)/n;
+ const variance=vals.reduce((a,b)=>a+(b-mean)**2,0)/n,sorted=[...vals].sort((a,b)=>a-b);
+ const percentile=p=>{const idx=(n-1)*p,lo=Math.floor(idx),hi=Math.ceil(idx);return sorted[lo]+(sorted[hi]-sorted[lo])*(idx-lo)};
+ const wins=vals.filter(x=>x>0).length,losses=vals.filter(x=>x<0).length,flats=n-wins-losses;
+ let streak=0,bestUp=0,bestDown=0;
+ for(const x of vals){streak=x>0?Math.max(0,streak)+1:x<0?Math.min(0,streak)-1:0;bestUp=Math.max(bestUp,streak);bestDown=Math.max(bestDown,-streak)}
+ return {success:true,symbol,source:'yahoo-finance',updated:new Date().toISOString(),sessions:n,
+  meanDailyReturnPct:mean,medianDailyReturnPct:percentile(.5),dailyVolatilityPct:Math.sqrt(variance),
+  positiveSessions:wins,negativeSessions:losses,flatSessions:flats,positiveRatePct:100*wins/n,
+  bestDayPct:Math.max(...vals),worstDayPct:Math.min(...vals),p10Pct:percentile(.1),p90Pct:percentile(.9),
+  periodReturnPct:(selected.at(-1).c/selected[0].c-1)*100,longestUpStreak:bestUp,longestDownStreak:bestDown,
+  points:changes.slice(-120),note:'Descriptive historical close-to-close returns; not a forecast. Daily data may be unadjusted for corporate actions.'};
+}
+const handlers={'/api/analysis/volume-lab':volumeLab,'/api/analysis/statistics':statisticsLab,'/api/analysis/universe':async q=>{const rows=await universe(),term=String(q.q||'').toUpperCase().trim(),offset=Math.max(0,Math.min(10000,+q.offset||0)),limit=Math.max(1,Math.min(100,+q.limit||30)),matches=term?rows.filter(x=>x.symbol.includes(term)||x.name.toUpperCase().includes(term)):rows;return {success:true,total:matches.length,offset,limit,results:matches.slice(offset,offset+limit),source:'NSE equity directory',updated:new Date(cache.at).toISOString()}},'/api/analysis/scan-batch':async q=>{const rows=await universe(),offset=Math.max(0,Math.min(rows.length,+q.offset||0)),limit=Math.max(1,Math.min(8,+q.limit||5)),symbols=String(q.symbols||'').trim()?String(q.symbols).toUpperCase().split(',').slice(0,8).filter(s=>rows.some(x=>x.symbol===s)):rows.slice(offset,offset+limit).map(x=>x.symbol),done=await Promise.allSettled(symbols.map(async symbol=>({symbol,...stats(await candles(symbol,'1mo','1d'))})));const results=done.filter(x=>x.status==='fulfilled').map(x=>x.value);return {success:true,results,requested:symbols.length,failed:done.filter(x=>x.status==='rejected').map((x,i)=>({error:x.reason?.message||'Provider unavailable'})),nextOffset:offset+limit,total:rows.length,hasMore:offset+limit<rows.length,source:'NSE directory / Yahoo daily candles',updated:new Date().toISOString()}},'/api/analysis/correlation':correlate,'/api/analysis/backtest':backtest};
 express.application.use=function(...args){return original.call(this,async(req,res,next)=>{const fn=handlers[req.path];if(!fn)return next();res.set('Access-Control-Allow-Origin','*').set('Cache-Control','no-store');if(req.method==='OPTIONS')return res.sendStatus(204);if(req.method!=='GET')return res.sendStatus(405);try{return res.json(await fn(req.query||{}))}catch(e){return res.status(502).json({success:false,error:e.message})}},...args)};
 console.log('[ANALYSIS EXTENDED] universe, batches, correlation and backtest ready');
