@@ -41,3 +41,40 @@ const search=root.querySelector('#sp-universal-search input');if(search){search.
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
 })();
+
+
+/* Historical Volume Lab and Statistics: injected without changing WordPress HTML/CSS. */
+(function(){
+'use strict';
+const base='https://strike-pulse-relay.onrender.com',css='padding:10px 12px;border:1px solid #d6e4f5;border-radius:9px;background:#fff;color:#243344;max-width:100%';
+const request=async(path,params)=>{const u=new URL(base+path);Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetch(u,{cache:'no-store'}),j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider unavailable');return j};
+const field=(label,value,type='text')=>{const wrap=document.createElement('label');wrap.style.cssText='display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600';wrap.textContent=label;const el=document.createElement('input');el.type=type;el.value=value;el.style.cssText=css+';min-width:130px';wrap.append(el);return {wrap,el}};
+const metric=(name,value)=>{const x=document.createElement('div');x.style.cssText='padding:12px;border:1px solid #dce8f8;border-radius:10px;background:#fff;min-width:125px;flex:1';const label=document.createElement('div');label.textContent=name;label.style.cssText='font-size:11px;color:#61758c';const strong=document.createElement('strong');strong.textContent=value;strong.style.cssText='display:block;font-size:18px;margin-top:6px;overflow-wrap:anywhere';x.append(label,strong);return x};
+const fmt=(v,d=2)=>v==null||!Number.isFinite(+v)?'N/A':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
+const chart=(holder,points,key)=>{holder.replaceChildren();if(points.length<2)return;const vals=points.map(x=>x[key]).filter(x=>Number.isFinite(x));if(vals.length<2)return;const min=Math.min(...vals,0),max=Math.max(...vals),w=700,h=170;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 700 170');svg.setAttribute('role','img');svg.setAttribute('aria-label',key+' historical chart');svg.style.cssText='width:100%;height:auto;max-height:240px';const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',points.map((p,i)=>(i*w/(points.length-1)).toFixed(2)+','+(h-(p[key]-min)/(max-min||1)*h).toFixed(2)).join(' '));poly.setAttribute('fill','none');poly.setAttribute('stroke','#3278e8');poly.setAttribute('stroke-width','2');svg.append(poly);holder.append(svg)};
+function mount(){
+ const root=document.querySelector('.sp-analysis');if(!root||root.querySelector('#sp-research-v2'))return;
+ for(const [id,title,route] of [['volume-lab','Historical Volume Lab','/api/analysis/volume-lab'],['statistics','Historical Statistics','/api/analysis/statistics']]){
+  const host=root.querySelector('#'+id);if(!host)continue;
+  const panel=host.querySelector('.sp-panel')||host,box=document.createElement('div');box.id=id==='volume-lab'?'sp-research-v2':'sp-statistics-v2';box.style.cssText='padding:18px;margin:12px 0;background:#f7faff;border:1px solid #dce8f8;border-radius:15px;max-width:100%;box-sizing:border-box';
+  const heading=document.createElement('h3');heading.textContent=title;
+  const controls=document.createElement('div');controls.style.cssText='display:flex;flex-wrap:wrap;gap:12px;align-items:end';
+  const symbol=field('NSE symbol','TCS'),windowField=field(id==='volume-lab'?'Average volume lookback (10–120)':'Historical sessions (20–240)',id==='volume-lab'?'20':'60','number');
+  windowField.el.min=id==='volume-lab'?'10':'20';windowField.el.max=id==='volume-lab'?'120':'240';
+  const btn=document.createElement('button');btn.type='button';btn.textContent=id==='volume-lab'?'Analyze volume':'Calculate statistics';btn.style.cssText=css+';background:#3278e8;color:#fff;cursor:pointer';
+  const info=document.createElement('p');info.setAttribute('role','status');info.style.cssText='font-size:12px;color:#54718f;white-space:pre-wrap';
+  const metrics=document.createElement('div');metrics.style.cssText='display:flex;flex-wrap:wrap;gap:10px;margin:14px 0';
+  const plot=document.createElement('div');plot.style.cssText='width:100%;max-width:750px;overflow:hidden';
+  const note=document.createElement('p');note.style.cssText='font-size:11px;color:#65758a';
+  controls.append(symbol.wrap,windowField.wrap,btn);box.append(heading,controls,info,metrics,plot,note);panel.prepend(box);
+  const stale=host.querySelector('.sp-live-message');if(stale)stale.textContent='Historical research available below. Results are not real-time.';
+  btn.addEventListener('click',async()=>{btn.disabled=true;info.textContent='Loading historical data…';metrics.replaceChildren();plot.replaceChildren();note.textContent='';try{
+   const params={symbol:symbol.el.value.trim().toUpperCase()};params[id==='volume-lab'?'lookback':'sessions']=windowField.el.value;
+   const j=await request(route,params);info.textContent=j.symbol+' · '+j.sessions+' historical sessions · '+j.source+' · '+j.updated;
+   const values=id==='volume-lab'?[['Latest volume',fmt(j.latest.volume,0)],['Average volume',fmt(j.averageVolume,0)],['Relative volume',fmt(j.relativeVolume)+'×'],['Highest prior volume',fmt(j.highestVolume,0)],['Avg up-day volume',fmt(j.averageUpDayVolume,0)],['Avg down-day volume',fmt(j.averageDownDayVolume,0)]]:[['Period return',fmt(j.periodReturnPct)+'%'],['Mean daily return',fmt(j.meanDailyReturnPct)+'%'],['Median daily return',fmt(j.medianDailyReturnPct)+'%'],['Daily volatility',fmt(j.dailyVolatilityPct)+'%'],['Positive sessions',j.positiveSessions+'/'+j.sessions],['Positive rate',fmt(j.positiveRatePct)+'%'],['Best / worst day',fmt(j.bestDayPct)+'% / '+fmt(j.worstDayPct)+'%'],['Longest up / down streak',j.longestUpStreak+' / '+j.longestDownStreak]];
+   values.forEach(([k,v])=>metrics.append(metric(k,v)));chart(plot,j.points,id==='volume-lab'?'volume':'returnPct');note.textContent=j.note;
+  }catch(e){info.textContent='Research unavailable: '+e.message}finally{btn.disabled=false}});
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
+})();
