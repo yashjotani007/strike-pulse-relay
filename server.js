@@ -1,3 +1,5 @@
+require("./market-analysis-loader.js");
+require("./market-analysis-api.js");
 require("./market-terminal-loader-route.js");
 require("./stock-search-api.js");
 require("./market-intelligence-api.js");
