@@ -1,5 +1,6 @@
 'use strict';
 const express=require('express');
+const optionDb=require('./option-history-db');
 const original=express.application.use;
 const num=v=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 async function history(symbol,interval='15m',range='5d'){
@@ -34,10 +35,31 @@ function recordOptionSnapshots(rows,observedAt){
 async function optionHistory(q){
  const symbol=String(q.symbol||'').toUpperCase(),expiry=String(q.expiry||''),type=String(q.type||'').toUpperCase(),strike=Number(q.strike);
  if(!/^[A-Z0-9&-]{2,24}$/.test(symbol)||!expiry||!Number.isFinite(strike)||!['CE','PE'].includes(type))throw Error('Invalid contract');
- const points=optionSnapshots.get(optionKey({symbol,expiry,strike,type}))||[];
- return {success:true,symbol,expiry,strike,type,points,source:'session-collected option-chain snapshots',persistent:false,note:'Observations only when a scan is requested; Render restart clears this in-memory series. No reconstructed historical candles.'};
+ const stored=await optionDb.history({symbol,expiry,strike,type}).catch(e=>{console.error('[OPTION HISTORY]',e.message);return null});
+ const points=stored||optionSnapshots.get(optionKey({symbol,expiry,strike,type}))||[];
+ return {success:true,symbol,expiry,strike,type,points,source:stored?'postgres option-chain observations':'session-collected option-chain snapshots',persistent:!!stored,note:stored?'Stored observations only; not exchange OHLC candles.':'Session observations; Render restart clears in-memory series.'};
 }
-async function optionScan(q){if(typeof global.__SP_LOAD_CHAIN__!=='function')throw Error('Option chain relay unavailable');const symbol=String(q.symbol||'NIFTY').toUpperCase(),d=await global.__SP_LOAD_CHAIN__(symbol,q.expiry||null,true);let rows=[];for(const row of d.rows||[])for(const type of ['ce','pe']){const x=row[type];if(x?.ltp==null||x?.oi==null)continue;const base=x.oi-x.oiChange,oiPct=x.oiChange!=null&&base>0?x.oiChange/base*100:null;rows.push({symbol,strike:row.strike,type:type.toUpperCase(),expiry:d.expiry,ltp:x.ltp,oi:x.oi,oiPct,volume:x.volume,iv:x.iv,spread:x.ask!=null&&x.bid!=null&&x.ltp>0?(x.ask-x.bid)/x.ltp*100:null})}const oi=num(q.minOi),volume=num(q.minVolume),iv=num(q.minIv),spread=num(q.maxSpread),type=String(q.type||'both').toUpperCase();rows=rows.filter(x=>(type==='BOTH'||x.type===type)&&(oi==null||x.oiPct!=null&&x.oiPct>=oi)&&(volume==null||x.volume!=null&&x.volume>=volume)&&(iv==null||x.iv!=null&&x.iv>=iv)&&(spread==null||x.spread!=null&&x.spread<=spread));recordOptionSnapshots(rows,d.updated);return {success:true,symbol,source:d.source,expiry:d.expiry,results:rows,updated:d.updated}}
+async function optionScan(q){if(typeof global.__SP_LOAD_CHAIN__!=='function')throw Error('Option chain relay unavailable');const symbol=String(q.symbol||'NIFTY').toUpperCase(),d=await global.__SP_LOAD_CHAIN__(symbol,q.expiry||null,true);let rows=[];for(const row of d.rows||[])for(const type of ['ce','pe']){const x=row[type];if(x?.ltp==null||x?.oi==null)continue;const base=x.oi-x.oiChange,oiPct=x.oiChange!=null&&base>0?x.oiChange/base*100:null;rows.push({symbol,strike:row.strike,type:type.toUpperCase(),expiry:d.expiry,ltp:x.ltp,oi:x.oi,oiPct,volume:x.volume,iv:x.iv,spread:x.ask!=null&&x.bid!=null&&x.ltp>0?(x.ask-x.bid)/x.ltp*100:null})}const oi=num(q.minOi),volume=num(q.minVolume),iv=num(q.minIv),spread=num(q.maxSpread),type=String(q.type||'both').toUpperCase();rows=rows.filter(x=>(type==='BOTH'||x.type===type)&&(oi==null||x.oiPct!=null&&x.oiPct>=oi)&&(volume==null||x.volume!=null&&x.volume>=volume)&&(iv==null||x.iv!=null&&x.iv>=iv)&&(spread==null||x.spread!=null&&x.spread<=spread));recordOptionSnapshots(rows,d.updated);await optionDb.save(rows,d.updated).catch(e=>console.error('[OPTION HISTORY DB SAVE]',e.message));return {success:true,symbol,source:d.source,expiry:d.expiry,results:rows,updated:d.updated}}
 const routes={'/api/analysis/status':async()=>({success:true,features:{stockScanner:'selected symbol or 20-stock sample',optionScanner:'existing NSE relay',chart:'historical closing prices',backtest:'SMA historical research route available; provider-dependent',correlation:'Historical daily-return correlation route available; provider-dependent',universe:'NSE directory route available; provider-dependent',batchScanner:'Five stocks per request; provider-dependent'},updated:new Date().toISOString()}),'/api/analysis/stock-scanner':stockScan,'/api/analysis/option-scanner':optionScan,'/api/analysis/option-history':optionHistory,'/api/analysis/chart':async q=>{const symbol=String(q.symbol||'RELIANCE').toUpperCase().replace(/[^A-Z0-9&-]/g,'');const interval=['1m','5m','15m','30m','60m','1d','1wk'].includes(q.interval)?q.interval:'15m',range=['1d','5d','1mo','3mo','6mo','1y','2y','5y'].includes(q.range)?q.range:'5d';const d=await history(symbol,interval,range);return {...d,metrics:metrics(d.candles)}}};
 express.application.use=function(...args){return original.call(this,async(req,res,next)=>{const fn=routes[req.path];if(!fn)return next();res.set('Access-Control-Allow-Origin','*').set('Cache-Control','no-store');if(req.method==='OPTIONS')return res.sendStatus(204);try{return res.json(await fn(req.query||{}))}catch(e){return res.status(502).json({success:false,error:e.message})}},...args)};
+// Collect new snapshots while the web service is awake; free instances may sleep.
+let collecting=false;
+async function collectOptionSnapshots(){
+ if(collecting||!optionDb.enabled()||typeof global.__SP_LOAD_CHAIN__!=='function')return;
+ collecting=true;
+ try{
+  for(const symbol of ['NIFTY','BANKNIFTY']){
+   const d=await global.__SP_LOAD_CHAIN__(symbol,null,true);
+   const rows=[];
+   for(const row of d.rows||[])for(const type of ['ce','pe']){
+    const x=row[type];if(x?.ltp==null||x?.oi==null)continue;
+    rows.push({symbol,strike:row.strike,type:type.toUpperCase(),expiry:d.expiry,ltp:x.ltp,oi:x.oi,volume:x.volume,iv:x.iv,spread:x.ask!=null&&x.bid!=null&&x.ltp>0?(x.ask-x.bid)/x.ltp*100:null});
+   }
+   recordOptionSnapshots(rows,d.updated);await optionDb.save(rows,d.updated);
+  }
+ }catch(e){console.error('[OPTION AUTO COLLECT]',e.message)}
+ finally{collecting=false}
+}
+setTimeout(collectOptionSnapshots,45000);
+setInterval(collectOptionSnapshots,5*60*1000);
 console.log('[ANALYSIS] backend loaded');
