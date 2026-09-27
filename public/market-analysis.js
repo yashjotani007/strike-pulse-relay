@@ -123,3 +123,5 @@ function restore(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',restore);else restore();
 })();
+/* Original HTML complete integration: loaded after legacy handlers. */
+(function(){const s=document.createElement('script');s.src='https://strike-pulse-relay.onrender.com/market-original-complete.js?v=1';s.defer=true;s.onerror=()=>console.error('Original HTML integration script failed to load');document.head.append(s)})();
