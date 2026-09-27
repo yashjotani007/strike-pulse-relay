@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
-    "smartapi-javascript": "1.0.27"
+    "smartapi-javascript": "1.0.27",
+    "pg": "^8.16.3"
   }
 }
