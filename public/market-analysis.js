@@ -78,3 +78,23 @@ function mount(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
 })();
+
+/* Presentation cleanup: remove misleading static previews, preserve original WordPress HTML. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis');if(!root||root.dataset.spCleaned)return;root.dataset.spCleaned='1';
+ const stock=root.querySelector('#stock-scanner'),option=root.querySelector('#option-scanner'),chart=root.querySelector('#chart-lab');
+ for(const host of [stock,option]){if(!host)continue;const tbody=host.querySelector('.sp-table tbody');if(tbody)tbody.replaceChildren();const label=host.querySelector('.sp-demo-label');if(label)label.textContent='AWAITING SCAN';}
+ if(chart){const title=[...chart.querySelectorAll('h3,h4')].find(x=>/price action/i.test(x.textContent));const symbol=chart.querySelector('#chart-symbol');const sync=()=>{if(title&&symbol)title.textContent=symbol.value.trim().toUpperCase()+' · Price Action'};symbol?.addEventListener('change',sync);sync();
+  const holder=chart.querySelector('.sp-main-chart .sp-chart-placeholder');if(holder){const ob=new MutationObserver(()=>{const svg=holder.querySelector('svg');if(!svg)return;const h=[...chart.querySelectorAll('h3,h4')].find(x=>/price action/i.test(x.textContent));if(h&&symbol)h.textContent=symbol.value.trim().toUpperCase()+' · Price Action'});ob.observe(holder,{childList:true})}
+ }
+ const labels=['CHART PLACEHOLDER','RSI Panel','MACD Panel','5m Chart','15m Chart','1h Chart','1D Chart','Premium Chart','OI / Volume Chart','Implied Volatility','Liquidity Analysis','Volume Distribution','RVOL Chart','Correlation Chart','Relative Performance Chart','Spread & Z-Score','Return Distribution','Time-of-Day Analysis','Equity Curve','Drawdown Chart'];
+ // Hide only static placeholder content, never functional controls or injected research widgets.
+ for(const host of root.querySelectorAll('#chart-lab,#option-scanner,#volume-lab,#correlation-lab,#backtesting,#statistics')){
+  for(const el of host.querySelectorAll('.sp-chart-placeholder')){if(el.closest('.sp-main-chart'))continue;const value=el.textContent.trim();if(value&&!el.querySelector('svg,canvas')&&/placeholder|will appear|awaiting|no backtest|historical.*required/i.test(value))el.style.display='none'}
+ }
+ const note=document.createElement('p');note.id='sp-research-clarity';note.textContent='Interactive research panels above use provider data on request. Legacy design mockups below may be illustrative; unimplemented analytics are not live.';note.style.cssText='font-size:12px;color:#60758c;padding:10px 14px;background:#f0f5fc;border-radius:9px;margin:12px 0';root.querySelector('.sp-page-heading')?.append(note);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
