@@ -1,3 +1,4 @@
+require("./market-analysis-extended.js");
 require("./market-analysis-loader.js");
 require("./market-analysis-api.js");
 require("./market-terminal-loader-route.js");
