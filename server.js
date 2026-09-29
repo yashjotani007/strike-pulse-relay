@@ -9,6 +9,7 @@ setTimeout(async()=>{
   console.log('[WP PHP CONNECTIVITY]',JSON.stringify({httpStatus:r.status,contentType:type,jsonValid:valid}));
  }catch(e){console.log('[WP PHP CONNECTIVITY]',e.name+': '+e.message);}
 },12000);
+require("./market-analysis-v2.js");
 require("./market-analysis-extended.js");
 require("./market-analysis-loader.js");
 require("./market-analysis-api.js");
