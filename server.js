@@ -11,6 +11,7 @@ setTimeout(async()=>{
 },12000);
 require("./market-analysis-v2.js");
 require("./market-analysis-v3.js");
+require("./market-analysis-preview-route.js");
 require("./market-analysis-extended.js");
 require("./market-analysis-loader.js");
 require("./market-analysis-api.js");
