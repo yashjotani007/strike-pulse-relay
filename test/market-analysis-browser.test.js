@@ -23,6 +23,8 @@ test('original WordPress HTML: all seven sections, controls, charts and mobile l
  try{
   const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/market-analysis.js*',route=>route.continue({url:PREVIEW+'/market-analysis.js'}));
+  await page.route('**/market-analysis-v3.js*',route=>route.continue({url:PREVIEW+'/market-analysis-v3.js'}));
   const response=await page.goto(WORDPRESS,{waitUntil:'domcontentloaded',timeout:90000});
   if(!response||response.status()>=400){t.diagnostic('WordPress host blocked external test browser: '+response?.status());t.skip('Requires browser access to actual WordPress page');return}
   const sections=['stock-scanner','option-scanner','chart-lab','volume-lab','correlation-lab','backtesting','statistics'];
@@ -33,6 +35,8 @@ test('original WordPress HTML: all seven sections, controls, charts and mobile l
   const overflows=await page.evaluate(()=>({document:document.documentElement.scrollWidth,viewport:window.innerWidth}));
   assert.ok(overflows.document<=overflows.viewport+5,'Mobile horizontal overflow '+JSON.stringify(overflows));
   for(const id of sections)assert.ok(await page.locator('#'+id+' .sp-panel').count()>0,'Missing panel: '+id);
+  const volumeButton=page.locator('#volume-lab button').filter({hasText:'Analyze Volume'}).first();
+  if(await volumeButton.count()){await volumeButton.click();await page.locator('#volume-lab .sp-v3-status').waitFor({timeout:45000});await page.waitForFunction(()=>{const t=document.querySelector('#volume-lab .sp-v3-status')?.textContent||'';return /candle-range estimates|Unavailable:/.test(t)},null,{timeout:45000});const message=await page.locator('#volume-lab .sp-v3-status').innerText();assert.ok(!message.startsWith('Unavailable:'),'Volume UI failed: '+message)}
   assert.deepEqual(errors,[],'Browser JavaScript exceptions');
  }finally{await browser.close()}
 },{timeout:160000});
