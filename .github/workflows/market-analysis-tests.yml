@@ -19,6 +19,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node --test test/market-analysis-math.test.js
       - run: node --check market-analysis-v2.js
+      - run: node --check market-analysis-v3.js
       - run: node --check market-analysis-api.js
       - run: node --check market-analysis-extended.js
       - run: node --check public/market-analysis.js
