@@ -1,0 +1,23 @@
+name: Market analysis browser E2E
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev/market-analysis-seven-sections]
+    paths:
+      - 'public/market-analysis*.js'
+      - 'market-analysis*.js'
+      - 'test/market-analysis-browser.test.js'
+      - '.github/workflows/market-analysis-browser.yml'
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node --test test/market-analysis-browser.test.js
