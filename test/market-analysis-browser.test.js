@@ -10,7 +10,7 @@ test('development dashboard: all seven sections return valid arrays',async()=>{
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(PREVIEW+'/analysis-preview',{waitUntil:'domcontentloaded',timeout:90000});
   await page.getByRole('button',{name:'Run all 7 API checks'}).click();
-  await page.waitForFunction(()=>document.querySelector('#summary')?.textContent.includes('of 7 API requests succeeded'),{timeout:120000});
+  await page.waitForFunction(()=>document.querySelector('#summary')?.textContent.includes('of 7 API requests succeeded'),null,{timeout:120000});
   const summary=await page.locator('#summary').innerText();
   const statuses=await page.locator('.item .status').allInnerTexts();
   assert.equal(statuses.length,7);
