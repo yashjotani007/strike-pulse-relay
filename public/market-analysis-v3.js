@@ -1,6 +1,6 @@
 (()=>{'use strict';
 if(window.__SP_V3_RESEARCH__)return;window.__SP_V3_RESEARCH__=true;
-const base=document.currentScript?.src&&new URL(document.currentScript.src).hostname==='strike-pulse-analysis-preview.onrender.com'?'https://strike-pulse-analysis-preview.onrender.com':'https://strike-pulse-relay.onrender.com',q=(s,r=document)=>r.querySelector(s),all=(s,r=document)=>[...r.querySelectorAll(s)],value=id=>q('#'+id)?.value||'',selected=id=>q('#'+id)?.selectedIndex||0;
+const base=window.__SP_API_BASE__||(document.currentScript?.src&&new URL(document.currentScript.src).hostname==='strike-pulse-analysis-preview.onrender.com'?'https://strike-pulse-analysis-preview.onrender.com':'https://strike-pulse-relay.onrender.com'),q=(s,r=document)=>r.querySelector(s),all=(s,r=document)=>[...r.querySelectorAll(s)],value=id=>q('#'+id)?.value||'',selected=id=>q('#'+id)?.selectedIndex||0;
 const fmt=(x,n=2)=>x==null||!Number.isFinite(x)?'—':Number(x).toLocaleString('en-IN',{maximumFractionDigits:n});
 async function api(path,params){const url=new URL(base+path);Object.entries(params).forEach(([k,v])=>{if(v!=null&&v!=='')url.searchParams.set(k,v)});const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(25000)}),j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Historical provider unavailable');return j}
 function status(h,msg){let p=q('.sp-v3-status',h);if(!p){p=document.createElement('p');p.className='sp-v3-status';p.style.cssText='padding:8px 12px;font-size:12px;color:#387ce3';h.prepend(p)}p.textContent=msg}
