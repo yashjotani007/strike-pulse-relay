@@ -23,6 +23,7 @@ test('original WordPress HTML: all seven sections, controls, charts and mobile l
  try{
   const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(base=>{window.__SP_API_BASE__=base},PREVIEW);
   await page.route('**/market-analysis.js*',async route=>{const r=await page.request.get(PREVIEW+'/market-analysis.js');await route.fulfill({status:r.status(),contentType:'application/javascript',body:await r.body()})});
   await page.route('**/market-analysis-v3.js*',async route=>{const r=await page.request.get(PREVIEW+'/market-analysis-v3.js');await route.fulfill({status:r.status(),contentType:'application/javascript',body:await r.body()})});
   const response=await page.goto(WORDPRESS,{waitUntil:'domcontentloaded',timeout:90000});
@@ -36,7 +37,7 @@ test('original WordPress HTML: all seven sections, controls, charts and mobile l
   assert.ok(overflows.document<=overflows.viewport+5,'Mobile horizontal overflow '+JSON.stringify(overflows));
   for(const id of sections)assert.ok(await page.locator('#'+id+' .sp-panel').count()>0,'Missing panel: '+id);
   const volumeButton=page.locator('#volume-lab button').filter({hasText:'Analyze Volume'}).first();
-  if(await volumeButton.count()){await volumeButton.evaluate(b=>b.click());await page.waitForFunction(()=>{const s=document.querySelector('#volume-lab .sp-v3-status')?.textContent||'';return /candle-range estimates|Unavailable:/.test(s)},null,{timeout:45000});const message=await page.locator('#volume-lab .sp-v3-status, #volume-lab .sp-live-message').allInnerTexts();assert.ok(!message.some(s=>s.startsWith('Unavailable:')),'Volume UI failed: '+JSON.stringify(message));t.diagnostic('Volume button status: '+JSON.stringify(message))}
+  if(await volumeButton.count()){await volumeButton.evaluate(b=>b.click());await page.waitForFunction(()=>{const s=document.querySelector('#volume-lab .sp-v3-status')?.textContent||'';return /candle-range estimates|Unavailable:/.test(s)},null,{timeout:45000}).catch(async e=>{throw Error('Volume never completed: '+JSON.stringify({status:await page.locator('#volume-lab .sp-v3-status').allInnerTexts(),errors,scriptLoaded:await page.evaluate(()=>!!window.__SP_V3_RESEARCH__),apiBase:await page.evaluate(()=>window.__SP_API_BASE__)})+'; '+e.message)});const message=await page.locator('#volume-lab .sp-v3-status, #volume-lab .sp-live-message').allInnerTexts();assert.ok(!message.some(s=>s.startsWith('Unavailable:')),'Volume UI failed: '+JSON.stringify(message));t.diagnostic('Volume button status: '+JSON.stringify(message))}
   assert.deepEqual(errors,[],'Browser JavaScript exceptions');
  }finally{await browser.close()}
 },{timeout:160000});
