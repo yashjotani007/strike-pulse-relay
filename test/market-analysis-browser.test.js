@@ -10,7 +10,7 @@ test('development dashboard: all seven sections return valid arrays',async()=>{
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(PREVIEW+'/analysis-preview',{waitUntil:'domcontentloaded',timeout:90000});
   await page.getByRole('button',{name:'Run all 7 API checks'}).click();
-  await page.waitForFunction(()=>{const s=document.querySelector('#summary')?.textContent||'';return /\\d+ of 7 API requests succeeded/.test(s)},null,{timeout:120000}).catch(async e=>{throw Error('Dashboard did not finish: '+JSON.stringify({summary:await page.locator('#summary').innerText(),statuses:await page.locator('.item .status').allInnerTexts(),outputs:await page.locator('.item pre').allInnerTexts(),pageErrors:errors})+'; '+e.message)});
+  await page.waitForFunction(()=>{const s=document.querySelector('#summary')?.textContent||'';return s.includes('of 7 API requests succeeded')},null,{timeout:120000}).catch(async e=>{throw Error('Dashboard did not finish: '+JSON.stringify({summary:await page.locator('#summary').innerText(),statuses:await page.locator('.item .status').allInnerTexts(),outputs:await page.locator('.item pre').allInnerTexts(),pageErrors:errors})+'; '+e.message)});
   const summary=await page.locator('#summary').innerText();
   const statuses=await page.locator('.item .status').allInnerTexts();
   assert.equal(statuses.length,7);
@@ -33,6 +33,7 @@ test('original WordPress HTML: all seven sections, controls, charts and mobile l
   const controls=['stock-universe','stock-timeframe','scan-pattern','minimum-price','relative-volume','option-underlying','option-expiry','option-type','moneyness','chart-symbol','chart-timeframe','chart-style','volume-symbol','volume-period','correlation-stock-a','correlation-stock-b','correlation-window','backtest-strategy','backtest-start','backtest-end','statistical-pattern','statistical-symbol','statistical-period','forward-window'];
   for(const id of controls)assert.equal(await page.locator('#'+id).count(),1,'Missing original control: '+id);
   await page.waitForTimeout(12000);
+  t.diagnostic('Preview script status: '+JSON.stringify(await page.evaluate(()=>({v3:!!window.__SP_V3_RESEARCH__,base:window.__SP_API_BASE__,scripts:[...document.scripts].filter(s=>/market-analysis/.test(s.src)).map(s=>s.src)}))));
   const overflows=await page.evaluate(()=>({document:document.documentElement.scrollWidth,viewport:window.innerWidth}));
   assert.ok(overflows.document<=overflows.viewport+5,'Mobile horizontal overflow '+JSON.stringify(overflows));
   for(const id of sections)assert.ok(await page.locator('#'+id+' .sp-panel').count()>0,'Missing panel: '+id);
