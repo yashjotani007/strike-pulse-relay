@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --ignore-scripts
-      - run: node --test test/market-analysis-math.test.js
+      - run: node --test test/market-analysis-math.test.js test/market-analysis-v3.test.js
       - run: node --check market-analysis-v2.js
       - run: node --check market-analysis-v3.js
       - run: node --check market-analysis-api.js
