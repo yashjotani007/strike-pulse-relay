@@ -138,9 +138,30 @@ try{
  const contract={symbol:x.symbol,expiry:x.expiry,strike:x.strike,type:x.type};
  let history=null;
  try {
-  const wpUrl='https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history?'+new URLSearchParams(contract);
-  const wpResponse=await fetch(wpUrl,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(12000)});
-  if(wpResponse.ok){const wpData=await wpResponse.json();if(wpData?.success&&Array.isArray(wpData.points)&&wpData.points.length)history={...wpData,source:'WordPress MySQL option-chain observations',persistent:true};}
+  const cacheKey=[contract.symbol,contract.expiry,contract.strike,contract.type].join('|');
+  window.__SP_OPTION_HISTORY_CACHE__=window.__SP_OPTION_HISTORY_CACHE__||new Map();
+  window.__SP_OPTION_HISTORY_PENDING__=window.__SP_OPTION_HISTORY_PENDING__||new Map();
+  const cached=window.__SP_OPTION_HISTORY_CACHE__.get(cacheKey);
+  if(cached&&cached.expiresAt>Date.now()) history=cached.data;
+  else {
+   let pending=window.__SP_OPTION_HISTORY_PENDING__.get(cacheKey);
+   if(!pending){
+    const wpUrl='https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history?'+new URLSearchParams(contract);
+    pending=fetch(wpUrl,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(8000)})
+      .then(async wpResponse=>{
+        if(!wpResponse.ok)throw Error('WordPress history HTTP '+wpResponse.status);
+        const wpData=await wpResponse.json();
+        if(!wpData?.success||!Array.isArray(wpData.points)||!wpData.points.length)throw Error('No persistent history points');
+        return {...wpData,source:'WordPress MySQL option-chain observations',persistent:true};
+      })
+      .finally(()=>window.__SP_OPTION_HISTORY_PENDING__.delete(cacheKey));
+    window.__SP_OPTION_HISTORY_PENDING__.set(cacheKey,pending);
+   }
+   try {
+    history=await pending;
+    window.__SP_OPTION_HISTORY_CACHE__.set(cacheKey,{data:history,expiresAt:Date.now()+60000});
+   } catch(wpError){console.warn('[SP HISTORY] WordPress read unavailable; using Render session observations:',wpError.message)}
+  }
  } catch(wpError){console.warn('[SP HISTORY] WordPress read unavailable; using Render session observations:',wpError.message)}
  if(!history)history=await api('/api/analysis/option-history',contract);
  names.forEach(([key,label],k)=>{
