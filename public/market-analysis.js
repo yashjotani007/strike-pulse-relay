@@ -192,3 +192,63 @@ async function runStatistics(){const h=$('#statistics'),pattern=V('statistical-p
 function init(){const root=$('.sp-analysis');if(!root||root.dataset.spOriginalComplete)return;root.dataset.spOriginalComplete='1';for(const h of all('#volume-lab,#statistics',root))for(const e of all('[hidden]',h)){if(e.id==='sp-research-v2'||e.id==='sp-statistics-v2')continue;if(e.querySelector('.sp-metric,.sp-chart-placeholder'))e.hidden=false}for(const e of all('.sp-chart-placeholder',root)){if(e.closest('[id^="sp-extended-"],#sp-research-v2,#sp-statistics-v2'))continue;e.style.removeProperty('display')}for(const id of ['sp-extended-tools','sp-research-v2','sp-statistics-v2','sp-extended-historical-correlation-research','sp-extended-historical-sma-strategy-backtest']){const e=$('#'+id);if(e)e.hidden=true}clearMock();const contractPanel=$('#contract-research');if(contractPanel){const title=$('.sp-contract-heading h3',contractPanel);if(title)title.textContent='Select an option contract';for(const e of all('.sp-contract-heading .sp-muted',contractPanel))e.textContent='Select a scanned contract to inspect actual provider data';contractPanel.removeAttribute('data-sp-selected-contract')}const scanner=$('#stock-scanner');if(scanner){for(const e of all('.sp-demo-label',scanner))e.textContent='AWAITING PROVIDER SCAN';for(const e of all('p,span,div',scanner)){if(e.children.length===0&&/Preview only — scanner engine not connected|3 illustrative results/.test(e.textContent||''))e.textContent='Provider-backed scanner available; limited to selected symbols.'}}const handlers=[['stock-scanner','Run Stock Scan',runStock],['option-scanner','Run Option Scan',runOption],['volume-lab','Analyze Volume',runVolume],['correlation-lab','Calculate Correlation',runCorrelation],['backtesting','Run Historical Test',runBacktest],['statistics','Analyze Historical Pattern',runStatistics]];const byId=new Map(handlers.map(([id,label,fn])=>[id,{label,fn}]));root.addEventListener('click',async event=>{const button=event.target.closest('button');if(!button||!root.contains(button))return;const section=button.closest('.sp-section');const job=section&&byId.get(section.id);if(!job||button.textContent.trim()!==job.label)return;event.preventDefault();event.stopImmediatePropagation();if(button.dataset.spRunning==='1')return;button.dataset.spRunning='1';button.disabled=true;status(section,'Running '+job.label+'…');try{await job.fn()}catch(err){status(section,'Error: '+(err?.message||String(err)));console.error('[StrikePulse '+section.id+']',err)}finally{button.disabled=false;delete button.dataset.spRunning}},true);const c=$('#chart-lab');if(c){for(const id of ['chart-symbol','chart-timeframe','chart-style'])$('#'+id)?.addEventListener('change',()=>runChart().catch(e=>status(c,e.message)));runChart().catch(e=>status(c,e.message));all('input[type=checkbox]',c).forEach(input=>input.addEventListener('change',()=>runChart().catch(e=>status(c,e.message))))}const op=$('#option-scanner');if(op)status(op,'Run Option Scan and select a contract; static demo values removed.');const st=$('#statistics');if(st&&/Opening Range/.test(V('statistical-pattern'))){const choices=$('#statistical-pattern'),fallback=[...choices.options].find(o=>/Volume Spike/.test(o.text));if(fallback){choices.value=fallback.value;status(st,'Default set to Volume Spike; opening-range research requires intraday event data.')}}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,0));else setTimeout(init,0);
 })();
+
+/* Final provider binding: live market overview + verified option moneyness. */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+const root=document.querySelector('.sp-analysis');
+if(!root)return;
+const $=s=>root.querySelector(s);
+const fmt=(n,d=2)=>n==null||!Number.isFinite(+n)?'—':Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
+async function get(path,params={}){const u=new URL(BASE+path);Object.entries(params).forEach(([k,v])=>{if(v!==''&&v!=null)u.searchParams.set(k,v)});const r=await fetch(u,{cache:'no-store'});const j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider data unavailable');return j}
+function setCard(key,data){
+ const card=root.querySelector('.sp-market-card[data-market="'+key+'"]');if(!card||!data)return;
+ const value=fmt(data.price);
+ const change=data.change==null?'—':(data.change>=0?'+':'')+fmt(data.change)+'%';
+ const valueEl=card.querySelector('[data-market-value],.sp-market-value,.sp-value,strong');
+ const changeEl=card.querySelector('[data-market-change],.sp-market-change,.sp-change');
+ if(valueEl)valueEl.textContent=value;
+ if(changeEl)changeEl.textContent=change;
+ card.dataset.spProviderSource=data.source||'provider';
+}
+async function overview(){
+ const badge=$('.sp-data-badge');
+ try{
+  const j=await get('/api/prices');
+  const m=j.markets||{};
+  setCard('nifty',m.nifty);setCard('banknifty',m.banknifty);setCard('finnifty',m.finnifty);setCard('vix',m.vix);
+  if(badge)badge.textContent='LIVE PROVIDER DATA · '+(j.updated?new Date(j.updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'UPDATED');
+ }catch(e){if(badge)badge.textContent='PROVIDER DATA UNAVAILABLE';console.warn('[StrikePulse overview]',e.message)}
+}
+overview();
+setInterval(overview,60000);
+
+document.addEventListener('click',function(e){
+ const row=e.target.closest('#option-scanner .sp-table tbody tr');
+ if(!row)return;
+ const section=$('#option-scanner'), research=$('#contract-research');
+ if(!section||!research)return;
+ const cells=[...row.children].map(x=>x.textContent.trim());
+ const symbol=cells[0],strike=Number(String(cells[1]).replace(/,/g,'')),type=cells[2];
+ const spot=Number(section.dataset.spSpot);
+ if(!Number.isFinite(strike)||!Number.isFinite(spot)||!['CE','PE'].includes(type))return;
+ let mode='ATM';
+ if(strike<spot)mode=type==='CE'?'ITM':'OTM';
+ if(strike>spot)mode=type==='CE'?'OTM':'ITM';
+ const label=research.querySelector('.sp-contract-heading .sp-muted');
+ if(label)label.textContent=mode+' · verified against underlying spot ₹'+fmt(spot);
+},{capture:true});
+
+const oldRun=window.__spOptionMoneynessBound;
+if(!oldRun)window.__spOptionMoneynessBound=true;
+const originalFetch=window.fetch;
+window.fetch=function(input,init){
+ const url=typeof input==='string'?input:(input&&input.url)||'';
+ const p=originalFetch.call(this,input,init);
+ if(url.includes('/api/analysis/option-scanner'))p.then(async r=>{
+  try{const j=await r.clone().json();if(j?.spot!=null){const s=$('#option-scanner');if(s)s.dataset.spSpot=String(j.spot)}}catch(_){}
+ });
+ return p;
+};
+})();
