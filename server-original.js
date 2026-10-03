@@ -73,6 +73,7 @@ async function bseSensexChain(){
  const spot=price.sensex||(await yahooPrice("^BSESN")).last;
  throw last||Error("BSE SENSEX option chain unavailable; spot "+spot);
 }
+global.__SP_BSE_SENSEX_CHAIN__=bseSensexChain;
 app.get("/api/sensex-option-chain",async(req,res)=>{try{res.json(await bseSensexChain())}catch(e){res.status(502).json({success:false,error:e.message})}});
 
 app.get("/api/analysis/status",(req,res)=>res.json({success:true,features:{stockScanner:true,optionScanner:true,chart:true,backtest:true,correlation:true,universe:true},updated:new Date().toISOString()}));
