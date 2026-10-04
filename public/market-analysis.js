@@ -761,3 +761,39 @@ if(document.readyState==='loading'){
   setTimeout(clearPredefinedStockChoices,100);
 }
 })();
+
+
+/* Chart titles for every research chart container. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const title=(host,text)=>{
+   if(!host)return;
+   let h=host.querySelector(':scope > .sp-chart-title');
+   if(!h){h=document.createElement('h3');h.className='sp-chart-title';h.style.cssText='margin:0 0 10px;color:#243447;font-size:14px;font-weight:700;line-height:1.35';host.prepend(h);}
+   h.textContent=text;
+ };
+ const gridTitles={
+  '#option-scanner .sp-chart-grid':['Premium Observations','Open Interest Observations','IV Observations','Bid-Ask Spread History'],
+  '#volume-lab .sp-chart-grid':['Volume Profile / Data Notes','Historical Volume Chart'],
+  '#correlation-lab .sp-chart-grid':['Rolling Correlation','Relative Performance','Normalized Spread','Daily Return Scatter'],
+  '#backtesting .sp-chart-grid':['Strategy Equity Curve','Drawdown Analysis'],
+  '#statistics .sp-chart-grid':['Historical Return Distribution','Event Study / False Breakout Analysis']
+ };
+ Object.entries(gridTitles).forEach(([sel,titles])=>{
+   const grid=root.querySelector(sel); if(!grid)return;
+   [...grid.children].forEach((box,i)=>title(box,titles[i]||'Research Chart'));
+ });
+ const chartLab=root.querySelector('#chart-lab');
+ if(chartLab){
+   const main=chartLab.querySelector('.sp-main-chart');
+   if(main && !main.querySelector(':scope > .sp-chart-title')) title(main,'Select an NSE Stock · Price Action');
+   const labels=['5-Minute Price Chart','15-Minute Price Chart','1-Hour Price Chart','Daily Price Chart'];
+   const grid=chartLab.querySelector('.sp-chart-grid');
+   if(grid)[...grid.children].forEach((box,i)=>title(box,labels[i]||'Price Chart'));
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,180));else setTimeout(init,180);
+})();
+
