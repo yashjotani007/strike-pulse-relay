@@ -339,3 +339,67 @@ window.fetch=function(input,init){
  return p;
 };
 })();
+
+
+/* Statistics false-breakout visualization: uses the actual values produced by the historical analysis. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ const section=root&&root.querySelector('#statistics');
+ if(!section||section.dataset.spFalseBreakoutChartBound)return;
+ section.dataset.spFalseBreakoutChartBound='1';
+ const metricValue=(label)=>{
+  for(const box of section.querySelectorAll('.sp-metric')){
+   const text=(box.textContent||'').trim();
+   if(text.startsWith(label)){
+    const strong=box.querySelector('strong');
+    return (strong?strong.textContent:text.replace(label,'')).trim();
+   }
+  }
+  return '—';
+ };
+ const draw=()=>{
+  const occurrence=Number(metricValue('Historical Occurrences').replace(/,/g,''));
+  const rateText=metricValue('False Breakout Rate');
+  const rate=Number(rateText.replace('%',''));
+  if(!Number.isFinite(occurrence)||occurrence<=0||!Number.isFinite(rate))return;
+  const falseCount=Math.round(occurrence*rate/100);
+  const validCount=Math.max(0,occurrence-falseCount);
+  let host=[...section.querySelectorAll('.sp-chart-placeholder')].find(x=>/False breakout|false breakout|requires historical events/i.test(x.textContent||''));
+  if(!host){
+   const candidates=[...section.querySelectorAll('.sp-chart-placeholder')];
+   host=candidates[1];
+  }
+  if(!host)return;
+  host.replaceChildren();
+  host.style.padding='14px 12px 10px';
+  host.style.minHeight='230px';
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox','0 0 640 260');svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','False breakout versus valid breakout historical analysis');
+  svg.style.cssText='display:block;width:100%;height:auto';
+  const max=Math.max(falseCount,validCount,1), baseY=195, chartH=145, items=[
+   ['False Breakouts',falseCount,'#e05252'],
+   ['Valid Breakouts',validCount,'#16a34a']
+  ];
+  items.forEach((item,i)=>{
+   const h=item[1]/max*chartH, x=125+i*220;
+   const r=document.createElementNS(ns,'rect');
+   r.setAttribute('x',x);r.setAttribute('y',baseY-h);r.setAttribute('width',150);r.setAttribute('height',h);r.setAttribute('rx','8');r.setAttribute('fill',item[2]);svg.append(r);
+   const n=document.createElementNS(ns,'text');n.setAttribute('x',x+75);n.setAttribute('y',baseY-h-10);n.setAttribute('text-anchor','middle');n.setAttribute('fill','#243344');n.setAttribute('font-size','18');n.setAttribute('font-weight','700');n.textContent=String(item[1]);svg.append(n);
+   const l=document.createElementNS(ns,'text');l.setAttribute('x',x+75);l.setAttribute('y',baseY+25);l.setAttribute('text-anchor','middle');l.setAttribute('fill','#526579');l.setAttribute('font-size','12');l.textContent=item[0];svg.append(l);
+  });
+  const axis=document.createElementNS(ns,'line');axis.setAttribute('x1','80');axis.setAttribute('y1',baseY);axis.setAttribute('x2','560');axis.setAttribute('y2',baseY);axis.setAttribute('stroke','#cbd5e1');svg.append(axis);
+  const title=document.createElementNS(ns,'text');title.setAttribute('x','320');title.setAttribute('y','18');title.setAttribute('text-anchor','middle');title.setAttribute('fill','#526579');title.setAttribute('font-size','12');title.textContent='Historical breakout outcome';svg.append(title);
+  const foot=document.createElementNS(ns,'text');foot.setAttribute('x','320');foot.setAttribute('y','245');foot.setAttribute('text-anchor','middle');foot.setAttribute('fill','#526579');foot.setAttribute('font-size','12');foot.textContent='False breakout rate: '+rateText+' · '+falseCount+' false / '+occurrence+' historical occurrences';svg.append(foot);
+  host.append(svg);
+  host.dataset.spFalseBreakoutChart='true';
+ };
+ const observer=new MutationObserver(()=>{if(metricValue('False Breakout Rate')!=='—')draw()});
+ observer.observe(section,{subtree:true,childList:true,characterData:true});
+ draw();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,0));else setTimeout(init,0);
+})();
