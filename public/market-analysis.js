@@ -733,3 +733,31 @@ if(document.readyState==='loading'){
 }
 
 })();
+
+/* Search UX: do not preload/display predefined stock choices. */
+(function(){
+'use strict';
+function clearPredefinedStockChoices(){
+  const root=document.querySelector('.sp-analysis');
+  if(!root)return;
+  const universe=root.querySelector('#stock-universe');
+  if(universe){
+    [...universe.options].forEach(o=>{
+      if(o.value!=='selected-symbol') o.remove();
+    });
+    const selected=universe.querySelector('option[value="selected-symbol"]');
+    if(selected) universe.value='selected-symbol';
+    universe.setAttribute('aria-label','Selected stock from search');
+  }
+  // Remove any static datalist entries tied to stock search inputs.
+  root.querySelectorAll('datalist').forEach(dl=>{
+    const id=dl.id||'';
+    if(/stock|symbol|ticker|nse/i.test(id)) dl.replaceChildren();
+  });
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(clearPredefinedStockChoices,100));
+}else{
+  setTimeout(clearPredefinedStockChoices,100);
+}
+})();
