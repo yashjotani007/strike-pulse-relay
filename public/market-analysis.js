@@ -168,7 +168,7 @@ try{
   const slot=historical[k];if(!slot)return;
   const points=(history.points||[]).filter(p=>p[key]!=null&&Number.isFinite(+p[key]));
   if(points.length>=2)plot(slot,points,key,label);
-  else slot.textContent=key==='spread'?'Bid/ask quotes unavailable or fewer than two valid spread observations; no synthetic spread is shown.':'Only '+points.length+' valid '+label.toLowerCase()+'. Two distinct observations required.';
+  else slot.textContent=key==='spread'?'Market Closed — Live bid/ask unavailable':'Only '+points.length+' valid '+label.toLowerCase()+'. Two distinct observations required.';
  });
  status(h,'Contract research: '+(history.points||[]).length+' collected observations. Snapshots are not OHLC candles; source: '+(history.persistent?'WordPress MySQL (persistent)':'Render session (temporary)')+'.');
 }catch(error){historical.forEach(slot=>{if(slot)slot.textContent='Historical observations unavailable: '+error.message})}
@@ -676,14 +676,14 @@ async function refresh(){
       emptyState(
         slot,
         'Awaiting Live Quotes',
-        'The derivatives market is currently closed. Real Bid/Ask spread observations will populate this chart automatically when the market opens.',
+        'Live bid/ask unavailable',
         'MARKET CLOSED'
       );
     }else{
       emptyState(
         slot,
         'Awaiting Valid Bid/Ask Observations',
-        'Live Bid/Ask quotes are not yet available for this contract. The chart will populate automatically after at least two valid spread observations are collected.',
+        'Live bid/ask unavailable',
         'AWAITING LIVE QUOTES'
       );
     }
@@ -692,7 +692,7 @@ async function refresh(){
       emptyState(
         slot,
         'Awaiting Live Quotes',
-        'The derivatives market is currently closed. No synthetic spread is shown; real observations will appear automatically when available.',
+        'Live bid/ask unavailable',
         'MARKET CLOSED'
       );
     }else{
