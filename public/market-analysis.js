@@ -119,7 +119,7 @@ function restore(){
  for(const id of ['volume-lab','statistics']){const h=root.querySelector('#'+id);if(!h)continue;for(const e of h.querySelectorAll('[hidden]')){if(e.id==='sp-research-v2'||e.id==='sp-statistics-v2')continue;if(e.querySelector('.sp-metric,.sp-chart-placeholder')||e.matches('.sp-metric-grid,.sp-chart-grid'))e.hidden=false}}
  for(const e of root.querySelectorAll('.sp-chart-placeholder')){if(e.closest('#sp-research-v2,#sp-statistics-v2,[id^="sp-extended-"]'))continue;if(e.style.display==='none')e.style.removeProperty('display')}
  const research=root.querySelector('#contract-research');if(research){for(const e of research.querySelectorAll('.sp-metric strong,.sp-contract-price strong'))e.textContent='—';const label=research.querySelector('.sp-contract-heading .sp-muted');if(label)label.textContent='Run Option Scan, then select a contract to view provider data';}
- const chart=root.querySelector('#chart-lab');if(chart&&chart.querySelector('#chart-symbol')?.value.trim()){chart.querySelector('#chart-timeframe')?.dispatchEvent(new Event('change',{bubbles:true}))}
+ const chart=root.querySelector('#chart-lab');if(chart&&!window.__spHasUserSelectedSymbol){const holder=chart.querySelector('.sp-main-chart .sp-chart-placeholder');if(holder)holder.textContent='No Stock Selected — Select an NSE stock to view the chart.'}
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',restore);else restore();
 })();
