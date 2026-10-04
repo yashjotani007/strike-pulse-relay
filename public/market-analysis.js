@@ -403,3 +403,333 @@ function init(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,0));else setTimeout(init,0);
 })();
+
+
+/* ============================================================
+   BID/ASK SPREAD CHART — PUBLIC EMPTY-STATE + AUTO REFRESH
+   Uses only real stored/provider spread observations.
+   No synthetic/fake spread values are generated.
+   ============================================================ */
+(function(){
+'use strict';
+
+const ROOT = document.querySelector('.sp-analysis');
+if(!ROOT) return;
+
+const WP_HISTORY =
+  'https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history';
+const RENDER_BASE = 'https://strike-pulse-relay.onrender.com';
+
+let refreshTimer = null;
+let activeKey = '';
+let refreshBusy = false;
+
+const fmt = (n,d=2) =>
+  Number.isFinite(Number(n))
+    ? Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d})
+    : '—';
+
+function getResearch(){
+  return ROOT.querySelector('#contract-research');
+}
+
+function getSpreadSlot(){
+  const research = getResearch();
+  if(!research) return null;
+  const slots = [...research.querySelectorAll('.sp-chart-placeholder')];
+  return slots[3] || null;
+}
+
+function nseDerivativesOpen(){
+  const parts = new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Kolkata',
+    weekday:'short',
+    hour:'2-digit',
+    minute:'2-digit',
+    hour12:false
+  }).formatToParts(new Date());
+
+  const weekday = parts.find(x=>x.type==='weekday')?.value || '';
+  const hour = Number(parts.find(x=>x.type==='hour')?.value);
+  const minute = Number(parts.find(x=>x.type==='minute')?.value);
+
+  if(!['Mon','Tue','Wed','Thu','Fri'].includes(weekday)) return false;
+  if(!Number.isFinite(hour)||!Number.isFinite(minute)) return false;
+
+  const now = hour*60+minute;
+  return now >= (9*60+15) && now <= (15*60+40);
+}
+
+function styleSlot(slot){
+  slot.style.cssText =
+    'position:relative;min-height:285px;width:100%;' +
+    'display:flex;align-items:stretch;justify-content:stretch;' +
+    'padding:0;overflow:hidden;background:#f8fafc;' +
+    'border:1px solid #e2e8f0;border-radius:12px;';
+}
+
+function emptyState(slot,title,body,badge){
+  styleSlot(slot);
+  slot.replaceChildren();
+
+  const wrap=document.createElement('div');
+  wrap.style.cssText =
+    'width:100%;min-height:285px;display:flex;flex-direction:column;' +
+    'align-items:center;justify-content:center;text-align:center;padding:28px;';
+
+  const b=document.createElement('span');
+  b.textContent=badge;
+  b.style.cssText =
+    'display:inline-flex;align-items:center;justify-content:center;' +
+    'padding:6px 10px;border-radius:999px;background:#eef2f7;' +
+    'color:#5b6b7d;font-size:10px;font-weight:800;letter-spacing:1.2px;' +
+    'border:1px solid #dce3eb;';
+
+  const h=document.createElement('strong');
+  h.textContent=title;
+  h.style.cssText='margin-top:12px;color:#243447;font-size:15px;';
+
+  const p=document.createElement('small');
+  p.textContent=body;
+  p.style.cssText =
+    'display:block;max-width:470px;margin-top:7px;color:#718096;' +
+    'font-size:12px;line-height:1.6;';
+
+  const hint=document.createElement('span');
+  hint.textContent='No synthetic spread is displayed';
+  hint.style.cssText =
+    'margin-top:12px;color:#94a3b8;font-size:10px;letter-spacing:.5px;';
+
+  wrap.append(b,h,p,hint);
+  slot.append(wrap);
+}
+
+function makeSvgChart(slot,points){
+  styleSlot(slot);
+  slot.replaceChildren();
+
+  const values=points
+    .map(p=>({t:Number(p.t),v:Number(p.spread)}))
+    .filter(p=>Number.isFinite(p.t)&&Number.isFinite(p.v))
+    .sort((a,b)=>a.t-b.t);
+
+  if(values.length<2) return false;
+
+  const W=960,H=285,left=58,right=20,top=28,bottom=42;
+  const pw=W-left-right,ph=H-top-bottom;
+  const rawMin=Math.min(...values.map(x=>x.v));
+  const rawMax=Math.max(...values.map(x=>x.v));
+  const pad=(rawMax-rawMin||Math.max(Math.abs(rawMax)*.08,.01));
+  const min=rawMin-pad*.15;
+  const max=rawMax+pad*.15;
+
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','Historical bid-ask spread chart');
+  svg.style.cssText='display:block;width:100%;height:auto;background:#fff;';
+
+  const el=(tag,attrs={})=>{
+    const n=document.createElementNS(ns,tag);
+    Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));
+    return n;
+  };
+
+  const x=i=>left+(i/(values.length-1))*pw;
+  const y=v=>top+ph-((v-min)/(max-min||1))*ph;
+
+  // Chart background/grid
+  svg.append(el('rect',{x:0,y:0,width:W,height:H,fill:'#fff'}));
+  for(let i=0;i<5;i++){
+    const gy=top+(ph*i/4);
+    svg.append(el('line',{
+      x1:left,y1:gy,x2:W-right,y2:gy,
+      stroke:'#e8edf3','stroke-width':1
+    }));
+    const gv=max-((max-min)*i/4);
+    const gt=el('text',{
+      x:left-8,y:gy+4,'text-anchor':'end',
+      fill:'#718096','font-size':10
+    });
+    gt.textContent=fmt(gv,2)+'%';
+    svg.append(gt);
+  }
+
+  svg.append(el('line',{
+    x1:left,y1:top+ph,x2:W-right,y2:top+ph,
+    stroke:'#cbd5e1','stroke-width':1
+  }));
+
+  const path=values.map((p,i)=>(i?'L':'M')+` ${x(i).toFixed(2)} ${y(p.v).toFixed(2)}`).join(' ');
+  svg.append(el('path',{
+    d:path,fill:'none',stroke:'#2563eb',
+    'stroke-width':2.25,'stroke-linejoin':'round','stroke-linecap':'round'
+  }));
+
+  // Real observation points only.
+  values.forEach((p,i)=>{
+    const c=el('circle',{
+      cx:x(i),cy:y(p.v),r:3.2,
+      fill:'#fff',stroke:'#2563eb','stroke-width':1.8
+    });
+    const title=el('title');
+    title.textContent=new Date(p.t).toLocaleString('en-IN',{
+      timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',
+      day:'2-digit',month:'short'
+    })+' · '+fmt(p.v,2)+'%';
+    c.append(title);
+    svg.append(c);
+  });
+
+  const title=el('text',{x:left,y:16,fill:'#334155','font-size':12,'font-weight':700});
+  title.textContent='Bid-Ask Spread History';
+  svg.append(title);
+
+  const count=el('text',{
+    x:W-right,y:16,'text-anchor':'end',
+    fill:'#64748b','font-size':10
+  });
+  count.textContent=values.length+' real observations';
+  svg.append(count);
+
+  const first=el('text',{x:left,y:H-12,fill:'#94a3b8','font-size':10});
+  first.textContent=new Date(values[0].t).toLocaleTimeString('en-IN',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'
+  });
+  svg.append(first);
+
+  const last=el('text',{
+    x:W-right,y:H-12,'text-anchor':'end',
+    fill:'#94a3b8','font-size':10
+  });
+  last.textContent=new Date(values[values.length-1].t).toLocaleTimeString('en-IN',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'
+  });
+  svg.append(last);
+
+  slot.append(svg);
+  slot.dataset.spSpreadChart='real';
+  slot.dataset.spSpreadPoints=String(values.length);
+  return true;
+}
+
+async function fetchHistory(contract){
+  const qs=new URLSearchParams(contract);
+
+  // Prefer persistent WordPress history.
+  try{
+    const r=await fetch(WP_HISTORY+'?'+qs.toString(),{
+      cache:'no-store',
+      credentials:'omit',
+      signal:AbortSignal.timeout(7000)
+    });
+    if(r.ok){
+      const j=await r.json();
+      if(j?.success&&Array.isArray(j.points)){
+        return j;
+      }
+    }
+  }catch(_){}
+
+  // Fall back to the existing Render session-history endpoint.
+  const u=new URL(RENDER_BASE+'/api/analysis/option-history');
+  qs.forEach((v,k)=>u.searchParams.set(k,v));
+  const r=await fetch(u,{cache:'no-store',signal:AbortSignal.timeout(7000)});
+  const j=await r.json();
+  if(!r.ok||!j?.success) throw Error(j?.error||'Historical Bid/Ask data unavailable');
+  return j;
+}
+
+function readContract(){
+  const research=getResearch();
+  const raw=research?.dataset?.spSelectedContract||'';
+  const parts=raw.split('|');
+  if(parts.length!==4) return null;
+  const [symbol,expiry,strike,type]=parts;
+  if(!symbol||!expiry||!strike||!['CE','PE'].includes(type)) return null;
+  return {symbol,expiry,strike,type};
+}
+
+async function refresh(){
+  const contract=readContract();
+  const slot=getSpreadSlot();
+  if(!contract||!slot) return;
+
+  const key=[contract.symbol,contract.expiry,contract.strike,contract.type].join('|');
+  if(key!==activeKey){
+    activeKey=key;
+    if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}
+  }
+
+  if(refreshBusy) return;
+  refreshBusy=true;
+
+  try{
+    const history=await fetchHistory(contract);
+    const points=(history.points||[])
+      .filter(p=>p&&Number.isFinite(Number(p.spread))&&Number.isFinite(Number(p.t)));
+
+    if(points.length>=2){
+      makeSvgChart(slot,points);
+    }else if(!nseDerivativesOpen()){
+      emptyState(
+        slot,
+        'Awaiting Live Quotes',
+        'The derivatives market is currently closed. Real Bid/Ask spread observations will populate this chart automatically when the market opens.',
+        'MARKET CLOSED'
+      );
+    }else{
+      emptyState(
+        slot,
+        'Awaiting Valid Bid/Ask Observations',
+        'Live Bid/Ask quotes are not yet available for this contract. The chart will populate automatically after at least two valid spread observations are collected.',
+        'AWAITING LIVE QUOTES'
+      );
+    }
+  }catch(error){
+    if(!nseDerivativesOpen()){
+      emptyState(
+        slot,
+        'Awaiting Live Quotes',
+        'The derivatives market is currently closed. No synthetic spread is shown; real observations will appear automatically when available.',
+        'MARKET CLOSED'
+      );
+    }else{
+      emptyState(
+        slot,
+        'Bid/Ask Data Unavailable',
+        'No valid real spread observations are available right now. The chart will retry automatically.',
+        'DATA UNAVAILABLE'
+      );
+    }
+  }finally{
+    refreshBusy=false;
+  }
+}
+
+function bind(){
+  const research=getResearch();
+  if(!research) return;
+
+  const observer=new MutationObserver(()=>{
+    if(research.dataset.spSelectedContract){
+      clearTimeout(bind.refreshDebounce);
+      bind.refreshDebounce=setTimeout(refresh,80);
+    }
+  });
+
+  observer.observe(research,{attributes:true,attributeFilter:['data-sp-selected-contract']});
+
+  // Existing contract selection is asynchronous; poll for new real observations.
+  refresh();
+  refreshTimer=setInterval(refresh,60000);
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,150));
+}else{
+  setTimeout(bind,150);
+}
+
+})();
