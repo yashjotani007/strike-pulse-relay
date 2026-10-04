@@ -797,3 +797,35 @@ function init(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,180));else setTimeout(init,180);
 })();
 
+
+
+/* Remove duplicate placeholder labels after chart titles. */
+(function(){
+'use strict';
+function clean(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const removeText={
+  '#option-scanner .sp-chart-grid':['Premium observations','Open interest observations','IV observations','Spread observations'],
+  '#volume-lab .sp-chart-grid':['Volume profile limitations and data notes','Historical volume chart'],
+  '#correlation-lab .sp-chart-grid':['Rolling correlation','Relative performance','Normalized spread','Daily return scatter'],
+  '#backtesting .sp-chart-grid':['Strategy equity curve','Drawdown analysis'],
+  '#statistics .sp-chart-grid':['Historical return distribution','Event study notes']
+ };
+ Object.entries(removeText).forEach(([sel,texts])=>{
+  const grid=root.querySelector(sel); if(!grid)return;
+  [...grid.children].forEach((box,i)=>{
+   const holder=box.classList.contains('sp-chart-placeholder')?box:box.querySelector('.sp-chart-placeholder');
+   if(holder && texts[i] && holder.textContent.trim()===texts[i]) holder.textContent='';
+  });
+ });
+ const chartGrid=root.querySelector('#chart-lab .sp-chart-grid');
+ if(chartGrid){
+  [...chartGrid.children].forEach(box=>{
+   const holder=box.classList.contains('sp-chart-placeholder')?box:box.querySelector('.sp-chart-placeholder');
+   if(holder && /^Select a stock to load (5-minute|15-minute|hourly|daily) chart\\.$/i.test(holder.textContent.trim())) holder.textContent='';
+  });
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(clean,220));else setTimeout(clean,220);
+})();
+
