@@ -179,7 +179,7 @@ async function runOption(){const h=$('#option-scanner');status(h,'Loading NSE op
 // Keep every visible selected-contract label in sync with the clicked row.
 for(const el of research.querySelectorAll('p,span,div')){if(el.children.length===0&&/Selected\s+(?:NIFTY|BANKNIFTY|FINNIFTY|SENSEX)\s+[\d,]+\s+(?:CE|PE)/i.test(el.textContent||''))el.textContent='Selected '+x.symbol+' '+F(x.strike)+' '+x.type+' · '+x.expiry;}
 const historical=slots(research),names=[['premium','Premium observations'],['oi','Open interest observations'],['iv','Implied volatility observations'],['spread','Bid-ask spread observations']];
-historical.forEach((slot,k)=>{show(slot);slot.textContent='Loading collected '+names[k][1]+'…'});
+historical.forEach((slot,k)=>{if(!slot)return;show(slot);if(k===3){slot.replaceChildren();slot.dataset.spSpreadPending='1';return}slot.textContent='Loading collected '+names[k][1]+'…'});
 for(const el of research.querySelectorAll('p,span,div')){if(el.children.length===0&&/Run Option Scan, then select a contract to view provider data/.test(el.textContent||''))el.textContent='Selected '+x.symbol+' '+F(x.strike)+' '+x.type+' · '+x.expiry;}
 research.dataset.spSelectedContract=[x.symbol,x.expiry,x.strike,x.type].join('|');
 try{
