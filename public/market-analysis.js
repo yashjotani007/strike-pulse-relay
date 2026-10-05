@@ -876,3 +876,5 @@ function clean(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(clean,220));else setTimeout(clean,220);
 })();
+
+/* search UX update */
