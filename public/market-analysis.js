@@ -877,125 +877,169 @@ function clean(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(clean,220));else setTimeout(clean,220);
 })();
 
-/* search UX update */
-
-/* ============================================================
-   UNIVERSAL SEARCH MENUS FOR ALL STOCK SEARCH FIELDS
-   ============================================================ */
+/* Final universal stock-search UX — one consistent searchable menu + Search button. */
 (function(){
 'use strict';
 const BASE='https://strike-pulse-relay.onrender.com';
-const IDS=['chart-symbol','volume-symbol','correlation-symbol-a','correlation-symbol-b','backtest-symbol','statistical-symbol'];
+const IDS=[
+  'stock-symbol',
+  'chart-symbol',
+  'volume-symbol',
+  'correlation-stock-a',
+  'correlation-stock-b',
+  'backtest-symbol',
+  'statistical-symbol'
+];
 
 function init(){
- const root=document.querySelector('.sp-analysis');
- if(!root)return;
+  const root=document.querySelector('.sp-analysis');
+  if(!root)return;
 
- IDS.forEach(id=>{
-  const input=root.querySelector('#'+id);
-  if(!input||input.dataset.spUniversalSearch)return;
-  input.dataset.spUniversalSearch='1';
-  input.type='search';
-  input.autocomplete='off';
+  IDS.forEach(id=>{
+    const input=root.querySelector('#'+id);
+    if(!input||input.dataset.spFinalSearch)return;
+    input.dataset.spFinalSearch='1';
+    input.type='search';
+    input.autocomplete='off';
 
-  const wrap=document.createElement('div');
-  wrap.style.cssText='position:relative;width:100%;';
-  input.parentNode.insertBefore(wrap,input);
-  wrap.appendChild(input);
+    const wrap=document.createElement('div');
+    wrap.className='sp-final-search-wrap';
+    wrap.style.cssText='position:relative;width:100%;';
+    input.parentNode.insertBefore(wrap,input);
+    wrap.appendChild(input);
 
-  const menu=document.createElement('div');
-  menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:230px;overflow:auto;display:none;';
-  wrap.appendChild(menu);
+    const menu=document.createElement('div');
+    menu.className='sp-final-search-menu';
+    menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:240px;overflow:auto;display:none;';
+    wrap.appendChild(menu);
 
-  const search=document.createElement('button');
-  search.type='button';
-  search.textContent='Search';
-  search.style.cssText='margin-top:7px;padding:8px 16px;border:0;border-radius:8px;background:#3278e8;color:#fff;font-weight:700;cursor:pointer;';
-  wrap.appendChild(search);
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='sp-btn sp-btn-primary sp-final-search-button';
+    button.textContent='Search';
+    button.style.cssText='margin-top:8px;cursor:pointer;';
+    wrap.appendChild(button);
 
-  let selected='';
-  let timer=0;
+    let timer=null;
+    let selectedSymbol='';
 
-  function choose(item){
-   selected=item.symbol;
-   input.value=item.symbol;
-   input.dataset.selectedSymbol=item.symbol;
-   window.__spHasUserSelectedSymbol=true;
-   window.__spSelectedSymbols=[item.symbol];
-   menu.style.display='none';
-   search.textContent='Search ✓';
-   input.dispatchEvent(new Event('input',{bubbles:true}));
-   input.dispatchEvent(new Event('change',{bubbles:true}));
-   root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
-  }
+    function selectItem(item){
+      selectedSymbol=String(item.symbol||'').trim().toUpperCase();
+      if(!selectedSymbol)return;
+      input.value=selectedSymbol;
+      input.dataset.selectedSymbol=selectedSymbol;
+      window.__spHasUserSelectedSymbol=true;
+      window.__spSelectedSymbols=[selectedSymbol];
+      menu.style.display='none';
+      button.textContent='Search ✓';
+      input.dispatchEvent(new Event('change',{bubbles:true}));
 
-  input.addEventListener('input',()=>{
-   selected='';
-   delete input.dataset.selectedSymbol;
-   search.textContent='Search';
-   clearTimeout(timer);
-   const q=input.value.trim();
-   menu.replaceChildren();
-   if(!q){menu.style.display='none';return;}
+      const stockUniverse=root.querySelector('#stock-universe');
+      if(stockUniverse){
+        let option=[...stockUniverse.options].find(o=>o.value==='selected-symbol');
+        if(!option){
+          option=document.createElement('option');
+          option.value='selected-symbol';
+          option.textContent='Selected Symbol';
+          stockUniverse.appendChild(option);
+        }
+        stockUniverse.value='selected-symbol';
+      }
 
-   timer=setTimeout(()=>{
-    fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q))
-     .then(r=>r.json())
-     .then(data=>{
+      root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
+    }
+
+    function showResults(items){
       menu.replaceChildren();
-      (data.results||[]).forEach(item=>{
-       const option=document.createElement('button');
-       option.type='button';
-       option.textContent=item.symbol+' — '+item.name;
-       option.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;';
-       option.addEventListener('click',()=>choose(item));
-       menu.appendChild(option);
+      (Array.isArray(items)?items:[]).forEach(item=>{
+        const symbol=String(item?.symbol||'').trim();
+        if(!symbol)return;
+        const name=String(item?.name||'').trim();
+        const option=document.createElement('button');
+        option.type='button';
+        option.textContent=name ? symbol+' — '+name : symbol;
+        option.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;';
+        option.addEventListener('click',()=>selectItem(item));
+        menu.appendChild(option);
       });
-      if(menu.children.length)menu.style.display='block';
-     })
-     .catch(()=>{menu.style.display='none';});
-   },180);
-  });
+      menu.style.display=menu.children.length?'block':'none';
+    }
 
-  input.addEventListener('keydown',e=>{
-   if(e.key==='Escape')menu.style.display='none';
-   if(e.key==='Enter'){
-    e.preventDefault();
-    const first=menu.querySelector('button');
-    if(first)first.click();
-   }
-  });
+    input.addEventListener('input',()=>{
+      selectedSymbol='';
+      delete input.dataset.selectedSymbol;
+      window.__spHasUserSelectedSymbol=false;
+      button.textContent='Search';
+      clearTimeout(timer);
+      const q=input.value.trim();
+      menu.replaceChildren();
+      if(!q){menu.style.display='none';return;}
 
-  search.addEventListener('click',()=>{
-   const symbol=selected||input.dataset.selectedSymbol;
-   if(!symbol)return;
-   window.__spHasUserSelectedSymbol=true;
-   window.__spSelectedSymbols=[symbol];
-   input.value=symbol;
-   input.dispatchEvent(new Event('change',{bubbles:true}));
+      timer=setTimeout(async()=>{
+        try{
+          const response=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store'});
+          const data=await response.json();
+          if(!response.ok||data?.success===false)throw Error(data?.error||'Search unavailable');
+          showResults(data.results||[]);
+        }catch(_){
+          menu.style.display='none';
+        }
+      },180);
+    });
 
-   const targets={
-    'chart-symbol':'#chart-lab button',
-    'volume-symbol':'#analyze-volume',
-    'correlation-symbol-a':'#calculate-correlation',
-    'correlation-symbol-b':'#calculate-correlation',
-    'backtest-symbol':'#run-backtest',
-    'statistical-symbol':'#analyze-historical-pattern'
-   };
-   const selector=targets[id];
-   if(selector){
-    const buttons=[...root.querySelectorAll(selector)];
-    const button=buttons.find(b=>/run|load|analy|calculate/i.test(b.textContent||''));
-    if(button)setTimeout(()=>button.click(),40);
-   }
-  });
+    input.addEventListener('keydown',e=>{
+      if(e.key==='Escape')menu.style.display='none';
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const first=menu.querySelector('button');
+        if(first)first.click();
+        else button.click();
+      }
+    });
 
-  document.addEventListener('click',e=>{
-   if(!wrap.contains(e.target))menu.style.display='none';
+    button.addEventListener('click',()=>{
+      const symbol=(selectedSymbol||input.dataset.selectedSymbol||'').trim().toUpperCase();
+      if(!symbol){
+        input.focus();
+        return;
+      }
+
+      window.__spHasUserSelectedSymbol=true;
+      window.__spSelectedSymbols=[symbol];
+      input.value=symbol;
+
+      if(id==='stock-symbol'){
+        const stockScan=root.querySelector('#run-stock-scan');
+        if(stockScan)stockScan.click();
+        return;
+      }
+
+      const targets={
+        'chart-symbol':'#chart-lab button',
+        'volume-symbol':'#analyze-volume',
+        'correlation-stock-a':'#calculate-correlation',
+        'correlation-stock-b':'#calculate-correlation',
+        'backtest-symbol':'#run-backtest',
+        'statistical-symbol':'#analyze-historical-pattern'
+      };
+
+      const selector=targets[id];
+      if(!selector)return;
+
+      const buttons=[...root.querySelectorAll(selector)];
+      const target=buttons.find(b=>/run|load|analy|calculate/i.test((b.textContent||'')));
+      if(target)setTimeout(()=>target.click(),40);
+    });
+
+    document.addEventListener('click',e=>{
+      if(!wrap.contains(e.target))menu.style.display='none';
+    });
   });
- });
 }
 
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,150));
-else setTimeout(init,150);
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(init,120));
+}else{
+  setTimeout(init,120);
+}
 })();
