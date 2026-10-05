@@ -878,3 +878,124 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 })();
 
 /* search UX update */
+
+/* ============================================================
+   UNIVERSAL SEARCH MENUS FOR ALL STOCK SEARCH FIELDS
+   ============================================================ */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+const IDS=['chart-symbol','volume-symbol','correlation-symbol-a','correlation-symbol-b','backtest-symbol','statistical-symbol'];
+
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ if(!root)return;
+
+ IDS.forEach(id=>{
+  const input=root.querySelector('#'+id);
+  if(!input||input.dataset.spUniversalSearch)return;
+  input.dataset.spUniversalSearch='1';
+  input.type='search';
+  input.autocomplete='off';
+
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:relative;width:100%;';
+  input.parentNode.insertBefore(wrap,input);
+  wrap.appendChild(input);
+
+  const menu=document.createElement('div');
+  menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:230px;overflow:auto;display:none;';
+  wrap.appendChild(menu);
+
+  const search=document.createElement('button');
+  search.type='button';
+  search.textContent='Search';
+  search.style.cssText='margin-top:7px;padding:8px 16px;border:0;border-radius:8px;background:#3278e8;color:#fff;font-weight:700;cursor:pointer;';
+  wrap.appendChild(search);
+
+  let selected='';
+  let timer=0;
+
+  function choose(item){
+   selected=item.symbol;
+   input.value=item.symbol;
+   input.dataset.selectedSymbol=item.symbol;
+   window.__spHasUserSelectedSymbol=true;
+   window.__spSelectedSymbols=[item.symbol];
+   menu.style.display='none';
+   search.textContent='Search ✓';
+   input.dispatchEvent(new Event('input',{bubbles:true}));
+   input.dispatchEvent(new Event('change',{bubbles:true}));
+   root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
+  }
+
+  input.addEventListener('input',()=>{
+   selected='';
+   delete input.dataset.selectedSymbol;
+   search.textContent='Search';
+   clearTimeout(timer);
+   const q=input.value.trim();
+   menu.replaceChildren();
+   if(!q){menu.style.display='none';return;}
+
+   timer=setTimeout(()=>{
+    fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q))
+     .then(r=>r.json())
+     .then(data=>{
+      menu.replaceChildren();
+      (data.results||[]).forEach(item=>{
+       const option=document.createElement('button');
+       option.type='button';
+       option.textContent=item.symbol+' — '+item.name;
+       option.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;';
+       option.addEventListener('click',()=>choose(item));
+       menu.appendChild(option);
+      });
+      if(menu.children.length)menu.style.display='block';
+     })
+     .catch(()=>{menu.style.display='none';});
+   },180);
+  });
+
+  input.addEventListener('keydown',e=>{
+   if(e.key==='Escape')menu.style.display='none';
+   if(e.key==='Enter'){
+    e.preventDefault();
+    const first=menu.querySelector('button');
+    if(first)first.click();
+   }
+  });
+
+  search.addEventListener('click',()=>{
+   const symbol=selected||input.dataset.selectedSymbol;
+   if(!symbol)return;
+   window.__spHasUserSelectedSymbol=true;
+   window.__spSelectedSymbols=[symbol];
+   input.value=symbol;
+   input.dispatchEvent(new Event('change',{bubbles:true}));
+
+   const targets={
+    'chart-symbol':'#chart-lab button',
+    'volume-symbol':'#analyze-volume',
+    'correlation-symbol-a':'#calculate-correlation',
+    'correlation-symbol-b':'#calculate-correlation',
+    'backtest-symbol':'#run-backtest',
+    'statistical-symbol':'#analyze-historical-pattern'
+   };
+   const selector=targets[id];
+   if(selector){
+    const buttons=[...root.querySelectorAll(selector)];
+    const button=buttons.find(b=>/run|load|analy|calculate/i.test(b.textContent||''));
+    if(button)setTimeout(()=>button.click(),40);
+   }
+  });
+
+  document.addEventListener('click',e=>{
+   if(!wrap.contains(e.target))menu.style.display='none';
+  });
+ });
+}
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,150));
+else setTimeout(init,150);
+})();
