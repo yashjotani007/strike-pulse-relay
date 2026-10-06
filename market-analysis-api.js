@@ -237,7 +237,7 @@ async function collectOptionSnapshots(){
  if(collecting||!optionDb.enabled()||typeof global.__SP_LOAD_CHAIN__!=='function')return;
  collecting=true;
  try{
-  for(const symbol of ['NIFTY','BANKNIFTY']){
+  for(const symbol of ['NIFTY','BANKNIFTY','FINNIFTY','SENSEX']){
    const d=await global.__SP_LOAD_CHAIN__(symbol,null,true);
    const rows=[];
    for(const row of d.rows||[])for(const type of ['ce','pe']){
