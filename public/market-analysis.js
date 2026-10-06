@@ -188,20 +188,33 @@ function renderOptionCharts(h,rows){
   if(!box)return;
   box.replaceChildren();
   const data=validRows.filter(x=>Number.isFinite(Number(x[key])));
-  if(data.length<2){box.textContent='Insufficient option data';return}
-  data.sort((a,b)=>Number(a.strike)-Number(b.strike));
-  const W=640,H=220,L=58,R=14,T=15,B=34,vals=data.map(x=>Number(x[key])),lo=Math.min(...vals),hi=Math.max(...vals),pad=(hi-lo||1)*.08,min=lo-pad,max=hi+pad;
+  if(!data.length){box.textContent='No historical '+label.toLowerCase()+' available.';return}
+  const stamp=x=>x?.t??x?.observedAt??x?.timestamp??x?.time??null;
+  data.sort((a,b)=>{
+   const ta=Date.parse(stamp(a)||'')||0,tb=Date.parse(stamp(b)||'')||0;
+   return ta-tb;
+  });
+  const W=640,H=220,L=58,R=14,T=22,B=38,vals=data.map(x=>Number(x[key])),lo=Math.min(...vals),hi=Math.max(...vals),pad=(hi-lo||Math.max(Math.abs(lo)*.02,1))*.08,min=lo-pad,max=hi+pad;
   const ns='http://www.w3.org/2000/svg',svg=(tag,a={})=>{const e=document.createElementNS(ns,tag);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,String(v)));return e};
   const x=i=>L+i*(W-L-R)/Math.max(1,data.length-1),y=v=>H-B-(v-min)/(max-min||1)*(H-T-B);
   const g=svg('svg',{viewBox:'0 0 640 220',role:'img','aria-label':label});g.style.cssText='display:block;width:100%;height:auto';
   for(let i=0;i<=4;i++){const v=min+(max-min)*i/4,yy=y(v);g.append(svg('line',{x1:L,y1:yy,x2:W-R,y2:yy,stroke:'#64748b','stroke-opacity':'.18','stroke-dasharray':'3 4'}));const t=svg('text',{x:L-7,y:yy+4,'text-anchor':'end',fill:'#8293ad','font-size':10});t.textContent=Number(v).toLocaleString('en-IN',{maximumFractionDigits:2});g.append(t)}
   const pts=data.map((v,i)=>x(i).toFixed(1)+','+y(Number(v[key])).toFixed(1)).join(' ');
-  g.append(svg('polyline',{points:pts,fill:'none',stroke:'#3981d8','stroke-width':2,'stroke-linejoin':'round'}));
-  data.forEach((v,i)=>g.append(svg('circle',{cx:x(i),cy:y(Number(v[key])),r:2.5,fill:'#3981d8'})));
-  for(let i=0;i<Math.min(4,data.length);i++){const n=Math.round(i*(data.length-1)/Math.max(1,Math.min(3,data.length-1)));const t=svg('text',{x:x(n),y:H-10,'text-anchor':'middle',fill:'#8293ad','font-size':10});t.textContent=String(data[n].strike);g.append(t)}
-  const title=svg('text',{x:L,y:12,fill:'#50627a','font-size':11});title.textContent=label;g.append(title);box.append(g);
- };
- specs.forEach((s,i)=>make(boxes[i],s[1],s[2]));
+  if(data.length>1)g.append(svg('polyline',{points:pts,fill:'none',stroke:'#3981d8','stroke-width':2,'stroke-linejoin':'round'}));
+  data.forEach((v,i)=>g.append(svg('circle',{cx:x(i),cy:y(Number(v[key])),r:data.length===1?4:2.5,fill:'#3981d8'})));
+  const shown=Math.min(4,data.length);
+  for(let i=0;i<shown;i++){
+   const n=data.length===1?0:Math.round(i*(data.length-1)/Math.max(1,shown-1));
+   const ts=stamp(data[n]),dt=ts?new Date(ts):null;
+   const text=dt&&!Number.isNaN(dt.getTime())?dt.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):('Observation '+(n+1));
+   const t=svg('text',{x:x(n),y:H-10,'text-anchor':'middle',fill:'#8293ad','font-size':10});t.textContent=text;g.append(t);
+  }
+  const title=svg('text',{x:L,y:14,fill:'#50627a','font-size':11});title.textContent=label+(data.length===1?' · Last available observation':'');g.append(title);
+  if(data.length===1){
+   const last=svg('text',{x:W-R,y:14,'text-anchor':'end',fill:'#3981d8','font-size':11,'font-weight':'700'});last.textContent=Number(data[0][key]).toLocaleString('en-IN',{maximumFractionDigits:2});g.append(last);
+  }
+  box.append(g);
+ }; specs.forEach((s,i)=>make(boxes[i],s[1],s[2]));
 }async function runOption(){const h=$('#option-scanner');status(h,'Loading NSE option contracts…');const type=V('option-type').includes('Call')?'CE':V('option-type').includes('Put')?'PE':'both',j=await api('/api/analysis/option-scanner',{symbol:V('option-underlying'),type,minOi:V('oi-change'),minVolume:V('minimum-option-volume'),minIv:V('minimum-iv'),maxSpread:V('maximum-spread')});const minOi=Number(V('oi-change')),minVolume=Number(V('minimum-option-volume')),minIv=Number(V('minimum-iv')),maxSpread=Number(V('maximum-spread'));let rows=(j.results||[]).filter(x=>Number(x.ltp)>0&&(V('oi-change')===''||(x.oiPct!=null&&Number(x.oiPct)>=minOi))&&(V('minimum-option-volume')===''||(x.volume!=null&&Number(x.volume)>=minVolume))&&(V('minimum-iv')===''||(x.iv!=null&&Number(x.iv)>=minIv))&&(V('maximum-spread')===''||(x.spread!=null&&Number(x.spread)<=maxSpread)));const money=V('moneyness');if(!/All Strikes/.test(money)){const strikes=[...new Set(rows.map(x=>x.strike))].sort((a,b)=>a-b);const center=strikes[Math.floor(strikes.length/2)];if(/ATM ±5/.test(money)){const i=strikes.indexOf(center);rows=rows.filter(x=>Math.abs(strikes.indexOf(x.strike)-i)<=5)}else if(/ATM ±10/.test(money)){const i=strikes.indexOf(center);rows=rows.filter(x=>Math.abs(strikes.indexOf(x.strike)-i)<=10)}else if(money==='ATM')rows=rows.filter(x=>x.strike===center);else status(h,'Accurate ITM/OTM requires verified underlying spot; no moneyness filter applied.')}renderOptionCharts(h,rows);
 const pattern=V('option-pattern');let unsupportedOptionPattern=false;if(/OI Spike|Unusual Volume|Buildup|Covering|Unwinding|IV Expansion|Contraction|Premium Breakout|Multi-Strike/i.test(pattern)){unsupportedOptionPattern=true;status(h,pattern+' requires previous option-chain snapshots; unavailable from current snapshot.');rows=[]}const body=$('.sp-table tbody',h);if(body){body.replaceChildren();for(const x of rows.slice(0,150)){const tr=document.createElement('tr');[x.symbol,F(x.strike),x.type,x.expiry,'₹'+F(x.ltp),F(x.oi,0),x.oiPct==null?'—':F(x.oiPct)+'%',F(x.volume,0),x.iv==null?'—':F(x.iv)+'%','Provider snapshot','Analyze'].forEach(v=>{const td=document.createElement('td');td.textContent=v;if(v==='Analyze'){const btn=document.createElement('button');btn.type='button';btn.textContent='Analyze';btn.className='sp-option-analyze-button';td.replaceChildren(btn)}tr.append(td)});tr.addEventListener('click',async event=>{event.stopPropagation();const research=$('#contract-research');if(!research)return;const heading=$('.sp-contract-heading h3',research);if(heading)heading.textContent=x.symbol+' '+F(x.strike)+' '+x.type;const price=$('.sp-contract-price strong',research);if(price)price.textContent='₹'+F(x.ltp);['Open Interest','Traded Volume','Implied Volatility','Bid-Ask Spread'].forEach((name,i)=>metric(research,name,[F(x.oi,0),F(x.volume,0),x.iv==null?'—':F(x.iv)+'%',x.spread==null?'—':F(x.spread)+'%'][i]));cleanContractLabels(research);
 // Keep every visible selected-contract label in sync with the clicked row.
