@@ -1399,3 +1399,22 @@ function init(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,220));else setTimeout(init,220);
 })();
+
+/* Final chart title visibility repair — keep title above the main chart. */
+(function(){
+'use strict';
+function repair(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const main=root.querySelector('#chart-lab .sp-main-chart'); if(!main)return;
+ let h=main.querySelector(':scope > .sp-chart-title');
+ if(!h){h=document.createElement('h3');h.className='sp-chart-title';main.prepend(h);}
+ const input=root.querySelector('#chart-symbol');
+ const symbol=(input?.value||'').trim().toUpperCase();
+ const tf=root.querySelector('#chart-timeframe')?.value||'15m';
+ const labels={'5m':'5-Minute Price Chart','15m':'15-Minute Price Chart','1h':'1-Hour Price Chart','1D':'Daily Price Chart','1W':'Weekly Price Chart'};
+ h.textContent=symbol ? symbol+' · '+(labels[tf]||'Price Action Chart') : 'Select an NSE Stock · Price Action';
+ h.style.cssText='display:block!important;margin:0 0 12px!important;color:#e5edf7!important;font-size:16px!important;font-weight:700!important;line-height:1.4!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:2!important;';
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,250));else setTimeout(repair,250);
+setInterval(repair,1000);
+})();
