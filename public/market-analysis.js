@@ -1211,3 +1211,28 @@ function init(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,180));else setTimeout(init,180);
 })();
+
+/* Repair universe search placement: visible field replaces NSE Symbol and original Universe field is hidden. */
+(function(){
+'use strict';
+function repair(){
+ const root=document.querySelector('.sp-analysis');if(!root)return;
+ const old=root.querySelector('#stock-symbol');
+ const host=root.querySelector('#sp-universe-search')?.closest('.sp-universe-search-wrap');
+ const universe=root.querySelector('#stock-universe');
+ if(!old||!host||!universe)return;
+ const oldField=old.closest('.sp-field')||old.parentElement;
+ const universeField=universe.closest('.sp-field')||universe.parentElement;
+ if(oldField){
+  oldField.style.display='';
+  let label=oldField.querySelector('label');
+  if(!label){label=document.createElement('label');oldField.prepend(label);}
+  label.textContent='Universe';
+  label.htmlFor='sp-universe-search';
+  [...oldField.children].forEach(el=>{if(el!==label&&el!==host)el.style.display='none';});
+  oldField.appendChild(host);
+ }
+ if(universeField)universeField.style.display='none';
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,260));else setTimeout(repair,260);
+})();
