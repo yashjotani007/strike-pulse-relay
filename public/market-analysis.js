@@ -1,306 +1,1401 @@
-(()=>{'use strict';
+/* Global no-selection guard: no research module may load provider data before an NSE stock is explicitly selected. */
+(function(){
+'use strict';
+window.__spHasUserSelectedSymbol=false;
 const ROOT=document.querySelector('.sp-analysis');
-if(!ROOT)return;
-
-const BASE='https://strike-pulse-relay.onrender.com';
-const $=s=>ROOT.querySelector(s);
-const $$=s=>[...ROOT.querySelectorAll(s)];
-const value=id=>String($('#'+id)?.value||'').trim();
-const fmt=(n,d=2)=>n==null||!Number.isFinite(Number(n))?'—':Number(n).toLocaleString('en-IN',{maximumFractionDigits:d});
-const api=async(path,params={})=>{
- const u=new URL(BASE+path);
- Object.entries(params).forEach(([k,v])=>{if(v!==''&&v!=null)u.searchParams.set(k,v)});
- const r=await fetch(u,{cache:'no-store'});
- let j=null;try{j=await r.json()}catch(_){throw Error('Invalid provider response')};
- if(!r.ok||j?.success===false)throw Error(j?.error||'Provider data unavailable');
- return j;
+const BLOCKED=[
+ '/api/analysis/chart',
+ '/api/analysis/option-scanner',
+ '/api/analysis/option-history',
+ '/api/analysis/correlation',
+ '/api/analysis/backtest',
+ '/api/analysis/volume-lab',
+ '/api/analysis/statistics',
+ '/api/analysis/stock-scanner',
+ '/api/analysis/scan-batch'
+];
+function selected(){
+ return window.__spHasUserSelectedSymbol===true;
+}
+function show(){
+ if(!ROOT)return;
+ ROOT.querySelectorAll('.sp-chart-placeholder').forEach(el=>{
+   el.replaceChildren();
+   el.textContent='No Stock Selected — Select an NSE stock to view the chart.';
+ });
+}
+ROOT?.addEventListener('sp-symbol-selected',()=>{window.__spHasUserSelectedSymbol=true;},true);
+document.addEventListener('change',e=>{
+ if(e.isTrusted&&e.target?.id==='chart-symbol'&&String(e.target.value||'').trim()){
+   window.__spHasUserSelectedSymbol=true;
+ }
+},true);
+const nativeFetch=window.fetch.bind(window);
+window.fetch=function(input,init){
+ const url=typeof input==='string'?input:(input&&input.url)||'';
+ if(!selected()&&BLOCKED.some(x=>url.includes(x))){
+   show();
+   return Promise.reject(Object.assign(new Error('No Stock Selected'),{code:'SP_NO_STOCK_SELECTED'}));
+ }
+ return nativeFetch(input,init);
 };
-const logError=(section,e)=>console.warn('[Strike Pulse '+section+']',e?.message||e);
+if(document.readyState==='loading'){
+ document.addEventListener('DOMContentLoaded',show);
+}else{
+ show();
+}
+})();
 
-function svg(tag,attrs={}){
- const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
- Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,String(v)));
- return e;
-}
-function drawLine(box,rows,key,label){
- if(!box)return;
- box.replaceChildren();
- const data=(rows||[]).map(x=>({t:x.t,y:Number(x[key])})).filter(x=>Number.isFinite(x.y));
- if(data.length<2){box.textContent='Insufficient historical data';return}
- const W=760,H=270,L=58,R=18,T=24,B=42;
- let lo=Math.min(...data.map(x=>x.y)),hi=Math.max(...data.map(x=>x.y));
- if(lo===hi){lo-=1;hi+=1}
- const X=i=>L+i*(W-L-R)/Math.max(1,data.length-1);
- const Y=v=>H-B-(v-lo)/(hi-lo)*(H-T-B);
- const g=svg('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':label});
- g.style.cssText='display:block;width:100%;height:auto';
- for(let i=0;i<=4;i++){
-  const v=lo+(hi-lo)*i/4,y=Y(v);
-  g.append(svg('line',{x1:L,y1:y,x2:W-R,y2:y,stroke:'#64748b','stroke-opacity':'.18','stroke-dasharray':'3 4'}));
-  const t=svg('text',{x:L-7,y:y+4,'text-anchor':'end',fill:'#8293ad','font-size':10});
-  t.textContent=fmt(v);g.append(t);
- }
- const points=data.map((p,i)=>X(i).toFixed(1)+','+Y(p.y).toFixed(1)).join(' ');
- g.append(svg('polyline',{points,fill:'none',stroke:'#2563eb','stroke-width':2}));
- const title=svg('text',{x:L,y:15,fill:'#526579','font-size':11});title.textContent=label;g.append(title);
- box.append(g);
-}
-function metric(section,label,val){
- const m=$$('.sp-metric',section).find(x=>x.querySelector('span')?.textContent.trim().toLowerCase()===label.toLowerCase());
- if(m?.querySelector('strong'))m.querySelector('strong').textContent=val==null?'—':String(val);
-}
-function selectedSymbol(input){
- return String(input?.dataset.selectedSymbol||'').trim().toUpperCase();
-}
-function clearSelection(input){
- if(!input)return;
- delete input.dataset.selectedSymbol;
- input.classList.remove('sp-search-selected');
-}
-function makeSearch(input){
- if(!input||input.dataset.spSearchBound)return;
- input.dataset.spSearchBound='1';
- const row=document.createElement('div');
- row.className='sp-stock-search-row';
- row.style.cssText='display:flex;gap:8px;align-items:center;position:relative;width:100%';
- input.parentNode.insertBefore(row,input);
- row.appendChild(input);
- const button=document.createElement('button');
- button.type='button';button.className='sp-btn-secondary sp-field-search-button';button.textContent='Search';
- button.style.cssText='white-space:nowrap;min-height:42px';
- row.appendChild(button);
- const menu=document.createElement('div');
- menu.className='sp-stock-search-menu';menu.setAttribute('role','listbox');
- menu.style.cssText='position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 12px 28px rgba(20,40,70,.16);max-height:280px;overflow:auto;display:none';
- row.appendChild(menu);
- let timer=0,controller=null;
- async function search(){
-  const q=input.value.trim();
-  clearSelection(input);button.textContent='Search';
-  menu.replaceChildren();menu.style.display='none';
-  if(!q)return;
-  if(controller)controller.abort();
-  controller=new AbortController();
-  try{
-   const r=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store',signal:controller.signal});
-   const j=await r.json();
-   if(!r.ok||j?.success===false)throw Error(j?.error||'Search unavailable');
-   const results=Array.isArray(j.results)?j.results:[];
-   results.forEach(x=>{
-    const b=document.createElement('button');
-    b.type='button';b.setAttribute('role','option');
-    b.textContent=x.symbol+(x.name?' — '+x.name:'');
-    b.style.cssText='display:block;width:100%;padding:11px 13px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer';
-    b.addEventListener('click',()=>{
-     input.value=x.symbol;
-     input.dataset.selectedSymbol=String(x.symbol).toUpperCase();
-     input.dataset.selectedName=x.name||'';
-     input.classList.add('sp-search-selected');
-     button.textContent='Selected ✓';
-     menu.style.display='none';
-     ROOT.dispatchEvent(new CustomEvent('sp-stock-selected',{detail:{symbol:x.symbol,name:x.name,inputId:input.id}}));
-    });
-    menu.appendChild(b);
-   });
-   if(results.length)menu.style.display='block';
-  }catch(e){if(e.name!=='AbortError')logError('stock-search',e)}
- }
- input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(search,180)});
- button.addEventListener('click',()=>{
-  const first=menu.querySelector('button[role="option"]');
-  if(first&&menu.style.display!=='none'){first.click();return}
-  search();
- });
- input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const first=menu.querySelector('button[role="option"]');if(first)first.click();else search()}if(e.key==='Escape')menu.style.display='none'});
- document.addEventListener('click',e=>{if(!row.contains(e.target))menu.style.display='none'});
-}
-function requireSelected(id){
- const el=$('#'+id);
- const symbol=selectedSymbol(el);
- if(!symbol){el?.focus();return null}
- return symbol;
-}
-function addSearches(){
- ['chart-symbol','volume-symbol','correlation-stock-a','correlation-stock-b','backtest-symbol','statistical-symbol'].forEach(id=>makeSearch($('#'+id)));
-}
-function renderStockTable(section,rows){
- const body=section?.querySelector('.sp-table tbody');if(!body)return;
- body.replaceChildren();
- (rows||[]).forEach(x=>{
-  const tr=document.createElement('tr');
-  [x.symbol,'₹'+fmt(x.price),x.change==null?'—':fmt(x.change)+'%',fmt(x.rsi),x.rvol==null?'—':fmt(x.rvol)+'x',x.vwap?fmt((x.price/x.vwap-1)*100)+'%':'—',x.high20&&x.price>x.high20?'20-candle breakout':x.low20&&x.price<x.low20?'20-candle breakdown':'No confirmed pattern',value('stock-timeframe')||'15 Minutes','View'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
-  body.appendChild(tr);
- });
-}
-async function runStock(){
- const section=$('#stock-scanner');
- const q={universe:value('stock-universe'),minPrice:value('minimum-price'),rvol:value('relative-volume').match(/[0-9.]+/)?.[0]||'',rsiMin:value('rsi-minimum'),rsiMax:value('rsi-maximum')};
- const j=await api('/api/analysis/stock-scanner',q);
- let rows=j.results||[];
- const dir=value('stock-direction');
- if(dir==='Bullish')rows=rows.filter(x=>Number(x.change)>0);
- if(dir==='Bearish')rows=rows.filter(x=>Number(x.change)<0);
- if(dir==='Sideways')rows=rows.filter(x=>Number.isFinite(Number(x.change))&&Math.abs(Number(x.change))<0.3);
- const pattern=value('scan-pattern');
- if(pattern==='Price Breakout')rows=rows.filter(x=>x.high20!=null&&Number(x.price)>Number(x.high20));
- if(pattern==='Price Breakdown')rows=rows.filter(x=>x.low20!=null&&Number(x.price)<Number(x.low20));
- const checks=$$('input[type="checkbox"]',section).filter(x=>x.checked).map(x=>x.closest('label')?.textContent||'');
- if(checks.some(x=>/Above VWAP/i.test(x)))rows=rows.filter(x=>x.vwap!=null&&Number(x.price)>Number(x.vwap));
- if(checks.some(x=>/50 EMA/i.test(x)))rows=rows.filter(x=>x.ema50!=null&&Number(x.price)>Number(x.ema50));
- if(checks.some(x=>/200 EMA/i.test(x)))rows=rows.filter(x=>x.ema200!=null&&Number(x.price)>Number(x.ema200));
- if(checks.some(x=>/Unusual Volume/i.test(x)))rows=rows.filter(x=>x.rvol!=null&&Number(x.rvol)>=2);
- renderStockTable(section,rows);
- section.querySelector('.sp-demo-label')?.replaceChildren(document.createTextNode('PROVIDER DATA'));
-}
-function optionCharts(section,rows){
- const boxes=$$('.sp-chart-grid .sp-chart-placeholder',$('#contract-research'));
- const specs=[['ltp','Premium (₹)'],['oi','Open Interest'],['iv','Implied Volatility (%)'],['spread','Bid-Ask Spread (%)']];
- specs.forEach(([key,label],i)=>{
-  const box=boxes[i];if(!box)return;
-  const points=(rows||[]).filter(x=>Number.isFinite(Number(x[key])));
-  if(key==='spread'&&points.length<2){box.replaceChildren();return}
-  drawLine(box,points.map(x=>({t:x.strike,y:Number(x[key])})), 'y',label);
- });
-}
-function selectContract(x){
- const r=$('#contract-research');if(!r)return;
- r.querySelector('.sp-contract-heading h3').textContent=x.symbol+' '+fmt(x.strike)+' '+x.type;
- r.querySelector('.sp-contract-heading .sp-muted').textContent='Selected provider contract · '+(x.expiry||'—');
- r.querySelector('.sp-contract-price strong').textContent='₹'+fmt(x.ltp);
- const vals=[fmt(x.oi,0),fmt(x.volume,0),x.iv==null?'—':fmt(x.iv)+'%',x.spread==null?'—':fmt(x.spread)+'%'];
- $$('.sp-metric strong',r).forEach((e,i)=>{if(i<vals.length)e.textContent=vals[i]});
- const boxes=$$('.sp-chart-grid .sp-chart-placeholder',r);
- boxes.forEach((b,i)=>{if(i===3)b.replaceChildren()});
- r.dataset.spSelectedContract=[x.symbol,x.expiry,x.strike,x.type].join('|');
-}
-async function runOption(){
- const section=$('#option-scanner');
- const type=value('option-type').includes('Call')?'CE':value('option-type').includes('Put')?'PE':'both';
- const j=await api('/api/analysis/option-scanner',{symbol:value('option-underlying'),type,minOi:value('oi-change'),minVolume:value('minimum-option-volume'),minIv:value('minimum-iv'),maxSpread:value('maximum-spread')});
- let rows=(j.results||[]).filter(x=>Number(x.ltp)>0);
- const minOi=value('oi-change'),minVol=value('minimum-option-volume'),minIv=value('minimum-iv'),maxSpread=value('maximum-spread');
- if(minOi!=='')rows=rows.filter(x=>x.oiPct!=null&&Number(x.oiPct)>=Number(minOi));
- if(minVol!=='')rows=rows.filter(x=>x.volume!=null&&Number(x.volume)>=Number(minVol));
- if(minIv!=='')rows=rows.filter(x=>x.iv!=null&&Number(x.iv)>=Number(minIv));
- if(maxSpread!=='')rows=rows.filter(x=>x.spread!=null&&Number(x.spread)<=Number(maxSpread));
- const body=section.querySelector('.sp-table tbody');body.replaceChildren();
- rows.slice(0,150).forEach(x=>{
-  const tr=document.createElement('tr');
-  const vals=[x.symbol,fmt(x.strike),x.type,x.expiry||'—','₹'+fmt(x.ltp),fmt(x.oi,0),x.oiPct==null?'—':fmt(x.oiPct)+'%',fmt(x.volume,0),x.iv==null?'—':fmt(x.iv)+'%','Provider data'];
-  vals.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
-  const td=document.createElement('td'),b=document.createElement('button');b.type='button';b.textContent='Analyze';b.className='sp-option-analyze-button';td.appendChild(b);tr.appendChild(td);
-  b.addEventListener('click',e=>{e.stopPropagation();selectContract(x)});
-  tr.addEventListener('click',()=>selectContract(x));
-  body.appendChild(tr);
- });
- optionCharts(section,rows);
-}
-async function runChart(){
- const section=$('#chart-lab'),symbol=requireSelected('chart-symbol');
- const main=section.querySelector('.sp-main-chart .sp-chart-placeholder');
- if(!symbol){main.textContent='Select an NSE stock to view the chart.';return}
- const tf=value('chart-timeframe'),interval=tf==='1h'?'60m':tf==='1D'?'1d':tf==='1W'?'1wk':tf||'15m',range=interval==='1d'||interval==='1wk'?'1y':'5d';
- const j=await api('/api/analysis/chart',{symbol,interval,range});
- const rows=(j.candles||[]).filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite));
- main.replaceChildren();
- if(rows.length<2){main.textContent='Insufficient OHLC candles';return}
- const W=900,H=360,L=55,R=15,T=20,B=35,lo=Math.min(...rows.map(x=>x.l)),hi=Math.max(...rows.map(x=>x.h)),X=i=>L+(i+.5)*(W-L-R)/rows.length,Y=v=>H-B-(v-lo)/(hi-lo||1)*(H-T-B),g=svg('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':symbol+' historical candlestick chart'});
- g.style.cssText='display:block;width:100%;height:auto';
- rows.forEach((x,i)=>{const px=X(i),up=x.c>=x.o,col=up?'#16a34a':'#dc3545';g.append(svg('line',{x1:px,y1:Y(x.h),x2:px,y2:Y(x.l),stroke:col}));g.append(svg('rect',{x:px-3,y:Math.min(Y(x.o),Y(x.c)),width:6,height:Math.max(1,Math.abs(Y(x.o)-Y(x.c))),fill:col}))});
- const title=svg('text',{x:L,y:14,fill:'#526579','font-size':12});title.textContent=symbol+' · '+tf;g.append(title);main.append(g);
- const mini=$$('.sp-chart-grid .sp-chart-placeholder',section);
- if(mini[0])drawLine(mini[0],rows.map((x)=>({t:x.t,y:x.c})), 'y','Price');
- if(mini[1])drawLine(mini[1],rows.map((x,i)=>({t:x.t,y:i<14?null:(()=>{let up=0,down=0;for(let k=i-13;k<=i;k++){const d=rows[k].c-rows[k-1].c;up+=Math.max(0,d);down+=Math.max(0,-d)}return down?100-100/(1+up/down):100})()})),'y','RSI 14');
- if(mini[2])drawLine(mini[2],rows.map((x,i)=>({t:x.t,y:i<26?null:rows.slice(i-11,i+1).reduce((a,b)=>a+b.c,0)/12-rows.slice(i-25,i+1).reduce((a,b)=>a+b.c,0)/26})),'y','MACD');
-}
-async function runVolume(){
- const symbol=requireSelected('volume-symbol');if(!symbol)return;
- const j=await api('/api/analysis/volume-lab',{symbol,sessions:value('volume-period').match(/\d+/)?.[0]||20});
- const section=$('#volume-lab'),rows=j.points||j.data||[];
- const rv=j.relativeVolume??j.rvol;
- metric(section,'Relative Volume',rv==null?'—':fmt(rv)+'x');
- const boxes=$$('.sp-chart-placeholder',section);
- if(boxes[0])drawLine(boxes[0],rows,'volume','Historical Volume');
- if(boxes[1])drawLine(boxes[1],rows,'rvol','Relative Volume');
-}
-async function runCorrelation(){
- const a=requireSelected('correlation-stock-a'),b=requireSelected('correlation-stock-b');if(!a||!b)return;
- const j=await api('/api/analysis/correlation',{symbolA:a,symbolB:b,benchmark:value('correlation-benchmark'),sessions:value('correlation-window').match(/\d+/)?.[0]||20});
- const section=$('#correlation-lab');
- const corr=j.correlation??j.rollingCorrelation,beta=j.beta??j.rollingBeta,z=j.zScore??j.spreadZScore,te=j.trackingError;
- metric(section,'Rolling Correlation',corr==null?'—':fmt(corr,3));
- metric(section,'Rolling Beta',beta==null?'—':fmt(beta,3));
- metric(section,'Spread Z-Score',z==null?'—':fmt(z,3));
- metric(section,'Tracking Error',te==null?'—':fmt(te,3));
- const rows=j.points||j.data||[];
- const boxes=$$('.sp-chart-placeholder',section);
- if(boxes[0])drawLine(boxes[0],rows,'a',a);
- if(boxes[1])drawLine(boxes[1],rows,'b',b);
- if(boxes[2])drawLine(boxes[2],rows,'correlation','Rolling Correlation');
- if(boxes[3])drawLine(boxes[3],rows,'spread','Spread');
-}
-async function runBacktest(){
- const symbol=requireSelected('backtest-symbol');if(!symbol)return;
- const j=await api('/api/analysis/backtest',{symbol,strategy:value('backtest-strategy'),timeframe:value('backtest-timeframe'),hold:value('backtest-hold').match(/\d+/)?.[0]||5,cost:value('backtest-cost'),slippage:value('backtest-slippage')});
- const section=$('#backtesting');
- const map=[['Total Signals','totalSignals'],['Win Rate','winRate'],['Profit Factor','profitFactor'],['Expectancy','expectancy'],['Maximum Drawdown','maxDrawdown'],['Sharpe Ratio','sharpe']];
- map.forEach(([label,key])=>{let v=j[key];if(v!=null&&/Rate|Drawdown/.test(label)&&Number.isFinite(Number(v)))v=fmt(v)+'%';metric(section,label,v)});
- const rows=j.points||j.equityCurve||[];
- const boxes=$$('.sp-chart-placeholder',section);
- if(boxes[0])drawLine(boxes[0],rows,'equity','Equity Curve');
- if(boxes[1])drawLine(boxes[1],rows,'drawdown','Drawdown');
-}
-async function runStatistics(){
- const symbol=requireSelected('statistical-symbol');if(!symbol)return;
- const j=await api('/api/analysis/statistics',{symbol,sessions:value('statistical-period').match(/\d+/)?.[0]||60,pattern:value('statistical-pattern'),forward:value('forward-window').match(/\d+/)?.[0]||5});
- const section=$('#statistics');
- const map=[['Historical Occurrences','occurrences'],['Positive Return Frequency','positiveRatePct'],['Median Forward Return','medianForwardReturnPct'],['False Breakout Rate','falseBreakoutRatePct']];
- map.forEach(([label,key])=>{const v=j[key];metric(section,label,v==null?'—':(/Frequency|Return|Rate/.test(label)&&Number.isFinite(Number(v))?fmt(v)+'%':fmt(v,2)))});
- const rows=j.points||j.data||[];
- const boxes=$$('.sp-chart-placeholder',section);
- if(boxes[0])drawLine(boxes[0],rows,'returnPct','Forward Return');
- if(boxes[1])drawLine(boxes[1],rows,'frequency','Event Frequency');
-}
-function wire(id,fn){
- const section=$('#'+id),button=section?.querySelector('button.sp-btn-primary');
- if(!button)return;
- button.addEventListener('click',async e=>{
-  e.preventDefault();if(button.dataset.running==='1')return;
-  button.dataset.running='1';button.disabled=true;
-  try{await fn()}catch(err){logError(id,err)}finally{button.disabled=false;delete button.dataset.running}
- });
-}
-function wireChart(){
- const section=$('#chart-lab');if(!section)return;
- const button=document.createElement('button');button.type='button';button.className='sp-btn-primary';button.textContent='Load Chart';
- section.querySelector('.sp-main-chart')?.insertAdjacentElement('afterend',button);
- button.addEventListener('click',()=>runChart().catch(e=>logError('chart-lab',e)));
-}
-function exportStock(){
- const button=$('#export-stock-csv'),body=$('#stock-scanner tbody');if(!button||!body)return;
- button.addEventListener('click',()=>{
-  const rows=$$('#stock-scanner tr').map(tr=>$$('th,td',tr).map(td=>'"'+td.textContent.replace(/"/g,'""')+'"').join(','));
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));a.download='strike-pulse-stock-scan.csv';a.click();
- });
-}
-function saveStock(){
- const button=$('#save-stock-screen'),body=$('#stock-scanner tbody');if(!button||!body)return;
- button.addEventListener('click',()=>{
-  const rows=$$('#stock-scanner tr').map(tr=>$$('th,td',tr).map(td=>td.textContent.trim()));
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({savedAt:new Date().toISOString(),rows},null,2)],{type:'application/json'}));a.download='strike-pulse-stock-screen.json';a.click();
- });
-}
+(()=>{'use strict';if(window.__SP_ANALYSIS_V1__)return;window.__SP_ANALYSIS_V1__=true;const base='https://strike-pulse-relay.onrender.com',root=document.querySelector('.sp-analysis');if(!root)return;const $=s=>root.querySelector(s),all=s=>[...root.querySelectorAll(s)],fmt=(n,d=2)=>n==null||!Number.isFinite(+n)?'—':Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d}),api=async(path,params={})=>{const u=new URL(base+path);Object.entries(params).forEach(([k,v])=>{if(v!==''&&v!=null)u.searchParams.set(k,v)});const r=await fetch(u,{cache:'no-store'}),j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Data unavailable');return j},val=id=>$('#'+id)?.value||'',notice=()=>{},cell=(tr,s)=>{const td=document.createElement('td');td.textContent=s;tr.append(td);return td},setMetrics=(section,values)=>all.call(null,'.none');function metrics(section,values){section.querySelectorAll('.sp-metric strong').forEach((e,i)=>{if(i<values.length)e.textContent=values[i]})}function table(section,rows,kind){const tbody=section.querySelector('.sp-table tbody');if(!tbody)return;tbody.replaceChildren();for(const x of rows){const tr=document.createElement('tr');const vals=kind==='stock'?[x.symbol,'₹'+fmt(x.price),fmt(x.change)+'%',fmt(x.rsi),fmt(x.rvol)+'x',x.vwap?fmt((x.price/x.vwap-1)*100)+'%':'—',x.high20&&x.price>x.high20?'20-candle breakout':x.low20&&x.price<x.low20?'20-candle breakdown':'No confirmed pattern','15m','View']:[x.symbol,fmt(x.strike),x.type,x.expiry||'—','₹'+fmt(x.ltp),fmt(x.oi,0),fmt(x.oiPct)+'%',fmt(x.volume,0),fmt(x.iv)+'%','Provider data','Analyze'];vals.forEach(v=>cell(tr,v));tbody.append(tr)}}async function stock(){const section=$('#stock-scanner');notice(section,'Scanning available symbols…');try{const j=await api('/api/analysis/stock-scanner',{universe:val('stock-universe'),minPrice:val('minimum-price'),rvol:val('relative-volume').match(/[0-9.]+/)?.[0]||'',rsiMin:val('rsi-minimum'),rsiMax:val('rsi-maximum')});table(section,j.results,'stock');section.querySelector('.sp-demo-label')?.replaceChildren(document.createTextNode('PROVIDER DATA'));notice(section,j.results.length+' matches · '+j.coverage+' · '+j.failed+' provider failures · '+j.updated)}catch(e){notice(section,'Stock scanner: '+e.message)}}async function options(){const section=$('#option-scanner');notice(section,'Loading option chain…');try{const type=val('option-type').includes('Call')?'CE':val('option-type').includes('Put')?'PE':'both';const j=await api('/api/analysis/option-scanner',{symbol:val('option-underlying'),type,moneyness:val('moneyness'),minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});table(section,j.results.slice(0,150),'option');section.querySelector('.sp-demo-label')?.replaceChildren(document.createTextNode('PROVIDER DATA'));notice(section,j.results.length+' contracts · '+j.symbol+' · expiry '+j.expiry+' · '+j.updated)}catch(e){notice(section,'Option scanner: '+e.message)}}function chartHeading(box,textValue){let h=box?.querySelector('.sp-chart-title');if(!h&&box){h=document.createElement('h3');h.className='sp-chart-title';h.style.cssText='margin:0 0 10px;color:#243447;font-size:14px;font-weight:700';box.prepend(h)}if(h)h.textContent=textValue||'Price Action Chart'}function draw(box,rows){const holder=box?.querySelector('.sp-chart-placeholder');if(!holder)return;holder.replaceChildren();const valid=rows.filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite));if(valid.length<2){holder.textContent='Insufficient OHLC candles';return}const ns='http://www.w3.org/2000/svg',svg=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,String(v)));return e};const n=valid.length,w=900,priceH=280,volH=70,rsiH=100,macdH=100,gap=22,total=priceH+volH+rsiH+macdH+gap*3,step=w/n,bw=Math.max(.65,Math.min(12,step*.66));const rootSvg=svg('svg',{viewBox:'0 0 '+w+' '+total,role:'img','aria-label':'Historical candlestick, volume, RSI and MACD charts'});rootSvg.style.cssText='width:100%;height:auto;display:block;background:#fff;border-radius:10px';const text=(label,y)=>{const t=svg('text',{x:7,y,'font-size':12,fill:'#50627a'});t.textContent=label;rootSvg.append(t)};const rect=(x,y,width,height,fill)=>rootSvg.append(svg('rect',{x,y,width,height,fill}));const line=(x1,y1,x2,y2,stroke,width=1)=>rootSvg.append(svg('line',{x1,y1,x2,y2,stroke,'stroke-width':width}));const prices=valid.flatMap(x=>[x.h,x.l]),pMin=Math.min(...prices),pMax=Math.max(...prices),scale=(v,min,max,top,height)=>top+height-(v-min)/(max-min||1)*height;const x=i=>(i+.5)*step;valid.forEach((v,i)=>{const up=v.c>=v.o,color=up?'#16a34a':'#dc3545',high=scale(v.h,pMin,pMax,0,priceH),low=scale(v.l,pMin,pMax,0,priceH),open=scale(v.o,pMin,pMax,0,priceH),close=scale(v.c,pMin,pMax,0,priceH);line(x(i),high,x(i),low,color);rect(x(i)-bw/2,Math.min(open,close),bw,Math.max(1,Math.abs(open-close)),color)});text('OHLC candles',15);const vTop=priceH+gap,vMax=Math.max(1,...valid.map(x=>x.v||0));valid.forEach((v,i)=>{const height=(v.v||0)/vMax*volH;rect(x(i)-bw/2,vTop+volH-height,bw,height,v.c>=v.o?'#16a34a':'#dc3545')});text('Volume',vTop+13);const closes=valid.map(x=>x.c),ema=(period)=>{let prev=null;return closes.map((v,i)=>{if(i<period-1)return null;if(i===period-1){prev=closes.slice(0,period).reduce((a,b)=>a+b,0)/period;return prev}prev=v*2/(period+1)+prev*(period-1)/(period+1);return prev})};const gains=[],losses=[];for(let i=1;i<n;i++){const d=closes[i]-closes[i-1];gains.push(Math.max(d,0));losses.push(Math.max(-d,0))}const rsi=closes.map((_,i)=>{if(i<14)return null;let gain=0,loss=0;for(let k=i-14;k<i;k++){gain+=gains[k];loss+=losses[k]}return loss===0?(gain===0?50:100):100-100/(1+gain/loss)});const rTop=vTop+volH+gap;const plot=(values,top,height,min,max,color)=>{const points=values.map((v,i)=>v==null?null:x(i).toFixed(2)+','+scale(v,min,max,top,height).toFixed(2));let part=[];const flush=()=>{if(part.length>1)rootSvg.append(svg('polyline',{points:part.join(' '),fill:'none',stroke:color,'stroke-width':1.5}));part=[]};points.forEach(p=>p==null?flush():part.push(p));flush()};line(0,scale(30,0,100,rTop,rsiH),w,scale(30,0,100,rTop,rsiH),'#cbd5e1');line(0,scale(70,0,100,rTop,rsiH),w,scale(70,0,100,rTop,rsiH),'#cbd5e1');plot(rsi,rTop,rsiH,0,100,'#805ad5');text('RSI (14, simple average)',rTop+13);const macdTop=rTop+rsiH+gap,e12=ema(12),e26=ema(26),macd=e12.map((v,i)=>v==null||e26[i]==null?null:v-e26[i]);let signal=null;const signalValues=macd.map((v,i)=>{if(v==null)return null;if(signal==null){const seen=macd.slice(0,i+1).filter(x=>x!=null);if(seen.length<9)return null;signal=seen.slice(-9).reduce((a,b)=>a+b,0)/9;return signal}signal=v*.2+signal*.8;return signal});const mValues=[...macd,...signalValues].filter(x=>x!=null),mMin=Math.min(0,...mValues),mMax=Math.max(0,...mValues);line(0,scale(0,mMin,mMax,macdTop,macdH),w,scale(0,mMin,mMax,macdTop,macdH),'#94a3b8');plot(macd,macdTop,macdH,mMin,mMax,'#2563eb');plot(signalValues,macdTop,macdH,mMin,mMax,'#e78b27');text('MACD (12,26,9)',macdTop+13);holder.append(rootSvg);holder.dataset.chartType='candlestick-rsi-macd';holder.dataset.candleCount=String(n)}async function chart(){const section=$('#chart-lab');const symbol=val('chart-symbol').trim();if(window.__spHasUserSelectedSymbol!==true||!symbol){throw Error('Select an NSE stock from verified search results first.')} const tf=val('chart-timeframe');const labels={'5m':'5-Minute Price Chart','15m':'15-Minute Price Chart','1h':'1-Hour Price Chart','1D':'Daily Price Chart','1W':'Weekly Price Chart'};chartHeading(section.querySelector('.sp-main-chart'),symbol?(symbol+' · '+(labels[tf]||'Price Action Chart')):'Select an NSE Stock · Price Action');notice(section,'Loading historical candles…');try{if(!symbol){const holder=section.querySelector('.sp-main-chart .sp-chart-placeholder');if(holder)holder.textContent='Select a stock to load historical chart.';return}const interval={'1m':'1m','5m':'5m','15m':'15m','1h':'60m','1D':'1d','1W':'1wk'}[tf]||'15m';const j=await api('/api/analysis/chart',{symbol,interval,range:interval==='1d'||interval==='1wk'?'1y':'5d'});draw(section.querySelector('.sp-main-chart'),j.candles);notice(section,j.symbol+' · '+j.candles.length+' candles · '+j.source+' · candlesticks + volume + RSI + MACD')}catch(e){notice(section,'Chart: '+e.message)}}function init(){const badge=$('.sp-data-badge');api('/api/analysis/status').then(()=>{if(badge)badge.textContent='BACKEND CONNECTED · DATA ON REQUEST'}).catch(()=>{if(badge)badge.textContent='BACKEND UNAVAILABLE'});for(const id of ['volume-lab','statistics'])notice($('#'+id),'Advanced research engine not connected. No results are being simulated.')}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init()})();
+
+/* Universal instrument search: adds UI without editing WordPress HTML/CSS. */
+(function(){
+'use strict';
+const base='https://strike-pulse-relay.onrender.com';
 function init(){
- addSearches();
- wire('stock-scanner',runStock);
- wire('option-scanner',runOption);
- wire('volume-lab',runVolume);
- wire('correlation-lab',runCorrelation);
- wire('backtesting',runBacktest);
- wire('statistics',runStatistics);
- wireChart();exportStock();saveStock();
- const badge=$('.sp-data-badge');
- api('/api/analysis/status').then(()=>{if(badge)badge.textContent='BACKEND CONNECTED · DATA ON REQUEST'}).catch(()=>{if(badge)badge.textContent='PROVIDER DATA UNAVAILABLE'});
+const root=document.querySelector('.sp-analysis');if(!root||root.querySelector('#sp-universal-search'))return;
+const heading=root.querySelector('.sp-page-heading')||root;
+const wrap=document.createElement('div');wrap.id='sp-universal-search';wrap.style.cssText='width:100%;max-width:700px;margin:16px 0;position:relative;z-index:12';
+const label=document.createElement('label');label.textContent='Search any available NSE stock';label.style.cssText='display:block;font-size:12px;font-weight:700;margin-bottom:7px;color:#526579';
+const input=document.createElement('input');input.type='search';input.placeholder='Search symbol or company name (e.g. TCS)';input.autocomplete='off';input.style.cssText='width:100%;height:46px;border:1px solid #cbdcf5;border-radius:12px;padding:0 14px;background:#fff;color:#243344';
+const results=document.createElement('div');results.setAttribute('role','listbox');results.style.cssText='position:absolute;left:0;right:0;top:78px;max-height:260px;overflow:auto;background:#fff;border:1px solid #dce8f8;border-radius:12px;box-shadow:0 10px 30px #2433441c;display:none';
+const selected=document.createElement('div');selected.style.display='none';
+wrap.append(label,input,results,selected);heading.append(wrap);
+let timer,controller,activeSymbol='';
+function pick(x){activeSymbol=x.symbol;input.value=x.symbol+' — '+x.name;selected.textContent='';results.style.display='none';const chart=root.querySelector('#chart-symbol');if(chart)chart.value=x.symbol;const universe=root.querySelector('#stock-universe');if(universe){let opt=[...universe.options].find(o=>o.value==='selected-symbol');if(!opt){opt=document.createElement('option');opt.value='selected-symbol';opt.textContent='Selected Symbol';universe.append(opt)}universe.value='selected-symbol'}root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:x}));}
+input.addEventListener('input',()=>{clearTimeout(timer);activeSymbol='';const q=input.value.trim();if(q.length<1){results.style.display='none';return}timer=setTimeout(async()=>{if(controller)controller.abort();controller=new AbortController();try{const r=await fetch(base+'/api/stock-search?q='+encodeURIComponent(q),{signal:controller.signal}),j=await r.json();if(!j.success)throw Error(j.error||'Search unavailable');results.replaceChildren();for(const x of j.results||[]){const b=document.createElement('button');b.type='button';b.setAttribute('role','option');b.textContent=x.symbol+' — '+x.name;b.style.cssText='display:block;width:100%;text-align:left;padding:11px 13px;border:0;border-bottom:1px solid #eef2f9;background:#fff;color:#243344;cursor:pointer';b.addEventListener('click',()=>pick(x));results.append(b)}if(!results.children.length){const p=document.createElement('p');p.textContent='No matching symbols. Try exact NSE ticker.';p.style.padding='12px';results.append(p)}results.style.display='block'}catch(e){if(e.name!=='AbortError')selected.textContent=''}},260)});
+input.addEventListener('keydown',e=>{if(e.key==='Escape')results.style.display='none';if(e.key==='Enter'){e.preventDefault();const first=results.querySelector('button');if(first)first.click();else selected.textContent=''}});
+document.addEventListener('click',e=>{if(!wrap.contains(e.target))results.style.display='none'});
+const btn=root.querySelector('#stock-scanner .sp-btn-primary');
+if(btn)btn.addEventListener('click',async e=>{if(!activeSymbol&&root.querySelector('#stock-universe')?.value!=='selected-symbol')return;e.preventDefault();e.stopImmediatePropagation();const section=root.querySelector('#stock-scanner'),msg=section.querySelector('.sp-live-message');if(!activeSymbol){if(msg)msg.textContent='Choose a stock from search results first.';return}if(msg)msg.textContent='Scanning '+activeSymbol+'…';try{const p=new URLSearchParams({symbol:activeSymbol,minPrice:root.querySelector('#minimum-price')?.value||'',rsiMin:root.querySelector('#rsi-minimum')?.value||'',rsiMax:root.querySelector('#rsi-maximum')?.value||''});const r=await fetch(base+'/api/analysis/stock-scanner?'+p),j=await r.json();if(!j.success)throw Error(j.error||'Scan failed');const body=section.querySelector('.sp-table tbody');body.replaceChildren();for(const x of j.results){const tr=document.createElement('tr');const values=[x.symbol,x.price?.toFixed(2)??'—',x.change==null?'—':x.change.toFixed(2)+'%',x.rsi?.toFixed(1)??'—',x.rvol==null?'—':x.rvol.toFixed(2)+'x',x.vwap?((x.price/x.vwap-1)*100).toFixed(2)+'%':'—',x.high20&&x.price>x.high20?'20-candle breakout':x.low20&&x.price<x.low20?'20-candle breakdown':'No confirmed pattern','15m','Chart Lab'];for(const v of values){const td=document.createElement('td');td.textContent=v;tr.append(td)}body.append(tr)}if(msg)msg.textContent=j.results.length+' result(s) · '+j.coverage+' · '+j.updated}catch(err){if(msg)msg.textContent='Scan unavailable: '+err.message}},true);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+
+
+/* Extended research controls: injected into existing HTML. */
+(function(){
+'use strict';
+const base='https://strike-pulse-relay.onrender.com';
+const request=async(path,p={})=>{const u=new URL(base+path);Object.entries(p).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetch(u),j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider unavailable');return j};
+const style='padding:10px 12px;border:1px solid #d6e4f5;border-radius:9px;background:#fff;color:#243344;max-width:100%';
+const button=(label,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.style.cssText=style+';background:#3278e8;color:#fff;cursor:pointer';b.onclick=fn;return b};
+const field=(placeholder,value='')=>{const x=document.createElement('input');x.placeholder=placeholder;x.value=value;x.style.cssText=style;return x};
+function mount(){const root=document.querySelector('.sp-analysis');if(!root||root.querySelector('#sp-extended-tools'))return;const stock=root.querySelector('#stock-scanner'),corr=root.querySelector('#correlation-lab'),back=root.querySelector('#backtesting');const section=(host,title)=>{if(!host)return null;const el=document.createElement('div');el.id='sp-extended-'+title.toLowerCase().replace(/[^a-z]+/g,'-');el.style.cssText='padding:18px;margin:18px 0;background:#f7faff;border:1px solid #dce8f8;border-radius:15px';const h=document.createElement('h3');h.textContent=title;el.append(h);host.querySelector('.sp-panel')?.prepend(el);return el};const status=(el)=>{const p=document.createElement('p');p.style.display='none';el.append(p);return p};
+const s=section(stock,'Search & Scan NSE Stocks');if(s){s.id='sp-extended-tools';const info=status(s);info.textContent='Search a company or NSE symbol, select it, then scan. Up to 8 selected stocks per request.';const search=field('Search company or NSE symbol (e.g. Tata, RELIANCE)');search.type='search';search.setAttribute('aria-label','Search NSE stocks');search.style.width='100%';const suggestions=document.createElement('div');suggestions.setAttribute('role','listbox');suggestions.style.cssText='max-height:220px;overflow:auto;background:white;border-radius:10px;margin:6px 0';const chosen=document.createElement('div');chosen.style.cssText='display:flex;flex-wrap:wrap;gap:7px;margin:10px 0';const selected=new Map();const scan=button('Scan selected stocks',run);scan.disabled=true;const clear=button('Clear selection',()=>{selected.clear();chosen.replaceChildren();tbody.replaceChildren();scan.disabled=true;info.textContent='Selection cleared. Search for a stock.'});const table=document.createElement('table');table.style.cssText='width:100%;font-size:12px;min-width:550px';const head=document.createElement('thead');const hr=document.createElement('tr');for(const h of ['Symbol','Price','Change %','RSI','Relative volume']){const th=document.createElement('th');th.textContent=h;hr.append(th)}head.append(hr);const tbody=document.createElement('tbody');table.append(head,tbody);const scroll=document.createElement('div');scroll.style.overflowX='auto';scroll.append(table);s.append(search,suggestions,chosen,scan,clear,scroll);let timer,controller;function render(){chosen.replaceChildren();for(const [symbol,name] of selected){const chip=button(symbol+' ×',()=>{selected.delete(symbol);render()});chip.title='Remove '+name;chip.style.background='#e6efff';chip.style.color='#2453a2';chosen.append(chip)}scan.disabled=!selected.size}search.addEventListener('input',()=>{clearTimeout(timer);const q=search.value.trim();suggestions.replaceChildren();if(q.length<2)return;timer=setTimeout(async()=>{if(controller)controller.abort();controller=new AbortController();try{const u=new URL(base+'/api/analysis/universe');u.searchParams.set('q',q);u.searchParams.set('limit','15');const r=await fetch(u,{signal:controller.signal});const j=await r.json();if(!j.success)throw Error(j.error||'Search unavailable');suggestions.replaceChildren();if(!j.results.length){suggestions.textContent='No matching NSE equity symbols';return}for(const x of j.results){const item=button(x.symbol+' — '+x.name,()=>{if(selected.size>=8&&!selected.has(x.symbol)){info.textContent='Select at most 8 stocks per scan.';return}selected.set(x.symbol,x.name);render();search.value='';suggestions.replaceChildren();info.textContent=selected.size+' stock(s) selected.'});item.setAttribute('role','option');item.style.cssText='display:block;width:100%;text-align:left;background:white;color:#263e59;border:0;border-bottom:1px solid #e9eff8;padding:11px;cursor:pointer';suggestions.append(item)}}catch(e){if(e.name!=='AbortError')info.textContent='Directory search unavailable: '+e.message}},280)});async function run(){if(!selected.size)return;scan.disabled=true;info.textContent='Scanning '+[...selected.keys()].join(', ')+'…';try{const j=await request('/api/analysis/scan-batch',{symbols:[...selected.keys()].join(','),limit:8});tbody.replaceChildren();for(const x of j.results){const tr=document.createElement('tr');for(const value of [x.symbol,x.price==null?'—':x.price.toFixed(2),x.change==null?'—':x.change.toFixed(2)+'%',x.rsi==null?'—':x.rsi.toFixed(1),x.rvol==null?'—':x.rvol.toFixed(2)+'x']){const td=document.createElement('td');td.textContent=value;td.style.padding='8px';tr.append(td)}tbody.append(tr)}info.textContent=j.results.length+' results from '+j.requested+' selected stock(s); '+j.failed.length+' provider failures. Historical daily data, not real-time.'}catch(e){info.textContent='Scan unavailable: '+e.message}finally{scan.disabled=false}}}
+const c=section(corr,'Historical Correlation Research');if(c){const symbols=field('Comma-separated symbols','RELIANCE,TCS,INFY'),info=status(c);c.append(symbols,button('Calculate correlation',async()=>{info.textContent='Loading daily returns…';try{const j=await request('/api/analysis/correlation',{symbols:symbols.value});info.textContent=j.sessions+' overlapping sessions\n'+j.matrix.map(x=>x.symbol+': '+x.correlations.map(y=>y.symbol+' '+(y.value==null?'N/A':y.value.toFixed(3))).join(' | ')).join('\n')}catch(e){info.textContent=e.message}}))}
+const b=section(back,'Historical SMA Strategy Backtest');if(b){const symbol=field('NSE symbol','RELIANCE'),fast=field('Fast SMA','10'),slow=field('Slow SMA','30'),info=status(b);b.append(symbol,fast,slow,button('Run historical test',async()=>{info.textContent='Calculating historical results…';try{const j=await request('/api/analysis/backtest',{symbol:symbol.value.toUpperCase(),fast:fast.value,slow:slow.value});info.textContent='Total return: '+j.totalReturn.toFixed(2)+'% | Max drawdown: '+j.maxDrawdown.toFixed(2)+'% | Trades: '+j.trades+'\n'+j.method+'\nSource: '+j.source+'; past performance does not predict future returns.'}catch(e){info.textContent=e.message}}))}
+const search=root.querySelector('#sp-universal-search input');if(search){search.placeholder='Search NSE stocks; directory-backed suggestions';search.addEventListener('input',()=>{const q=search.value.trim();if(q.length<2)return;clearTimeout(search.__directoryTimer);search.__directoryTimer=setTimeout(async()=>{try{const j=await request('/api/analysis/universe',{q,limit:15});const box=root.querySelector('#sp-universal-search [role=listbox]');if(!box||!j.results.length)return;box.replaceChildren();for(const x of j.results){const item=document.createElement('button');item.type='button';item.textContent=x.symbol+' — '+x.name;item.style.cssText='display:block;width:100%;text-align:left;padding:11px;background:#fff;border:0;border-bottom:1px solid #eee';item.addEventListener('click',()=>{search.value=x.symbol+' — '+x.name;box.style.display='none';const chart=root.querySelector('#chart-symbol');if(chart)chart.value=x.symbol;root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:x}));});box.append(item)}box.style.display='block'}catch(e){}},450)})}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
+})();
+
+
+/* Historical Volume Lab and Statistics: injected without changing WordPress HTML/CSS. */
+(function(){
+'use strict';
+const base='https://strike-pulse-relay.onrender.com',css='padding:10px 12px;border:1px solid #d6e4f5;border-radius:9px;background:#fff;color:#243344;max-width:100%';
+const request=async(path,params)=>{const u=new URL(base+path);Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetch(u,{cache:'no-store'}),j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider unavailable');return j};
+const field=(label,value,type='text')=>{const wrap=document.createElement('label');wrap.style.cssText='display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600';wrap.textContent=label;const el=document.createElement('input');el.type=type;el.value=value;el.style.cssText=css+';min-width:130px';wrap.append(el);return {wrap,el}};
+const metric=(name,value)=>{const x=document.createElement('div');x.style.cssText='padding:12px;border:1px solid #dce8f8;border-radius:10px;background:#fff;min-width:125px;flex:1';const label=document.createElement('div');label.textContent=name;label.style.cssText='font-size:11px;color:#61758c';const strong=document.createElement('strong');strong.textContent=value;strong.style.cssText='display:block;font-size:18px;margin-top:6px;overflow-wrap:anywhere';x.append(label,strong);return x};
+const fmt=(v,d=2)=>v==null||!Number.isFinite(+v)?'N/A':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
+const chart=(holder,points,key)=>{holder.replaceChildren();if(points.length<2)return;const vals=points.map(x=>x[key]).filter(x=>Number.isFinite(x));if(vals.length<2)return;const min=Math.min(...vals,0),max=Math.max(...vals),w=700,h=170;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 700 170');svg.setAttribute('role','img');svg.setAttribute('aria-label',key+' historical chart');svg.style.cssText='width:100%;height:auto;max-height:240px';const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',points.map((p,i)=>(i*w/(points.length-1)).toFixed(2)+','+(h-(p[key]-min)/(max-min||1)*h).toFixed(2)).join(' '));poly.setAttribute('fill','none');poly.setAttribute('stroke','#3278e8');poly.setAttribute('stroke-width','2');svg.append(poly);holder.append(svg)};
+function mount(){
+ const root=document.querySelector('.sp-analysis');if(!root||root.querySelector('#sp-research-v2'))return;
+ for(const [id,title,route] of [['volume-lab','Historical Volume Lab','/api/analysis/volume-lab'],['statistics','Historical Statistics','/api/analysis/statistics']]){
+  const host=root.querySelector('#'+id);if(!host)continue;
+  const panel=host.querySelector('.sp-panel')||host,box=document.createElement('div');box.id=id==='volume-lab'?'sp-research-v2':'sp-statistics-v2';box.style.cssText='padding:18px;margin:12px 0;background:#f7faff;border:1px solid #dce8f8;border-radius:15px;max-width:100%;box-sizing:border-box';
+  const heading=document.createElement('h3');heading.textContent=title;
+  const controls=document.createElement('div');controls.style.cssText='display:flex;flex-wrap:wrap;gap:12px;align-items:end';
+  const symbol=field('NSE symbol','TCS'),windowField=field(id==='volume-lab'?'Average volume lookback (10–120)':'Historical sessions (20–240)',id==='volume-lab'?'20':'60','number');
+  windowField.el.min=id==='volume-lab'?'10':'20';windowField.el.max=id==='volume-lab'?'120':'240';
+  const btn=document.createElement('button');btn.type='button';btn.textContent=id==='volume-lab'?'Analyze volume':'Calculate statistics';btn.style.cssText=css+';background:#3278e8;color:#fff;cursor:pointer';
+  const info=document.createElement('p');info.setAttribute('role','status');info.style.cssText='font-size:12px;color:#54718f;white-space:pre-wrap';
+  const metrics=document.createElement('div');metrics.style.cssText='display:flex;flex-wrap:wrap;gap:10px;margin:14px 0';
+  const plot=document.createElement('div');plot.style.cssText='width:100%;max-width:750px;overflow:hidden';
+  const note=document.createElement('p');note.style.cssText='font-size:11px;color:#65758a';
+  controls.append(symbol.wrap,windowField.wrap,btn);box.append(heading,controls,info,metrics,plot,note);panel.prepend(box);
+  const stale=host.querySelector('.sp-live-message');if(stale)stale.textContent='Historical research available below. Results are not real-time.';
+  btn.addEventListener('click',async()=>{btn.disabled=true;info.textContent='Loading historical data…';metrics.replaceChildren();plot.replaceChildren();note.textContent='';try{
+   const params={symbol:symbol.el.value.trim().toUpperCase()};params[id==='volume-lab'?'lookback':'sessions']=windowField.el.value;
+   const j=await request(route,params);info.textContent=j.symbol+' · '+j.sessions+' historical sessions · '+j.source+' · '+j.updated;
+   const values=id==='volume-lab'?[['Latest volume',fmt(j.latest.volume,0)],['Average volume',fmt(j.averageVolume,0)],['Relative volume',fmt(j.relativeVolume)+'×'],['Highest prior volume',fmt(j.highestVolume,0)],['Avg up-day volume',fmt(j.averageUpDayVolume,0)],['Avg down-day volume',fmt(j.averageDownDayVolume,0)]]:[['Period return',fmt(j.periodReturnPct)+'%'],['Mean daily return',fmt(j.meanDailyReturnPct)+'%'],['Median daily return',fmt(j.medianDailyReturnPct)+'%'],['Daily volatility',fmt(j.dailyVolatilityPct)+'%'],['Positive sessions',j.positiveSessions+'/'+j.sessions],['Positive rate',fmt(j.positiveRatePct)+'%'],['Best / worst day',fmt(j.bestDayPct)+'% / '+fmt(j.worstDayPct)+'%'],['Longest up / down streak',j.longestUpStreak+' / '+j.longestDownStreak]];
+   values.forEach(([k,v])=>metrics.append(metric(k,v)));chart(plot,j.points,id==='volume-lab'?'volume':'returnPct');note.textContent=j.note;
+  }catch(e){info.textContent='Research unavailable: '+e.message}finally{btn.disabled=false}});
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
+})();
+
+/* Presentation cleanup: remove misleading static previews, preserve original WordPress HTML. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis');if(!root||root.dataset.spCleaned)return;root.dataset.spCleaned='1';
+ const stock=root.querySelector('#stock-scanner'),option=root.querySelector('#option-scanner'),chart=root.querySelector('#chart-lab');
+ for(const host of [stock,option]){if(!host)continue;const tbody=host.querySelector('.sp-table tbody');if(tbody)tbody.replaceChildren();const label=host.querySelector('.sp-demo-label');if(label)label.textContent='AWAITING SCAN';}
+ if(chart){const title=[...chart.querySelectorAll('h3,h4')].find(x=>/price action/i.test(x.textContent));const symbol=chart.querySelector('#chart-symbol');const sync=()=>{if(title&&symbol)title.textContent=symbol.value.trim().toUpperCase()+' · Price Action'};symbol?.addEventListener('change',sync);sync();
+  const holder=chart.querySelector('.sp-main-chart .sp-chart-placeholder');if(holder){const ob=new MutationObserver(()=>{const svg=holder.querySelector('svg');if(!svg)return;const h=[...chart.querySelectorAll('h3,h4')].find(x=>/price action/i.test(x.textContent));if(h&&symbol)h.textContent=symbol.value.trim().toUpperCase()+' · Price Action'});ob.observe(holder,{childList:true})}
+ }
+ const css=document.createElement('style');css.id='sp-cleanup-styles';css.textContent='.sp-analysis .sp-main-chart .sp-chart-placeholder svg{display:block;width:100%;height:auto;min-width:0}.sp-analysis .sp-main-chart{min-width:0;max-width:100%;overflow:hidden}.sp-analysis #sp-research-v2,.sp-analysis #sp-statistics-v2{box-sizing:border-box;max-width:100%}.sp-analysis #sp-research-v2 svg,.sp-analysis #sp-statistics-v2 svg{display:block;max-width:100%}';document.head.append(css);
+ // Existing WordPress preview panels remain in source for editing, but are hidden when live replacements exist.
+ for(const id of ['volume-lab','statistics']){const host=root.querySelector('#'+id),replacement=host?.querySelector(id==='volume-lab'?'#sp-research-v2':'#sp-statistics-v2');if(!replacement)continue;for(const panel of host.querySelectorAll('.sp-panel')){if(panel.contains(replacement)){for(const child of [...panel.children]){if(child!==replacement&&child.classList.contains('sp-live-message'))continue;if(child!==replacement&&child.querySelector?.('.sp-metric,.sp-chart-placeholder'))child.hidden=true}}}}
+ const labels=['CHART PLACEHOLDER','RSI Panel','MACD Panel','5m Chart','15m Chart','1h Chart','1D Chart','Premium Chart','OI / Volume Chart','Implied Volatility','Liquidity Analysis','Volume Distribution','RVOL Chart','Correlation Chart','Relative Performance Chart','Spread & Z-Score','Return Distribution','Time-of-Day Analysis','Equity Curve','Drawdown Chart'];
+ // Hide only static placeholder content, never functional controls or injected research widgets.
+ for(const host of root.querySelectorAll('#chart-lab,#option-scanner,#volume-lab,#correlation-lab,#backtesting,#statistics')){
+  for(const el of host.querySelectorAll('.sp-chart-placeholder')){if(el.closest('.sp-main-chart'))continue;const value=el.textContent.trim();if(value&&!el.querySelector('svg,canvas')&&/placeholder|will appear|awaiting|no backtest|historical.*required/i.test(value))el.style.display='none'}
+ }
+ const note=document.createElement('p');note.id='sp-research-clarity';note.textContent='Interactive research panels above use provider data on request. Legacy design mockups below may be illustrative; unimplemented analytics are not live.';note.style.cssText='font-size:12px;color:#60758c;padding:10px 14px;background:#f0f5fc;border-radius:9px;margin:12px 0';root.querySelector('.sp-page-heading')?.append(note);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+
+/* Original HTML integration: use existing controls, cards and chart slots. */
+(function(){'use strict';const base='https://strike-pulse-relay.onrender.com';const $=(h,s)=>h?.querySelector(s);const all=(h,s)=>[...(h?.querySelectorAll(s)||[])];const num=(v,d=2)=>v==null||!Number.isFinite(+v)?'—':Number(v).toLocaleString('en-IN',{maximumFractionDigits:d});async function get(path,q){const u=new URL(base+path);Object.entries(q).forEach(([k,v])=>{if(v!==''&&v!=null)u.searchParams.set(k,v)});const r=await fetch(u,{cache:'no-store'}),j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider unavailable');return j}function status(h,msg){let e=$(h,'.sp-original-status');if(!e){e=document.createElement('p');e.className='sp-original-status';e.style.cssText='padding:9px;color:#38619a;font-size:12px';$(h,'.sp-panel')?.prepend(e)}e.textContent=msg}function card(h,labels,values){for(const m of all(h,'.sp-metric')){const name=$ (m,'span')?.textContent.trim().toLowerCase();const i=labels.findIndex(x=>x.toLowerCase()===name);if(i>=0){const strong=$(m,'strong');if(strong)strong.textContent=values[i]}}}function plot(slot,points,key,label){if(!slot)return;slot.replaceChildren();if(!points?.length){slot.textContent='No historical series available';return}const vals=points.map(p=>Number(p[key])).filter(Number.isFinite);if(vals.length<2){slot.textContent='Insufficient historical series';return}const lo=Math.min(...vals),hi=Math.max(...vals),w=600,h=180;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 600 180');svg.setAttribute('role','img');svg.setAttribute('aria-label',label);svg.style.cssText='display:block;width:100%;height:auto;max-width:100%';const poly=document.createElementNS(svg.namespaceURI,'polyline');poly.setAttribute('points',vals.map((v,i)=>(i*w/(vals.length-1)).toFixed(1)+','+(h-10-(v-lo)/(hi-lo||1)*(h-25)).toFixed(1)).join(' '));poly.setAttribute('fill','none');poly.setAttribute('stroke','#387ce3');poly.setAttribute('stroke-width','2');svg.append(poly);slot.append(svg)}function hideDuplicates(h,ids){for(const id of ids){const e=$(h,'#'+id);if(e)e.hidden=true}}function mount(){const root=document.querySelector('.sp-analysis');if(!root||root.dataset.spOriginalIntegrated)return;root.dataset.spOriginalIntegrated='1';const volume=$(root,'#volume-lab'),corr=$(root,'#correlation-lab'),back=$(root,'#backtesting'),stats=$(root,'#statistics'),option=$(root,'#option-scanner'),stock=$(root,'#stock-scanner');const btn=(h,label)=>all(h,'button').find(b=>b.textContent.trim()===label);const css=document.createElement('style');css.textContent='.sp-analysis .sp-table-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.sp-analysis .sp-table-scroll table{min-width:850px}.sp-analysis .sp-chart-placeholder svg{max-width:100%}.sp-analysis .sp-chart-box{min-width:0}';document.head.append(css);
+if(volume){hideDuplicates(volume,['sp-research-v2']);const b=document.createElement('button');b.type='button';b.className='sp-btn sp-btn-primary';b.textContent='Analyze Volume';$(volume,'.sp-filter-grid')?.after(b);b.onclick=async()=>{b.disabled=true;status(volume,'Loading historical volume…');try{const p=$ (volume,'#volume-period')?.selectedIndex||0;const j=await get('/api/analysis/volume-lab',{symbol:$(volume,'#volume-symbol')?.value.trim().toUpperCase()||'TCS',lookback:[10,5,20,60][p]});card(volume,['Relative Volume'],[num(j.relativeVolume)+'×']);const slots=all(volume,'.sp-chart-placeholder');plot(slots[1],j.points,'volume','Historical daily volume');if(slots[0])slots[0].textContent='Price-level volume profile requires tick or intraday price-volume data; unavailable from daily candles.';status(volume,j.symbol+' · '+j.sessions+' historical sessions · '+j.source+' · POC/VAH/VAL unavailable');}catch(e){status(volume,e.message)}finally{b.disabled=false}}}
+if(corr){hideDuplicates(corr,['sp-extended-historical-correlation-research']);const b=document.createElement('button');b.type='button';b.className='sp-btn sp-btn-primary';b.textContent='Calculate Correlation';$(corr,'.sp-filter-grid')?.after(b);b.onclick=async()=>{b.disabled=true;status(corr,'Loading aligned historical returns…');try{const a=$(corr,'#correlation-stock-a')?.value.trim().toUpperCase()||'RELIANCE',c=$(corr,'#correlation-stock-b')?.value.trim().toUpperCase()||'TCS';const j=await get('/api/analysis/correlation',{symbols:a+','+c});const value=j.matrix?.[0]?.correlations?.[1]?.value;card(corr,['Rolling Correlation'],[num(value,4)]);const slots=all(corr,'.sp-chart-placeholder');if(slots[0])slots[0].textContent='Historical daily-return Pearson correlation: '+num(value,4)+' ('+j.sessions+' aligned sessions). Rolling series not provided.';status(corr,j.source+' · '+j.sessions+' sessions · benchmark beta and spread metrics unavailable');}catch(e){status(corr,e.message)}finally{b.disabled=false}}}
+if(back){for(const el of all(back,'[id^="sp-extended-"]'))el.hidden=true;const original=btn(back,'Run Historical Test');original?.addEventListener('click',async()=>{original.disabled=true;status(back,'Running illustrative historical SMA crossover…');try{const j=await get('/api/analysis/backtest',{symbol:$(root,'#chart-symbol')?.value.trim().toUpperCase()||'RELIANCE',fast:10,slow:30,cost:$(back,'#backtest-cost')?.value||0});card(back,['Total Signals','Maximum Drawdown'],[num(j.trades,0),num(j.maxDrawdown)+'%']);const slots=all(back,'.sp-chart-placeholder');plot(slots[0],j.curve,'equity','Illustrative SMA equity curve');if(slots[1])slots[1].textContent='Maximum drawdown: '+num(j.maxDrawdown)+'%. Drawdown time series unavailable.';const tag=$(back,'.sp-demo-label');if(tag)tag.textContent='ILLUSTRATIVE SMA ONLY';status(back,'10/30 daily SMA illustrative backtest · '+j.symbol+' · '+j.source+'. Other strategy/timeframe/holding controls not yet supported.');}catch(e){status(back,e.message)}finally{original.disabled=false}})}
+if(stats){hideDuplicates(stats,['sp-statistics-v2']);const original=btn(stats,'Analyze Historical Pattern');original?.addEventListener('click',async()=>{original.disabled=true;status(stats,'Loading historical descriptive statistics…');try{const period=$(stats,'#statistical-period')?.selectedIndex||0;const j=await get('/api/analysis/statistics',{symbol:$(stats,'#statistical-symbol')?.value.trim().toUpperCase()||'TCS',sessions:[60,120,240,240,240][period]});card(stats,['Positive Return Frequency'],[num(j.positiveRatePct)+'%']);const slots=all(stats,'.sp-chart-placeholder');plot(slots[0],j.points,'returnPct','Historical daily return series');if(slots[1])slots[1].textContent='Time-of-day analysis requires intraday event history; unavailable.';status(stats,j.symbol+' · '+j.sessions+' daily sessions · descriptive statistics only. Selected pattern and forward-window analysis not implemented.');}catch(e){status(stats,e.message)}finally{original.disabled=false}})}
+if(option){const research=$(option,'#contract-research');if(research){const label=$(research,'.sp-contract-heading .sp-muted');if(label)label.textContent='Select a scanned contract to inspect available provider fields';const body=$(option,'.sp-table tbody');body?.addEventListener('click',e=>{const tr=e.target.closest('tr');if(!tr||!body.contains(tr))return;const cells=all(tr,'td').map(x=>x.textContent.trim());if(cells.length<9)return;const h=$(research,'.sp-contract-heading h3');if(h)h.textContent=cells[0]+' '+cells[1]+' '+cells[2];const price=$(research,'.sp-contract-price strong');if(price)price.textContent=cells[4];const strongs=all(research,'.sp-metric strong');[cells[5],cells[7],cells[8],'—'].forEach((v,i)=>{if(strongs[i])strongs[i].textContent=v});if(label)label.textContent='Scanned provider contract · '+cells[3]+' · historical contract charts unavailable';research.scrollIntoView({behavior:'smooth',block:'start'})});}}
+if(stock){const exportBtn=btn(stock,'Export CSV');exportBtn?.addEventListener('click',()=>{const rows=all(stock,'.sp-table tr').map(tr=>all(tr,'th,td').map(td=>'"'+td.textContent.trim().replace(/"/g,'""')+'"').join(','));const blob=new Blob([rows.join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='strike-pulse-stock-scan.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)});const save=btn(stock,'Save Screen');save?.addEventListener('click',()=>{const data=all(stock,'.sp-table tr').map(tr=>all(tr,'th,td').map(td=>td.textContent.trim()));const blob=new Blob([JSON.stringify({savedAt:new Date().toISOString(),rows:data},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='strike-pulse-stock-scan.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)})}
+}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount()})();
+
+/* Restore original WordPress result containers. Never expose mock data as live. */
+(function(){'use strict';
+function restore(){
+ const root=document.querySelector('.sp-analysis');if(!root||root.dataset.spOriginalRestored)return;root.dataset.spOriginalRestored='1';
+ for(const id of ['volume-lab','statistics']){const h=root.querySelector('#'+id);if(!h)continue;for(const e of h.querySelectorAll('[hidden]')){if(e.id==='sp-research-v2'||e.id==='sp-statistics-v2')continue;if(e.querySelector('.sp-metric,.sp-chart-placeholder')||e.matches('.sp-metric-grid,.sp-chart-grid'))e.hidden=false}}
+ for(const e of root.querySelectorAll('.sp-chart-placeholder')){if(e.closest('#sp-research-v2,#sp-statistics-v2,[id^="sp-extended-"]'))continue;if(e.style.display==='none')e.style.removeProperty('display')}
+ const research=root.querySelector('#contract-research');if(research){for(const e of research.querySelectorAll('.sp-metric strong,.sp-contract-price strong'))e.textContent='—';const label=research.querySelector('.sp-contract-heading .sp-muted');if(label)label.textContent='Run Option Scan, then select a contract to view provider data';}
+ const chart=root.querySelector('#chart-lab');if(chart&&!window.__spHasUserSelectedSymbol){const holder=chart.querySelector('.sp-main-chart .sp-chart-placeholder');if(holder)holder.textContent='No Stock Selected — Select an NSE stock to view the chart.'}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',restore);else restore();
+})();
+
+/* Original WordPress HTML research integration; original markup/styles remain untouched. */
+(()=>{'use strict';const base='https://strike-pulse-relay.onrender.com';const $=(s,h=document)=>h.querySelector(s),all=(s,h=document)=>[...h.querySelectorAll(s)],N=x=>Number.isFinite(+x)?+x:null,F=(x,d=2)=>x==null||!Number.isFinite(+x)?'—':(+x).toLocaleString('en-IN',{maximumFractionDigits:d}),V=id=>$('#'+id)?.value?.trim()||'',sel=id=>$('#'+id)?.selectedIndex||0,api=async(path,q={})=>{const u=new URL(base+path);Object.entries(q).forEach(([k,v])=>{if(v!==null&&v!==undefined&&v!=='')u.searchParams.set(k,v)});const r=await fetch(u,{cache:'no-store',signal:AbortSignal.timeout(25000)});const j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider unavailable');return j},status=(h,s)=>{let e=$('.sp-original-status',h);if(!e){e=document.createElement('p');e.className='sp-original-status';e.style.cssText='padding:10px;font-size:12px;color:#3466a6';$('.sp-panel',h)?.prepend(e)}e.textContent=s},metric=(h,label,value)=>{const m=all('.sp-metric',h).find(e=>$('span',e)?.textContent.trim().toLowerCase()===label.toLowerCase());const strong=m&&$('strong',m);if(strong)strong.textContent=value==null?'—':String(value)},slots=h=>all('.sp-chart-placeholder',h),show=e=>{if(!e)return;e.hidden=false;e.style.removeProperty('display');for(let p=e.parentElement;p&&p.classList?.contains('sp-panel')===false;p=p.parentElement){if(p.hidden&&p.querySelector('.sp-chart-placeholder,.sp-metric'))p.hidden=false}},svg=(tag,attrs={})=>{const e=document.createElementNS('http://www.w3.org/2000/svg',tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,String(v)));return e},plot=(e,rows,key,label)=>{if(!e)return;show(e);e.replaceChildren();const data=rows.map(r=>({t:r.t,y:N(r[key])})).filter(p=>p.y!==null);if(data.length<2){e.textContent='Insufficient historical data for '+label;return}const volume=/volume|rvol/i.test(label),w=640,h=230,L=65,R=18,T=15,B=39,lo=volume?0:Math.min(...data.map(p=>p.y)),hi=Math.max(...data.map(p=>p.y)),pad=volume?0:(hi-lo||1)*.08,min=lo-pad,max=hi+pad,xx=i=>L+i*(w-L-R)/Math.max(1,data.length-1),yy=v=>h-B-(v-min)/(max-min||1)*(h-T-B),g=svg('svg',{viewBox:'0 0 640 230',role:'img','aria-label':label});g.style.cssText='display:block;width:100%;height:auto;touch-action:pan-y';const tx=(x,y,v,anchor='start')=>{const t=svg('text',{x,y,fill:'#8293ad','font-size':11,'text-anchor':anchor});t.textContent=v;g.append(t)};for(let i=0;i<=4;i++){const v=min+(max-min)*i/4,y=yy(v);g.append(svg('line',{x1:L,y1:y,x2:w-R,y2:y,stroke:'#64748b','stroke-opacity':'.22','stroke-dasharray':'3 4'}));tx(L-7,y+4,Math.abs(v)>=100000?(v/100000).toFixed(1)+'L':v.toLocaleString('en-IN',{maximumFractionDigits:2}),'end')}for(let i=0;i<4;i++){const n=Math.round(i*(data.length-1)/3),d=new Date(data[n].t);tx(xx(n),h-12,Number.isNaN(+d)?String(data[n].t).slice(0,10):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',hour:data.length<150?'2-digit':undefined,minute:data.length<150?'2-digit':undefined}),'middle')}if(volume){const bar=Math.max(1,(w-L-R)/data.length*.75);data.forEach((p,i)=>g.append(svg('rect',{x:xx(i)-bar/2,y:yy(p.y),width:bar,height:Math.max(1,yy(0)-yy(p.y)),fill:'#3981d8','fill-opacity':'.78'})))}else{const points=data.map((p,i)=>xx(i).toFixed(1)+','+yy(p.y).toFixed(1)).join(' ');g.append(svg('polyline',{points,fill:'none',stroke:'#3981d8','stroke-width':2,'stroke-linejoin':'round'}))}const cross=svg('line',{y1:T,y2:h-B,stroke:'#9aaec7','stroke-dasharray':'4 3',visibility:'hidden'}),dot=svg('circle',{r:4,fill:'#3981d8',stroke:'#fff','stroke-width':1,visibility:'hidden'}),overlay=svg('rect',{x:L,y:T,width:w-L-R,height:h-T-B,fill:'transparent'});const tip=document.createElement('div');tip.style.cssText='position:absolute;top:4px;left:72px;max-width:calc(100% - 80px);background:rgba(15,23,42,.93);color:#fff;padding:5px 8px;border-radius:5px;font:11px system-ui;pointer-events:none;display:none;z-index:5';e.style.position='relative';const update=ev=>{const bounds=g.getBoundingClientRect(),x=(ev.clientX-bounds.left)/bounds.width*w,i=Math.max(0,Math.min(data.length-1,Math.round((x-L)/(w-L-R)*(data.length-1)))),p=data[i],px=xx(i),py=yy(p.y);cross.setAttribute('x1',px);cross.setAttribute('x2',px);cross.setAttribute('visibility','visible');dot.setAttribute('cx',px);dot.setAttribute('cy',py);dot.setAttribute('visibility','visible');const d=new Date(p.t);tip.textContent=(Number.isNaN(+d)?p.t:d.toLocaleString('en-IN'))+' · '+label+': '+p.y.toLocaleString('en-IN',{maximumFractionDigits:3});tip.style.display='block'};overlay.addEventListener('pointermove',update);overlay.addEventListener('pointerdown',update);overlay.addEventListener('pointerleave',()=>{cross.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');tip.style.display='none'});g.append(cross,dot,overlay);e.append(g,tip)},pearson=(a,b)=>{if(a.length<3)return null;const n=a.length,ma=a.reduce((s,x)=>s+x,0)/n,mb=b.reduce((s,x)=>s+x,0)/n;let cov=0,va=0,vb=0;for(let i=0;i<n;i++){const x=a[i]-ma,y=b[i]-mb;cov+=x*y;va+=x*x;vb+=y*y}return va&&vb?cov/Math.sqrt(va*vb):null},mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null,stdev=a=>a.length?Math.sqrt(mean(a.map(x=>(x-mean(a))**2))):null,chart=(symbol,interval='1d',range='1y')=>api('/api/analysis/chart',{symbol,interval,range}),wire=(h,label,fn)=>{const b=all('button',h).find(e=>e.textContent.trim()===label);if(!b)return;const replacement=b.cloneNode(true);b.replaceWith(replacement);replacement.addEventListener('click',async e=>{e.preventDefault();replacement.disabled=true;try{await fn()}catch(err){status(h,'Unable to complete: '+err.message)}finally{replacement.disabled=false}})},cleanContractLabels=h=>{if(!h)return;all('.sp-metric',h).forEach(m=>{const walker=document.createTreeWalker(m,NodeFilter.SHOW_TEXT),remove=[];while(walker.nextNode()){const n=walker.currentNode,p=n.parentElement;if(!p?.closest('strong,span')&&n.textContent.trim())remove.push(n)}remove.forEach(n=>n.textContent='')})},clearMock=()=>{const h=$('#contract-research');if(!h)return;all('.sp-metric strong,.sp-contract-price strong',h).forEach(e=>e.textContent='—');cleanContractLabels(h)};
+async function runStock(){const h=$('#stock-scanner'),tf=V('stock-timeframe'),interval={'5 Minutes':'5m','15 Minutes':'15m','30 Minutes':'30m','1 Hour':'60m','Daily':'1d','Weekly':'1wk'}[tf]||'15m',range=['1d','1wk'].includes(interval)?'1y':'5d';status(h,'Scanning historical candles…');const q={interval,range,minPrice:V('minimum-price'),rvol:parseFloat(V('relative-volume'))||'',rsiMin:V('rsi-minimum'),rsiMax:V('rsi-maximum')};const universe=String(V('stock-universe')||window.__spSelectedUniverse||'').trim();const selected=window.__spSelectedSymbols||[];let j;if(universe&&universe!=='selected-symbol'){j=await api('/api/analysis/stock-scanner',{...q,universe});}else if(selected.length){j=await api('/api/analysis/stock-scanner',{...q,symbol:selected[0]});}else j=await api('/api/analysis/stock-scanner',q);let rows=j.results||[];const direction=V('stock-direction');if(direction.includes('Bullish'))rows=rows.filter(x=>x.change>0);if(direction.includes('Bearish'))rows=rows.filter(x=>x.change<0);if(direction.includes('Sideways'))rows=rows.filter(x=>x.change!=null&&Math.abs(x.change)<0.3);const pattern=V('scan-pattern');if(/Price Breakout/i.test(pattern))rows=rows.filter(x=>x.high20!=null&&x.price>x.high20);if(/Price Breakdown/i.test(pattern))rows=rows.filter(x=>x.low20!=null&&x.price<x.low20);if(/52-Week|Divergence|Opening Range|Gap|Trendline/i.test(pattern)){status(h,pattern+' requires additional historical event data; no unsupported pattern signals shown.');rows=[]}const checks=all('input[type=checkbox]',h).filter(x=>x.checked).map(x=>x.closest('label')?.textContent.trim()||'');if(checks.some(x=>/Above VWAP/i.test(x)))rows=rows.filter(x=>x.vwap!=null&&x.price>x.vwap);if(checks.some(x=>/50 EMA/i.test(x)))rows=rows.filter(x=>x.ema50!=null&&x.price>x.ema50);if(checks.some(x=>/200 EMA/i.test(x)))rows=rows.filter(x=>x.ema200!=null&&x.price>x.ema200);if(checks.some(x=>/Unusual Volume/i.test(x)))rows=rows.filter(x=>x.rvol!=null&&x.rvol>=2);if(checks.some(x=>/ATR Expansion|Trendline Break/i.test(x))){status(h,'ATR Expansion and Trendline Break are not implemented by the current data engine; no results shown for unsupported selected conditions.');rows=[]}const body=$('.sp-table tbody',h);if(body){body.replaceChildren();for(const x of rows){const tr=document.createElement('tr');[x.symbol,'₹'+F(x.price),F(x.change)+'%',F(x.rsi),F(x.rvol)+'x',x.vwap?F((x.price/x.vwap-1)*100)+'%':'—',x.high20&&x.price>x.high20?'20-candle breakout':x.low20&&x.price<x.low20?'20-candle breakdown':'No confirmed pattern',tf,'View'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});body.append(tr)}}status(h,rows.length+' matching stocks · '+j.coverage+' · '+j.failed+' provider failures · '+tf+'. Unsupported filters do not create signals.')}
+function renderOptionCharts(h,rows){
+ const boxes=[...h.querySelectorAll('.sp-chart-grid .sp-chart-placeholder')];
+ const specs=[
+  ['Premium Observations','ltp','Premium (₹)'],
+  ['Open Interest Observations','oi','Open Interest'],
+  ['IV Observations','iv','Implied Volatility (%)'],
+  ['Bid-Ask Spread History','spread','Bid-Ask Spread (%)']
+ ];
+ const validRows=(rows||[]).filter(x=>Number.isFinite(Number(x.strike)));
+ const make=(box,key,label)=>{
+  if(!box)return;
+  box.replaceChildren();
+  const data=validRows.filter(x=>Number.isFinite(Number(x[key])));
+  if(data.length<2){box.textContent='Insufficient option data';return}
+  data.sort((a,b)=>Number(a.strike)-Number(b.strike));
+  const W=640,H=220,L=58,R=14,T=15,B=34,vals=data.map(x=>Number(x[key])),lo=Math.min(...vals),hi=Math.max(...vals),pad=(hi-lo||1)*.08,min=lo-pad,max=hi+pad;
+  const ns='http://www.w3.org/2000/svg',svg=(tag,a={})=>{const e=document.createElementNS(ns,tag);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,String(v)));return e};
+  const x=i=>L+i*(W-L-R)/Math.max(1,data.length-1),y=v=>H-B-(v-min)/(max-min||1)*(H-T-B);
+  const g=svg('svg',{viewBox:'0 0 640 220',role:'img','aria-label':label});g.style.cssText='display:block;width:100%;height:auto';
+  for(let i=0;i<=4;i++){const v=min+(max-min)*i/4,yy=y(v);g.append(svg('line',{x1:L,y1:yy,x2:W-R,y2:yy,stroke:'#64748b','stroke-opacity':'.18','stroke-dasharray':'3 4'}));const t=svg('text',{x:L-7,y:yy+4,'text-anchor':'end',fill:'#8293ad','font-size':10});t.textContent=Number(v).toLocaleString('en-IN',{maximumFractionDigits:2});g.append(t)}
+  const pts=data.map((v,i)=>x(i).toFixed(1)+','+y(Number(v[key])).toFixed(1)).join(' ');
+  g.append(svg('polyline',{points:pts,fill:'none',stroke:'#3981d8','stroke-width':2,'stroke-linejoin':'round'}));
+  data.forEach((v,i)=>g.append(svg('circle',{cx:x(i),cy:y(Number(v[key])),r:2.5,fill:'#3981d8'})));
+  for(let i=0;i<Math.min(4,data.length);i++){const n=Math.round(i*(data.length-1)/Math.max(1,Math.min(3,data.length-1)));const t=svg('text',{x:x(n),y:H-10,'text-anchor':'middle',fill:'#8293ad','font-size':10});t.textContent=String(data[n].strike);g.append(t)}
+  const title=svg('text',{x:L,y:12,fill:'#50627a','font-size':11});title.textContent=label;g.append(title);box.append(g);
+ };
+ specs.forEach((s,i)=>make(boxes[i],s[1],s[2]));
+}async function runOption(){const h=$('#option-scanner');status(h,'Loading NSE option contracts…');const type=V('option-type').includes('Call')?'CE':V('option-type').includes('Put')?'PE':'both',j=await api('/api/analysis/option-scanner',{symbol:V('option-underlying'),type,minOi:V('oi-change'),minVolume:V('minimum-option-volume'),minIv:V('minimum-iv'),maxSpread:V('maximum-spread')});const minOi=Number(V('oi-change')),minVolume=Number(V('minimum-option-volume')),minIv=Number(V('minimum-iv')),maxSpread=Number(V('maximum-spread'));let rows=(j.results||[]).filter(x=>Number(x.ltp)>0&&(V('oi-change')===''||(x.oiPct!=null&&Number(x.oiPct)>=minOi))&&(V('minimum-option-volume')===''||(x.volume!=null&&Number(x.volume)>=minVolume))&&(V('minimum-iv')===''||(x.iv!=null&&Number(x.iv)>=minIv))&&(V('maximum-spread')===''||(x.spread!=null&&Number(x.spread)<=maxSpread)));const money=V('moneyness');if(!/All Strikes/.test(money)){const strikes=[...new Set(rows.map(x=>x.strike))].sort((a,b)=>a-b);const center=strikes[Math.floor(strikes.length/2)];if(/ATM ±5/.test(money)){const i=strikes.indexOf(center);rows=rows.filter(x=>Math.abs(strikes.indexOf(x.strike)-i)<=5)}else if(/ATM ±10/.test(money)){const i=strikes.indexOf(center);rows=rows.filter(x=>Math.abs(strikes.indexOf(x.strike)-i)<=10)}else if(money==='ATM')rows=rows.filter(x=>x.strike===center);else status(h,'Accurate ITM/OTM requires verified underlying spot; no moneyness filter applied.')}renderOptionCharts(h,rows);
+const pattern=V('option-pattern');let unsupportedOptionPattern=false;if(/OI Spike|Unusual Volume|Buildup|Covering|Unwinding|IV Expansion|Contraction|Premium Breakout|Multi-Strike/i.test(pattern)){unsupportedOptionPattern=true;status(h,pattern+' requires previous option-chain snapshots; unavailable from current snapshot.');rows=[]}const body=$('.sp-table tbody',h);if(body){body.replaceChildren();for(const x of rows.slice(0,150)){const tr=document.createElement('tr');[x.symbol,F(x.strike),x.type,x.expiry,'₹'+F(x.ltp),F(x.oi,0),x.oiPct==null?'—':F(x.oiPct)+'%',F(x.volume,0),x.iv==null?'—':F(x.iv)+'%','Provider snapshot','Analyze'].forEach(v=>{const td=document.createElement('td');td.textContent=v;if(v==='Analyze'){const btn=document.createElement('button');btn.type='button';btn.textContent='Analyze';btn.className='sp-option-analyze-button';td.replaceChildren(btn)}tr.append(td)});tr.addEventListener('click',async event=>{event.stopPropagation();const research=$('#contract-research');if(!research)return;const heading=$('.sp-contract-heading h3',research);if(heading)heading.textContent=x.symbol+' '+F(x.strike)+' '+x.type;const price=$('.sp-contract-price strong',research);if(price)price.textContent='₹'+F(x.ltp);['Open Interest','Traded Volume','Implied Volatility','Bid-Ask Spread'].forEach((name,i)=>metric(research,name,[F(x.oi,0),F(x.volume,0),x.iv==null?'—':F(x.iv)+'%',x.spread==null?'—':F(x.spread)+'%'][i]));cleanContractLabels(research);
+// Keep every visible selected-contract label in sync with the clicked row.
+for(const el of research.querySelectorAll('p,span,div')){if(el.children.length===0&&/Selected\s+(?:NIFTY|BANKNIFTY|FINNIFTY|SENSEX)\s+[\d,]+\s+(?:CE|PE)/i.test(el.textContent||''))el.textContent='Selected '+x.symbol+' '+F(x.strike)+' '+x.type+' · '+x.expiry;}
+const historical=slots(research),names=[['premium','Premium observations'],['oi','Open interest observations'],['iv','Implied volatility observations'],['spread','Bid-ask spread observations']];
+historical.forEach((slot,k)=>{if(!slot)return;show(slot);if(k===3){slot.replaceChildren();slot.dataset.spSpreadPending='1';return}slot.textContent='Loading collected '+names[k][1]+'…'});
+for(const el of research.querySelectorAll('p,span,div')){if(el.children.length===0&&/Run Option Scan, then select a contract to view provider data/.test(el.textContent||''))el.textContent='Selected '+x.symbol+' '+F(x.strike)+' '+x.type+' · '+x.expiry;}
+research.dataset.spSelectedContract=[x.symbol,x.expiry,x.strike,x.type].join('|');
+try{
+ const contract={symbol:x.symbol,expiry:x.expiry,strike:x.strike,type:x.type};
+ let history=null;
+ try {
+  const cacheKey=[contract.symbol,contract.expiry,contract.strike,contract.type].join('|');
+  window.__SP_OPTION_HISTORY_CACHE__=window.__SP_OPTION_HISTORY_CACHE__||new Map();
+  window.__SP_OPTION_HISTORY_PENDING__=window.__SP_OPTION_HISTORY_PENDING__||new Map();
+  const cached=window.__SP_OPTION_HISTORY_CACHE__.get(cacheKey);
+  if(cached&&cached.expiresAt>Date.now()) history=cached.data;
+  else {
+   let pending=window.__SP_OPTION_HISTORY_PENDING__.get(cacheKey);
+   if(!pending){
+    const wpUrl='https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history?'+new URLSearchParams(contract);
+    pending=fetch(wpUrl,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(8000)})
+      .then(async wpResponse=>{
+        if(!wpResponse.ok)throw Error('WordPress history HTTP '+wpResponse.status);
+        const wpData=await wpResponse.json();
+        if(!wpData?.success||!Array.isArray(wpData.points)||!wpData.points.length)throw Error('No persistent history points');
+        return {...wpData,source:'WordPress MySQL option-chain observations',persistent:true};
+      })
+      .finally(()=>window.__SP_OPTION_HISTORY_PENDING__.delete(cacheKey));
+    window.__SP_OPTION_HISTORY_PENDING__.set(cacheKey,pending);
+   }
+   try {
+    history=await pending;
+    window.__SP_OPTION_HISTORY_CACHE__.set(cacheKey,{data:history,expiresAt:Date.now()+60000});
+   } catch(wpError){console.warn('[SP HISTORY] WordPress read unavailable; using Render session observations:',wpError.message)}
+  }
+ } catch(wpError){console.warn('[SP HISTORY] WordPress read unavailable; using Render session observations:',wpError.message)}
+ if(!history)history=await api('/api/analysis/option-history',contract);
+ names.forEach(([key,label],k)=>{
+  const slot=historical[k];if(!slot)return;
+  const points=(history.points||[]).filter(p=>p[key]!=null&&Number.isFinite(+p[key]));
+  if(points.length>=2)plot(slot,points,key,label);
+  else slot.textContent=key==='spread'?'Market Closed — Live bid/ask unavailable':'Only '+points.length+' valid '+label.toLowerCase()+'. Two distinct observations required.';
+ });
+ status(h,'Contract research: '+(history.points||[]).length+' collected observations. Snapshots are not OHLC candles; source: '+(history.persistent?'WordPress MySQL (persistent)':'Render session (temporary)')+'.');
+}catch(error){historical.forEach(slot=>{if(slot)slot.textContent='Historical observations unavailable: '+error.message})}
+research.scrollIntoView({block:'start',behavior:'smooth'})});body.append(tr)}}if(unsupportedOptionPattern)status(h,pattern+' requires previous option-chain snapshots; unavailable from current snapshot.');else if(!rows.length)status(h,'No contracts match all selected filters. Relax the OI, volume, IV or spread filters, or verify that the provider supplied valid bid/ask quotes.');else status(h,rows.length+' contracts match selected filters · '+j.symbol+' · '+j.expiry+' · NSE snapshot. Historical contract charts require timestamped snapshots.');
+// Select an actually displayed liquid contract after every successful scan.
+// This avoids hardcoded strikes and never selects a contract filtered out of the table.
+if(body&&body.rows.length){
+ const candidates=rows.slice(0,150).map((x,i)=>({x,i})).filter(o=>Number(o.x.ltp)>0&&Number(o.x.oi)>0&&Number(o.x.volume)>0);
+ candidates.sort((a,b)=>(Number(b.x.volume)||0)-(Number(a.x.volume)||0));
+ const chosen=candidates[0]||{i:0};
+ const button=body.rows[chosen.i]?.querySelector('.sp-option-analyze-button');
+ if(button){button.click();status(h,rows.length+' contracts · auto-selected '+rows[chosen.i].symbol+' '+F(rows[chosen.i].strike)+' '+rows[chosen.i].type+' (highest traded volume among displayed valid contracts).');}
+}}
+async function runChart(){const h=$('#chart-lab'),rawSymbol=V('chart-symbol').trim();if(!rawSymbol){const main=$('.sp-main-chart .sp-chart-placeholder',h);if(main){show(main);main.replaceChildren();main.textContent='Select a stock to load historical chart.'}const mini=slots(h);mini.slice(1).forEach((e,i)=>{if(e){show(e);e.replaceChildren();e.textContent=['Select a stock to load RSI chart.','Select a stock to load MACD chart.','Select a stock to load 5-minute chart.','Select a stock to load 15-minute chart.','Select a stock to load hourly chart.','Select a stock to load daily chart.'][i]||'Select a stock to load chart.'}});status(h,'Select an NSE stock to load historical chart data.');return}const resolved=await resolveNseSymbol(rawSymbol,h,'chart-symbol'),symbol=resolved.symbol,tf=V('chart-timeframe'),interval={'1h':'60m','1D':'1d','1W':'1wk'}[tf]||tf||'15m',range=['1d','1wk'].includes(interval)?'1y':'5d';status(h,'Loading '+symbol+' OHLC candles…');const j=await chart(symbol,interval,range);const candleMini=(e,rows,label)=>{if(!e)return;show(e);e.replaceChildren();const d=rows.filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite));if(d.length<2){e.textContent='Insufficient OHLC data';return}const w=640,h=225,L=62,R=15,T=15,B=34,lo=Math.min(...d.map(x=>x.l)),hi=Math.max(...d.map(x=>x.h)),y=v=>h-B-(v-lo)/(hi-lo||1)*(h-T-B),step=(w-L-R)/d.length,g=svg('svg',{viewBox:'0 0 640 225',role:'img','aria-label':label+' OHLC candles'});g.style.cssText='display:block;width:100%;height:auto;touch-action:pan-y';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,yy=y(v);g.append(svg('line',{x1:L,y1:yy,x2:w-R,y2:yy,stroke:'#64748b','stroke-opacity':'.22'}));const t=svg('text',{x:L-6,y:yy+4,fill:'#8293ad','font-size':11,'text-anchor':'end'});t.textContent=v.toFixed(2);g.append(t)}d.forEach((x,i)=>{const px=L+(i+.5)*step,col=x.c>=x.o?'#16a34a':'#e05252';g.append(svg('line',{x1:px,y1:y(x.h),x2:px,y2:y(x.l),stroke:col}));g.append(svg('rect',{x:px-Math.max(.35,step*.33),y:Math.min(y(x.o),y(x.c)),width:Math.max(.7,step*.66),height:Math.max(1,Math.abs(y(x.o)-y(x.c))),fill:col}))});for(let i=0;i<4;i++){const n=Math.round(i*(d.length-1)/3),dt=new Date(d[n].t),t=svg('text',{x:L+(n+.5)*step,y:h-9,fill:'#8293ad','font-size':11,'text-anchor':'middle'});t.textContent=Number.isNaN(+dt)?String(d[n].t).slice(0,10):dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});g.append(t)}const tip=document.createElement('div');tip.style.cssText='position:absolute;top:3px;left:65px;background:rgba(15,23,42,.94);color:white;padding:5px;border-radius:4px;font:11px system-ui;pointer-events:none;display:none;z-index:4';const overlay=svg('rect',{x:L,y:T,width:w-L-R,height:h-T-B,fill:'transparent'});const inspect=ev=>{const b=g.getBoundingClientRect(),n=Math.max(0,Math.min(d.length-1,Math.floor(((ev.clientX-b.left)/b.width*w-L)/step))),x=d[n];tip.textContent=new Date(x.t).toLocaleString('en-IN')+' O '+x.o.toFixed(2)+' H '+x.h.toFixed(2)+' L '+x.l.toFixed(2)+' C '+x.c.toFixed(2);tip.style.display='block'};overlay.addEventListener('pointermove',inspect);overlay.addEventListener('pointerdown',inspect);overlay.addEventListener('pointerleave',()=>tip.style.display='none');g.append(overlay);e.style.position='relative';e.append(g,tip)};const main=$('.sp-main-chart .sp-chart-placeholder',h);if(main){show(main);main.replaceChildren();let rows=j.candles.filter(x=>[x.o,x.h,x.l,x.c].every(Number.isFinite));if(/Heikin Ashi/i.test(V('chart-style'))&&rows.length){let previousOpen=(rows[0].o+rows[0].c)/2,previousClose=(rows[0].o+rows[0].h+rows[0].l+rows[0].c)/4;rows=rows.map((r,i)=>{const close=(r.o+r.h+r.l+r.c)/4,open=i?(previousOpen+previousClose)/2:previousOpen;previousOpen=open;previousClose=close;return{...r,o:open,c:close,h:Math.max(r.h,open,close),l:Math.min(r.l,open,close)}})}const g=svg('svg',{viewBox:'0 0 640 240',role:'img','aria-label':symbol+' historical candlesticks'});g.style.cssText='display:block;width:100%;height:auto';if(rows.length>1){const lo=Math.min(...rows.map(x=>x.l)),hi=Math.max(...rows.map(x=>x.h)),step=620/rows.length;rows.forEach((x,i)=>{const px=10+(i+.5)*step,y=v=>225-(v-lo)/(hi-lo||1)*205,col=x.c>=x.o?'#16a34a':'#dc3545';g.append(svg('line',{x1:px,y1:y(x.h),x2:px,y2:y(x.l),stroke:col,'stroke-width':1}));g.append(svg('rect',{x:px-Math.max(.4,step*.32),y:Math.min(y(x.o),y(x.c)),width:Math.max(.8,step*.64),height:Math.max(1,Math.abs(y(x.o)-y(x.c))),fill:col}))});for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,yy=225-(v-lo)/(hi-lo||1)*205;g.append(svg('line',{x1:0,y1:yy,x2:640,y2:yy,stroke:'#64748b','stroke-opacity':'.15'}));const t=svg('text',{x:635,y:yy-3,'text-anchor':'end',fill:'#8293ad','font-size':11});t.textContent=v.toFixed(2);g.append(t)}const closes=rows.map(r=>r.c),ema=n=>{let p=null;return closes.map((v,i)=>i<n-1?null:i===n-1?(p=closes.slice(0,n).reduce((a,b)=>a+b,0)/n):(p=v*2/(n+1)+p*(n-1)/(n+1)))};const checks=all('input[type=checkbox]',h).filter(x=>x.checked).map(x=>(x.closest('label')?.textContent||x.parentElement?.textContent||'').toLowerCase());const on=re=>checks.some(x=>re.test(x));const overlay=(values,color)=>{const pts=values.map((v,i)=>v==null?'':(10+(i+.5)*step).toFixed(1)+','+(225-(v-lo)/(hi-lo||1)*205).toFixed(1)).filter(Boolean);if(pts.length>1)g.append(svg('polyline',{points:pts.join(' '),fill:'none',stroke:color,'stroke-width':1.7}))};for(const [n,color] of [[9,'#eab308'],[21,'#8b5cf6'],[50,'#0ea5e9'],[200,'#f97316']])if(on(new RegExp('ema\\s*'+n+'\\b|'+n+'\\s*ema','i')))overlay(ema(n),color);if(on(/vwap/)){let day='',pv=0,vol=0;overlay(rows.map(r=>{const d=new Date(r.t).toISOString().slice(0,10);if(day!==d){day=d;pv=0;vol=0}if(r.v>0){pv+=(r.h+r.l+r.c)/3*r.v;vol+=r.v}return vol?pv/vol:null}),'#22c55e')}if(on(/bollinger/)){const avg=closes.map((v,i)=>i<19?null:mean(closes.slice(i-19,i+1))),dev=closes.map((v,i)=>i<19?null:stdev(closes.slice(i-19,i+1)));overlay(avg.map((v,i)=>v==null?null:v+2*dev[i]),'#64748b');overlay(avg.map((v,i)=>v==null?null:v-2*dev[i]),'#64748b')}const style=V('chart-style');if(/^Line$/i.test(style)){all('rect,line',g).filter(el=>el.getAttribute('fill')==='#16a34a'||el.getAttribute('fill')==='#dc3545'||el.getAttribute('stroke')==='#16a34a'||el.getAttribute('stroke')==='#dc3545').forEach(el=>el.remove());overlay(closes,'#438ce6')}if(/^OHLC$/i.test(style)){all('rect',g).forEach(el=>{const px=+el.getAttribute('x')+(+el.getAttribute('width'))/2,top=+el.getAttribute('y'),bottom=top+(+el.getAttribute('height')),color=el.getAttribute('fill');g.append(svg('line',{x1:px-2,y1:top,x2:px,y2:top,stroke:color}));g.append(svg('line',{x1:px,y1:bottom,x2:px+2,y2:bottom,stroke:color}));el.remove()})}const tip=document.createElement('div');tip.style.cssText='position:absolute;top:4px;left:5px;background:rgba(15,23,42,.94);color:#fff;padding:5px;border-radius:4px;font:11px system-ui;pointer-events:none;display:none;z-index:5';const cross=svg('line',{y1:10,y2:230,stroke:'#94a3b8','stroke-dasharray':'3 3',visibility:'hidden'}),touch=svg('rect',{x:10,y:10,width:620,height:220,fill:'transparent'});const inspect=ev=>{const b=g.getBoundingClientRect(),n=Math.max(0,Math.min(rows.length-1,Math.floor(((ev.clientX-b.left)/b.width*640-10)/step))),r=rows[n],px=10+(n+.5)*step;cross.setAttribute('x1',px);cross.setAttribute('x2',px);cross.setAttribute('visibility','visible');tip.textContent=new Date(r.t).toLocaleString('en-IN')+' O '+F(r.o)+' H '+F(r.h)+' L '+F(r.l)+' C '+F(r.c)+' V '+F(r.v,0);tip.style.display='block'};touch.addEventListener('pointermove',inspect);touch.addEventListener('pointerdown',inspect);touch.addEventListener('pointerleave',()=>{tip.style.display='none';cross.setAttribute('visibility','hidden')});g.append(cross,touch);main.style.position='relative';main.append(g,tip)}else main.textContent='Insufficient OHLC candles'}const s=slots(h),closes=j.candles.map(x=>x.c),rsi=j.candles.map((x,i)=>{if(i<14)return{t:x.t,value:null};let up=0,down=0;for(let k=i-13;k<=i;k++){const d=closes[k]-closes[k-1];up+=Math.max(0,d);down+=Math.max(0,-d)}return{t:x.t,value:down?100-100/(1+up/down):100}});plot(s[1],rsi,'value','RSI 14');const ema=n=>{let p=null;return closes.map((v,i)=>{if(i<n-1)return null;if(i===n-1){p=mean(closes.slice(0,n));return p}p=v*2/(n+1)+p*(n-1)/(n+1);return p})},e12=ema(12),e26=ema(26);plot(s[2],j.candles.map((x,i)=>({t:x.t,value:e12[i]!=null&&e26[i]!=null?e12[i]-e26[i]:null})),'value','MACD');const tfs=[['5m','5d'],['15m','5d'],['60m','5d'],['1d','1y']];await Promise.all(tfs.map(async([i,r],n)=>{try{const d=await chart(symbol,i,r);candleMini(s[n+3],d.candles,i+' price')}catch(e){if(s[n+3]){show(s[n+3]);s[n+3].textContent=i+' unavailable: '+e.message}}}));status(h,symbol+' · '+j.candles.length+' OHLC candles · '+j.source+' · '+(V('chart-style')||'Candlestick')+' chart with selected overlays, RSI, MACD and four timeframe views.'+(resolved.corrected?' · corrected '+resolved.from+' to '+resolved.symbol:''))}
+async function resolveNseSymbol(raw,section,inputId){const query=String(raw||'').trim().toUpperCase().replace(/\.NS$/,'');if(!query)throw Error('Enter an NSE symbol, for example RELIANCE.');if(['NIFTY','BANKNIFTY','FINNIFTY','SENSEX','MIDCPNIFTY','RELIANCE','HDFCBANK','ICICIBANK','SBIN','TCS','INFY','ITC','LT','AXISBANK','BHARTIARTL','KOTAKBANK','HINDUNILVR','BAJFINANCE','MARUTI','SUNPHARMA','NTPC','TITAN','TATASTEEL','ONGC','WIPRO'].includes(query))return {symbol:query,corrected:false};let j;try{j=await api('/api/analysis/universe',{q:query,limit:10})}catch(e){return {symbol:query,corrected:false,lookupUnavailable:true}}const rows=j.results||[];const exact=rows.find(x=>String(x.symbol).toUpperCase()===query);if(exact)return {symbol:exact.symbol,corrected:false};const fuzzy=rows.find(x=>x.matchType==='fuzzy');if(fuzzy){const field=$('#'+inputId);if(field)field.value=fuzzy.symbol;return {symbol:fuzzy.symbol,corrected:true,from:query,name:fuzzy.name};}return {symbol:query,corrected:false,notFound:true};}
+async function runVolume(){const h=$('#volume-lab'),raw=V('volume-symbol')||'RELIANCE',resolved=await resolveNseSymbol(raw,h,'volume-symbol'),symbol=resolved.symbol,period=sel('volume-period'),j=await api('/api/analysis/volume-lab',{symbol,lookback:[20,5,20,60][period]}),intraday=await chart(symbol,'15m','5d'),rows=(intraday.candles||[]).filter(x=>[x.h,x.l,x.c,x.v].every(Number.isFinite)&&x.v>=0);if(rows.length<2)throw Error('Insufficient real intraday OHLCV data for volume profile');metric(h,'Relative Volume',F(j.relativeVolume)+'×');const prices=rows.flatMap(x=>[x.h,x.l,x.c]),lo=Math.min(...prices),hi=Math.max(...prices),bins=32,step=(hi-lo||1)/bins,vol=Array(bins).fill(0);rows.forEach(x=>{const p=(x.h+x.l+x.c)/3,i=Math.max(0,Math.min(bins-1,Math.floor((p-lo)/(step||1))));vol[i]+=x.v||0});const total=vol.reduce((a,b)=>a+b,0),pocI=vol.indexOf(Math.max(...vol)),poc=lo+(pocI+.5)*step;let left=pocI,right=pocI,covered=vol[pocI]||0;while(total>0&&covered/total<.70&&(left>0||right<bins-1)){const lv=left>0?vol[left-1]:-1,rv=right<bins-1?vol[right+1]:-1;if(rv>=lv){right++;covered+=vol[right]}else{left--;covered+=vol[left]}}const vah=lo+(right+1)*step,val=lo+left*step;const s=slots(h);if(s[0]){show(s[0]);s[0].replaceChildren();const box=document.createElement('div');box.style.cssText='padding:10px;font-size:12px;color:#526579';box.innerHTML='<b>Candle-derived Volume Profile</b><br>POC: ₹'+F(poc)+' · VAH: ₹'+F(vah)+' · VAL: ₹'+F(val)+'<br><span style="font-size:11px">Based on real 15-minute OHLCV candles; volume is assigned to each candle’s typical price. This is not tick-level/order-book volume.</span>';s[0].append(box);const maxV=Math.max(...vol,1),g=svg('svg',{viewBox:'0 0 640 230',role:'img','aria-label':'Candle-derived intraday volume profile'});g.style.cssText='display:block;width:100%;height:auto';vol.forEach((v,i)=>{const w=500*v/maxV,y=205-(i+1)*190/bins;g.append(svg('rect',{x:85,y,width:Math.max(1,w),height:Math.max(2,190/bins-1),fill:i===pocI?'#eab308':'#64748b'}));});s[0].append(g)}plot(s[1],j.points,'volume','Daily historical volume');status(h,j.symbol+' · '+rows.length+' real 15m candles · '+intraday.source+' · POC/VAH/VAL are candle-derived from original OHLCV, not synthetic values'+(resolved.corrected?' · corrected '+resolved.from+' to '+resolved.symbol:''))}
+async function runCorrelation(){
+ const h=$('#correlation-lab'),
+ rawA=V('correlation-stock-a')||'RELIANCE',
+ rawB=V('correlation-stock-b')||'TCS',
+ resolved=await Promise.all([
+  resolveNseSymbol(rawA,h,'correlation-stock-a'),
+  resolveNseSymbol(rawB,h,'correlation-stock-b')
+ ]),
+ a=resolved[0].symbol,
+ b=resolved[1].symbol,
+ days=[20,60,120,252][sel('correlation-window')]||60;
+ if(a===b)throw Error('Choose two different NSE symbols for correlation.');
+
+ const benchmarkSelect=$('#correlation-benchmark'),
+ benchmarkText=(benchmarkSelect?.selectedOptions?.[0]?.textContent||benchmarkSelect?.value||'NIFTY 50').trim();
+ let benchmark='NIFTY',benchmarkLabel='NIFTY 50';
+ if(/NIFTY 100/i.test(benchmarkText)){benchmark='NIFTY100';benchmarkLabel='NIFTY 100'}
+ else if(/sector/i.test(benchmarkText)){benchmark='NIFTYIT';benchmarkLabel='Sector Index (NIFTY IT proxy)'}
+ status(h,'Loading '+days+'-session aligned daily returns…');
+
+ const j=await api('/api/analysis/correlation',{symbols:a+','+b+','+benchmark,window:days});
+ const getSeries=symbol=>j.series?.find(x=>x.symbol===symbol)?.points||[];
+ const pa=getSeries(a),pb=getSeries(b),pm=getSeries(benchmark);
+ if(!pa.length||!pb.length||!pm.length)throw Error('Aligned benchmark history unavailable from provider.');
+
+ const n=Math.min(pa.length,pb.length,pm.length),
+ ra=pa.slice(-n).map(x=>x.r),rb=pb.slice(-n).map(x=>x.r),rm=pm.slice(-n).map(x=>x.r),
+ mean=x=>x.reduce((s,v)=>s+v,0)/x.length,
+ cov=(x,y)=>{const mx=mean(x),my=mean(y);return x.reduce((s,v,i)=>s+(v-mx)*(y[i]-my),0)/x.length},
+ variance=x=>{const m=mean(x);return x.reduce((s,v)=>s+(v-m)**2,0)/x.length},
+ pear=(x,y)=>{const vx=variance(x),vy=variance(y);return vx&&vy?cov(x,y)/Math.sqrt(vx*vy):null},
+ currentCorr=pear(ra.slice(-days),rb.slice(-days)),
+ beta=cov(ra.slice(-days),rm.slice(-days))/variance(rm.slice(-days)),
+ spread=ra.slice(-days).map((_,i)=>Math.log((1+ra.slice(-days)[i])/(1+rb.slice(-days)[i]))),
+ spreadMean=mean(spread),spreadSd=Math.sqrt(variance(spread)),
+ z=spreadSd?((spread.at(-1)-spreadMean)/spreadSd):null,
+ diff=ra.slice(-days).map((v,i)=>v-rm.slice(-days)[i]),
+ tracking=Math.sqrt(variance(diff))*Math.sqrt(252)*100;
+
+ const rolling=[];
+ const fullA=ra,fullB=rb;
+ for(let i=days-1;i<fullA.length;i++)rolling.push({t:pa.slice(-n)[i].t,value:pear(fullA.slice(i-days+1,i+1),fullB.slice(i-days+1,i+1))});
+ metric(h,'Rolling Correlation',F(currentCorr,4));
+ metric(h,'Rolling Beta',F(beta,4));
+ metric(h,'Spread Z-Score',F(z,2));
+ metric(h,'Tracking Error',F(tracking,2)+'%');
+
+ const makeSvg=(box,sets,opts={})=>{
+  if(!box)return;
+  show(box);box.replaceChildren();
+  const width=760,height=250,pad={l:42,r:12,t:18,b:28};
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.setAttribute('role','img');svg.setAttribute('aria-label',opts.aria||'Correlation research chart');
+  svg.style.cssText='display:block;width:100%;height:auto';
+  const allVals=sets.flatMap(s=>s.points.map(p=>p.y)).filter(Number.isFinite);
+  if(!allVals.length){box.textContent='No chart data available.';return}
+  let lo=Math.min(...allVals),hi=Math.max(...allVals);if(lo===hi){lo-=1;hi+=1}
+  const x=i=>pad.l+(i/Math.max(1,sets[0].points.length-1))*(width-pad.l-pad.r);
+  const y=v=>pad.t+(hi-v)/(hi-lo)*(height-pad.t-pad.b);
+  const ns='http://www.w3.org/2000/svg';
+  const grid=document.createElementNS(ns,'line');grid.setAttribute('x1',pad.l);grid.setAttribute('x2',width-pad.r);grid.setAttribute('y1',y(0));grid.setAttribute('y2',y(0));grid.setAttribute('stroke','#cbd5e1');svg.append(grid);
+  sets.forEach((set,si)=>{
+   const pts=set.points.map((p,i)=>x(i).toFixed(1)+','+y(p.y).toFixed(1)).join(' ');
+   const line=document.createElementNS(ns,'polyline');line.setAttribute('points',pts);line.setAttribute('fill','none');line.setAttribute('stroke',['#2563eb','#e11d48','#16a34a','#7c3aed'][si%4]);line.setAttribute('stroke-width','2');svg.append(line);
+   const label=document.createElementNS(ns,'text');label.setAttribute('x',pad.l+si*150);label.setAttribute('y',12);label.setAttribute('font-size','11');label.setAttribute('fill','#526579');label.textContent=set.label;svg.append(label);
+  });
+  box.append(svg);
+ };
+ const cum=(returns,scale=100)=>{let v=scale;return returns.map((r,i)=>{v*=1+r;return {t:pa.slice(-n)[i].t,y:v}})};
+ const ca=cum(ra),cb=cum(rb);
+ const normalized=ca.map((p,i)=>({t:p.t,y:p.y})); // retain aligned timestamps
+ makeSvg(slots(h)[0],[{label:a,points:ca},{label:b,points:cb}],{aria:'Normalized performance comparison'});
+ const spreadPoints=ca.map((p,i)=>({t:p.t,y:p.y-cb[i].y}));
+ makeSvg(slots(h)[1],[{label:a+' − '+b,points:spreadPoints}],{aria:'Pair spread chart'});
+ const corrBox=slots(h)[2];
+ if(corrBox){show(corrBox);corrBox.replaceChildren();makeSvg(corrBox,[{label:'Rolling correlation',points:rolling.map(p=>({t:p.t,y:p.value}))}],{aria:'Rolling correlation chart'});}
+ const scatter=slots(h)[3];
+ if(scatter){
+  show(scatter);scatter.replaceChildren();
+  const width=760,height=250,pad=32,valsA=ra.slice(-days),valsB=rb.slice(-days);
+  const xmin=Math.min(...valsA),xmax=Math.max(...valsA),ymin=Math.min(...valsB),ymax=Math.max(...valsB);
+  const sx=v=>pad+(v-xmin)/(xmax-xmin||1)*(width-pad*2),sy=v=>height-pad-(v-ymin)/(ymax-ymin||1)*(height-pad*2);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.setAttribute('role','img');svg.setAttribute('aria-label','Daily return scatter plot');svg.style.cssText='display:block;width:100%;height:auto';
+  valsA.forEach((v,i)=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',sx(v));c.setAttribute('cy',sy(valsB[i]));c.setAttribute('r','3');c.setAttribute('fill','#2563eb');svg.append(c)});
+  const title=document.createElementNS('http://www.w3.org/2000/svg','text');title.setAttribute('x',10);title.setAttribute('y',16);title.setAttribute('font-size','11');title.setAttribute('fill','#526579');title.textContent=a+' vs '+b+' daily returns';svg.append(title);scatter.append(svg);
+ }
+ status(h,days+'-session research · '+a+' vs '+b+' · benchmark '+benchmarkLabel+' · '+j.sessions+' aligned daily sessions · Yahoo Finance provider data'+(resolved.some(x=>x.corrected)?' · corrected '+resolved.filter(x=>x.corrected).map(x=>x.from+' → '+x.symbol).join(', '):''));
+}
+function sma(rows,i,n){if(i<n-1)return null;return mean(rows.slice(i-n+1,i+1).map(x=>x.c))}
+async function runBacktest(){const h=$('#backtesting'),strategy=V('backtest-strategy'),tf=V('backtest-timeframe'),symbol=V('chart-symbol'),interval={'5 Minutes':'5m','15 Minutes':'15m','1 Hour':'60m','Daily':'1d'}[tf]||'1d',range=interval==='1d'?'2y':'5d';if(!/EMA Crossover|Volume Breakout|RSI Reversal/.test(strategy))throw Error(strategy+' needs additional rules/data; cannot run an unrelated SMA strategy.');const j=await chart(symbol,interval,range),rows=j.candles,hold=[5,10,20][sel('backtest-hold')]||5,cost=(parseFloat(V('backtest-cost'))||0)/100,slip=(parseFloat(V('backtest-slippage'))||0)/100;let equity=1,peak=1,maxDD=0,entry=-1,entryPrice=0,trades=[],curve=[];const ema=n=>{let p=null;return rows.map((x,i)=>{if(i<n-1)return null;if(i===n-1){p=mean(rows.slice(0,n).map(y=>y.c));return p}p=x.c*2/(n+1)+p*(n-1)/(n+1);return p})},fast=ema(9),slow=ema(21);for(let i=22;i<rows.length;i++){const x=rows[i],prev=rows[i-1],avg=mean(rows.slice(i-20,i).map(y=>y.v||0));const signal=strategy==='EMA Crossover'?fast[i-1]<=slow[i-1]&&fast[i]>slow[i]:strategy==='Volume Breakout'?x.c>Math.max(...rows.slice(i-20,i).map(y=>y.h))&&x.v>avg*2:x.c<Math.min(...rows.slice(i-14,i).map(y=>y.c));if(entry<0&&signal){entry=i;entryPrice=x.c*(1+slip+cost)}else if(entry>=0&&i-entry>=hold){const ret=x.c*(1-slip-cost)/entryPrice-1;equity*=1+ret;trades.push(ret);entry=-1}peak=Math.max(peak,equity);maxDD=Math.min(maxDD,equity/peak-1);curve.push({t:x.t,equity,drawdown:(equity/peak-1)*100})}const wins=trades.filter(x=>x>0),losses=trades.filter(x=>x<0),pf=losses.length?wins.reduce((s,x)=>s+x,0)/Math.abs(losses.reduce((s,x)=>s+x,0)):null,rets=curve.slice(1).map((x,i)=>x.equity/curve[i].equity-1),sharpe=stdev(rets)?mean(rets)/stdev(rets)*Math.sqrt(interval==='1d'?252:252*26):null;[['Total Signals',trades.length],['Win Rate',trades.length?F(wins.length/trades.length*100)+'%':'—'],['Profit Factor',F(pf)],['Expectancy',trades.length?F(mean(trades)*100)+'%':'—'],['Maximum Drawdown',F(maxDD*100)+'%'],['Sharpe Ratio',F(sharpe)]].forEach(([k,v])=>metric(h,k,v));const s=slots(h);plot(s[0],curve,'equity','Strategy equity curve');plot(s[1],curve,'drawdown','Strategy drawdown');status(h,strategy+' · '+symbol+' · '+tf+' · '+trades.length+' closed trades · close-price illustrative fills; no live execution.')}
+async function runStatistics(){const h=$('#statistics'),pattern=V('statistical-pattern'),rawSymbol=V('statistical-symbol'),resolved=await resolveNseSymbol(rawSymbol,h,'statistical-symbol'),symbol=resolved.symbol,period=[60,120,240,720,1200][sel('statistical-period')],window=[5,10,20,1,5][sel('forward-window')],intraday=/Opening Range|Time-of-Day/i.test(pattern);let rows,source;if(intraday){const d=await chart(symbol,'15m','5d');rows=d.candles||[];source=d.source||'provider';if(rows.length<20)throw Error('Insufficient real intraday candles');}else{const j=await chart(symbol,'1d',period>240?'5y':'2y');rows=j.candles.slice(-period);source=j.source||'provider'}const events=[];if(intraday&&/Time-of-Day/i.test(pattern)){const buckets=new Map();for(const x of rows){if(!Number.isFinite(x.c)||!Number.isFinite(x.o))continue;const dt=new Date(x.t),key=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0'),r=(x.c/x.o-1)*100;const z=buckets.get(key)||{key,n:0,pos:0,sum:0};z.n++;z.pos+=r>0?1:0;z.sum+=r;buckets.set(key,z)}const best=[...buckets.values()].filter(x=>x.n>=2).sort((a,b)=>b.pos/b.n-a.pos/a.n||b.n-a.n).slice(0,12);[['Historical Occurrences',rows.length],['Positive Return Frequency',best.length?F(best[0].pos/best[0].n*100)+'%':'—'],['Median Forward Return',best.length?F(best.reduce((a,b)=>a+b.sum/b.n,0)/best.length)+'%':'—'],['False Breakout Rate','—']].forEach(([k,v])=>metric(h,k,v));const s=slots(h);if(s[0]){show(s[0]);s[0].replaceChildren();const box=document.createElement('div');box.style.cssText='padding:10px;font-size:12px;color:#526579';box.textContent='Real intraday time-of-day buckets (15m candles)';s[0].append(box);const g=svg('svg',{viewBox:'0 0 640 230',role:'img','aria-label':'Time of day positive return frequency'});g.style.cssText='display:block;width:100%;height:auto';const vals=best.map(x=>x.pos/x.n*100),mx=Math.max(...vals,1);best.forEach((x,i)=>{const bh=150*(x.pos/x.n)/mx;g.append(svg('rect',{x:50+i*48,y:185-bh,width:34,height:bh,fill:'#64748b'}));const t=svg('text',{x:67+i*48,y:205,'text-anchor':'middle',fill:'#8293ad','font-size':9});t.textContent=x.key;g.append(t)});s[0].append(g)}if(s[1]){show(s[1]);s[1].textContent='Uses original provider timestamps from 15-minute candles; no synthetic timestamps.'}status(h,pattern+' · '+symbol+' · '+rows.length+' real intraday candles · '+source+(resolved.corrected?' · corrected '+resolved.from+' to '+resolved.symbol:''));return}if(intraday)throw Error(pattern+' requires an explicit intraday event rule; Time-of-Day is supported from real 15m timestamps.');for(let i=21;i<rows.length-window;i++){const x=rows[i],p=rows[i-1],volAvg=mean(rows.slice(i-20,i).map(y=>y.v||0)),fast=mean(rows.slice(i-8,i+1).map(y=>y.c)),slow=mean(rows.slice(i-20,i+1).map(y=>y.c)),fastPrev=mean(rows.slice(i-9,i).map(y=>y.c)),slowPrev=mean(rows.slice(i-21,i).map(y=>y.c));let hit=false,breakoutLevel=null,direction=null;if(/Gap Fill/.test(pattern)){hit=(x.o>p.h&&x.l<=p.h)||(x.o<p.l&&x.h>=p.l);breakoutLevel=x.o>p.h?p.h:p.l;direction=x.o>p.h?'up':'down'}else if(/Previous Day High/.test(pattern)){breakoutLevel=p.h;direction='up';hit=x.h>breakoutLevel}else if(/Previous Day Low/.test(pattern)){breakoutLevel=p.l;direction='down';hit=x.l<breakoutLevel}else if(/Volume Spike/.test(pattern))hit=x.v>=2*volAvg;else if(/EMA Crossover/.test(pattern))hit=fastPrev<=slowPrev&&fast>slow;else throw Error(pattern+' requires event definition and data not currently available');if(hit)events.push({t:x.t,returnPct:(rows[i+window].c/x.c-1)*100,breakoutLevel,direction,falseBreakout:breakoutLevel!=null?(direction==='up'?(x.h>breakoutLevel&&x.c<=breakoutLevel):(x.l<breakoutLevel&&x.c>=breakoutLevel)):null})}const sorted=events.map(x=>x.returnPct).sort((a,b)=>a-b),med=sorted.length?(sorted[Math.floor((sorted.length-1)/2)]+sorted[Math.floor(sorted.length/2)])/2:null,fb=events.filter(x=>x.falseBreakout!=null),falseRate=fb.length?100*fb.filter(x=>x.falseBreakout).length/fb.length:null;[['Historical Occurrences',events.length],['Positive Return Frequency',events.length?F(events.filter(x=>x.returnPct>0).length/events.length*100)+'%':'—'],['Median Forward Return',med!=null?F(med)+'%':'—'],['False Breakout Rate',falseRate!=null?F(falseRate)+'%':'—']].forEach(([k,v])=>metric(h,k,v));const s=slots(h);if(s[0]){show(s[0]);s[0].replaceChildren();if(events.length){const vals=events.map(x=>x.returnPct),min=Math.min(...vals),max=Math.max(...vals),bins=12,width=(max-min||1)/bins,count=Array(bins).fill(0);vals.forEach(v=>count[Math.min(bins-1,Math.floor((v-min)/width))]++);const g=svg('svg',{viewBox:'0 0 640 230',role:'img','aria-label':'Forward return distribution histogram'});g.style.cssText='display:block;width:100%;height:auto';const peak=Math.max(...count,1);count.forEach((n,i)=>{g.append(svg('rect',{x:55+i*46,y:190-n/peak*160,width:39,height:n/peak*160,fill:min+(i+.5)*width>=0?'#16a34a':'#e05252'}));const t=svg('text',{x:74+i*46,y:210,'text-anchor':'middle',fill:'#8293ad','font-size':10});t.textContent=(min+(i+.5)*width).toFixed(1)+'%';g.append(t)});s[0].append(g)}else s[0].textContent='No matching events in selected historical period.'}if(s[1]){show(s[1]);s[1].replaceChildren();const note=document.createElement('div');note.style.cssText='padding:10px 10px 4px;font-size:12px;color:#526579';note.textContent='False breakout analysis · actual historical events with a defined breakout level';s[1].append(note);if(fb.length){const falseCount=fb.filter(x=>x.falseBreakout).length,validCount=fb.length-falseCount,g=svg('svg',{viewBox:'0 0 640 260',role:'img','aria-label':'False breakout versus valid breakout chart'});g.style.cssText='display:block;width:100%;height:auto';const max=Math.max(falseCount,validCount,1),barW=150,baseY=205,chartH=145,items=[['False Breakouts',falseCount,'#e05252'],['Valid Breakouts',validCount,'#16a34a']];items.forEach((item,i)=>{const bh=item[1]/max*chartH,x=135+i*210;g.append(svg('rect',{x,y:baseY-bh,width:barW,height:bh,rx:8,fill:item[2]}));const n=svg('text',{x:x+barW/2,y:baseY-bh-10,'text-anchor':'middle',fill:'#243344','font-size':18,'font-weight':'700'});n.textContent=item[1];g.append(n);const label=svg('text',{x:x+barW/2,y:baseY+24,'text-anchor':'middle',fill:'#526579','font-size':12});label.textContent=item[0];g.append(label)});const axis=svg('line',{x1:90,y1:baseY,x2:550,y2:baseY,stroke:'#cbd5e1','stroke-width':1});g.append(axis);const rate=svg('text',{x:320,y:250,'text-anchor':'middle',fill:'#526579','font-size':12});rate.textContent='False breakout rate: '+F(falseCount/fb.length*100)+'% · '+falseCount+' false / '+fb.length+' qualifying breakouts';g.append(rate);s[1].append(g)}else{s[1].textContent='False breakout analysis requires historical events with a defined breakout level.'}}status(h,pattern+' · '+symbol+' · '+events.length+' historical events · '+window+' daily-candle forward returns · '+source+(resolved.corrected?' · corrected '+resolved.from+' to '+resolved.symbol:''))}
+function init(){const root=$('.sp-analysis');if(!root||root.dataset.spOriginalComplete)return;root.dataset.spOriginalComplete='1';for(const h of all('#volume-lab,#statistics',root))for(const e of all('[hidden]',h)){if(e.id==='sp-research-v2'||e.id==='sp-statistics-v2')continue;if(e.querySelector('.sp-metric,.sp-chart-placeholder'))e.hidden=false}for(const e of all('.sp-chart-placeholder',root)){if(e.closest('[id^="sp-extended-"],#sp-research-v2,#sp-statistics-v2'))continue;e.style.removeProperty('display')}for(const id of ['sp-extended-tools','sp-research-v2','sp-statistics-v2','sp-extended-historical-correlation-research','sp-extended-historical-sma-strategy-backtest']){const e=$('#'+id);if(e)e.hidden=true}clearMock();const contractPanel=$('#contract-research');if(contractPanel){const title=$('.sp-contract-heading h3',contractPanel);if(title)title.textContent='Select an option contract';for(const e of all('.sp-contract-heading .sp-muted',contractPanel))e.textContent='Select a scanned contract to inspect actual provider data';contractPanel.removeAttribute('data-sp-selected-contract')}const scanner=$('#stock-scanner');if(scanner){for(const e of all('.sp-demo-label',scanner))e.textContent='PROVIDER SCAN READY';for(const e of all('p,span,div',scanner)){if(e.children.length===0&&/Preview only — scanner engine not connected|3 illustrative results/.test(e.textContent||''))e.textContent='Provider-backed scanner available; limited to selected symbols.'}}const handlers=[['stock-scanner','Run Stock Scan',runStock],['option-scanner','Run Option Scan',runOption],['volume-lab','Analyze Volume',runVolume],['correlation-lab','Calculate Correlation',runCorrelation],['backtesting','Run Historical Test',runBacktest],['statistics','Analyze Historical Pattern',runStatistics]];const byId=new Map(handlers.map(([id,label,fn])=>[id,{label,fn}]));root.addEventListener('click',async event=>{const button=event.target.closest('button');if(!button||!root.contains(button))return;const section=button.closest('.sp-section');const job=section&&byId.get(section.id);if(!job||button.textContent.trim()!==job.label)return;event.preventDefault();event.stopImmediatePropagation();if(button.dataset.spRunning==='1')return;button.dataset.spRunning='1';button.disabled=true;if(section?.id!=='stock-scanner'&&window.__spHasUserSelectedSymbol!==true){status(section,'Select an NSE stock from verified search results first. No research data is loaded without a selected stock.');button.disabled=false;delete button.dataset.spRunning;return}status(section,'Running '+job.label+'…');try{await job.fn()}catch(err){status(section,'Error: '+(err?.message||String(err)));console.error('[StrikePulse '+section.id+']',err)}finally{button.disabled=false;delete button.dataset.spRunning}},true);const c=$('#chart-lab');if(c){for(const id of ['chart-symbol','chart-timeframe','chart-style'])$('#'+id)?.addEventListener('change',()=>{if(window.__spHasUserSelectedSymbol===true)runChart().catch(e=>status(c,e.message))});all('input[type=checkbox]',c).forEach(input=>input.addEventListener('change',()=>{if(window.__spHasUserSelectedSymbol===true)runChart().catch(e=>status(c,e.message))}))}const op=$('#option-scanner');if(op)status(op,'Run Option Scan and select a contract; static demo values removed.');const st=$('#statistics');if(st&&/Opening Range/.test(V('statistical-pattern'))){const choices=$('#statistical-pattern'),fallback=[...choices.options].find(o=>/Volume Spike/.test(o.text));if(fallback){choices.value=fallback.value;status(st,'Default set to Volume Spike; opening-range research requires intraday event data.')}}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,0));else setTimeout(init,0);
+})();
+
+/* Final provider binding: live market overview + verified option moneyness. */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+const root=document.querySelector('.sp-analysis');
+if(!root)return;
+const $=s=>root.querySelector(s);
+const fmt=(n,d=2)=>n==null||!Number.isFinite(+n)?'—':Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
+async function get(path,params={}){const u=new URL(BASE+path);Object.entries(params).forEach(([k,v])=>{if(v!==''&&v!=null)u.searchParams.set(k,v)});const r=await fetch(u,{cache:'no-store'});const j=await r.json();if(!r.ok||!j.success)throw Error(j.error||'Provider data unavailable');return j}
+function setCard(key,data){
+ const card=root.querySelector('.sp-market-card[data-market="'+key+'"]');if(!card||!data)return;
+ const value=fmt(data.price);
+ const change=data.change==null?'—':(data.change>=0?'+':'')+fmt(data.change)+'%';
+ const valueEl=card.querySelector('[data-market-value],.sp-market-value,.sp-value,strong');
+ const changeEl=card.querySelector('[data-market-change],.sp-market-change,.sp-change');
+ if(valueEl)valueEl.textContent=value;
+ if(changeEl)changeEl.textContent=change;
+ card.dataset.spProviderSource=data.source||'provider';
+}
+async function overview(){
+ const badge=$('.sp-data-badge');
+ try{
+  const j=await get('/api/prices');
+  const m=j.markets||{};
+  setCard('nifty',m.nifty);setCard('banknifty',m.banknifty);setCard('finnifty',m.finnifty);setCard('vix',m.vix);
+  if(badge)badge.textContent='LIVE PROVIDER DATA · '+(j.updated?new Date(j.updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'UPDATED');
+ }catch(e){if(badge)badge.textContent='PROVIDER DATA UNAVAILABLE';console.warn('[StrikePulse overview]',e.message)}
+}
+overview();
+setInterval(overview,60000);
+
+document.addEventListener('click',function(e){
+ const row=e.target.closest('#option-scanner .sp-table tbody tr');
+ if(!row)return;
+ const section=$('#option-scanner'), research=$('#contract-research');
+ if(!section||!research)return;
+ const cells=[...row.children].map(x=>x.textContent.trim());
+ const symbol=cells[0],strike=Number(String(cells[1]).replace(/,/g,'')),type=cells[2];
+ const spot=Number(section.dataset.spSpot);
+ if(!Number.isFinite(strike)||!Number.isFinite(spot)||!['CE','PE'].includes(type))return;
+ let mode='ATM';
+ if(strike<spot)mode=type==='CE'?'ITM':'OTM';
+ if(strike>spot)mode=type==='CE'?'OTM':'ITM';
+ const label=research.querySelector('.sp-contract-heading .sp-muted');
+ if(label)label.textContent=mode+' · verified against underlying spot ₹'+fmt(spot);
+},{capture:true});
+
+const oldRun=window.__spOptionMoneynessBound;
+if(!oldRun)window.__spOptionMoneynessBound=true;
+const originalFetch=window.fetch;
+window.fetch=function(input,init){
+ const url=typeof input==='string'?input:(input&&input.url)||'';
+ const p=originalFetch.call(this,input,init);
+ if(url.includes('/api/analysis/option-scanner'))p.then(async r=>{
+  try{const j=await r.clone().json();if(j?.spot!=null){const s=$('#option-scanner');if(s)s.dataset.spSpot=String(j.spot)}}catch(_){}
+ });
+ return p;
+};
+})();
+
+
+/* Statistics false-breakout visualization: uses the actual values produced by the historical analysis. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ const section=root&&root.querySelector('#statistics');
+ if(!section||section.dataset.spFalseBreakoutChartBound)return;
+ section.dataset.spFalseBreakoutChartBound='1';
+ const metricValue=(label)=>{
+  for(const box of section.querySelectorAll('.sp-metric')){
+   const text=(box.textContent||'').trim();
+   if(text.startsWith(label)){
+    const strong=box.querySelector('strong');
+    return (strong?strong.textContent:text.replace(label,'')).trim();
+   }
+  }
+  return '—';
+ };
+ const draw=()=>{
+  const occurrence=Number(metricValue('Historical Occurrences').replace(/,/g,''));
+  const rateText=metricValue('False Breakout Rate');
+  const rate=Number(rateText.replace('%',''));
+  if(!Number.isFinite(occurrence)||occurrence<=0||!Number.isFinite(rate))return;
+  const falseCount=Math.round(occurrence*rate/100);
+  const validCount=Math.max(0,occurrence-falseCount);
+  let host=[...section.querySelectorAll('.sp-chart-placeholder')].find(x=>/False breakout|false breakout|requires historical events/i.test(x.textContent||''));
+  if(!host){
+   const candidates=[...section.querySelectorAll('.sp-chart-placeholder')];
+   host=candidates[1];
+  }
+  if(!host)return;
+  host.replaceChildren();
+  host.style.padding='14px 12px 10px';
+  host.style.minHeight='230px';
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox','0 0 640 260');svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','False breakout versus valid breakout historical analysis');
+  svg.style.cssText='display:block;width:100%;height:auto';
+  const max=Math.max(falseCount,validCount,1), baseY=195, chartH=145, items=[
+   ['False Breakouts',falseCount,'#e05252'],
+   ['Valid Breakouts',validCount,'#16a34a']
+  ];
+  items.forEach((item,i)=>{
+   const h=item[1]/max*chartH, x=125+i*220;
+   const r=document.createElementNS(ns,'rect');
+   r.setAttribute('x',x);r.setAttribute('y',baseY-h);r.setAttribute('width',150);r.setAttribute('height',h);r.setAttribute('rx','8');r.setAttribute('fill',item[2]);svg.append(r);
+   const n=document.createElementNS(ns,'text');n.setAttribute('x',x+75);n.setAttribute('y',baseY-h-10);n.setAttribute('text-anchor','middle');n.setAttribute('fill','#243344');n.setAttribute('font-size','18');n.setAttribute('font-weight','700');n.textContent=String(item[1]);svg.append(n);
+   const l=document.createElementNS(ns,'text');l.setAttribute('x',x+75);l.setAttribute('y',baseY+25);l.setAttribute('text-anchor','middle');l.setAttribute('fill','#526579');l.setAttribute('font-size','12');l.textContent=item[0];svg.append(l);
+  });
+  const axis=document.createElementNS(ns,'line');axis.setAttribute('x1','80');axis.setAttribute('y1',baseY);axis.setAttribute('x2','560');axis.setAttribute('y2',baseY);axis.setAttribute('stroke','#cbd5e1');svg.append(axis);
+  const title=document.createElementNS(ns,'text');title.setAttribute('x','320');title.setAttribute('y','18');title.setAttribute('text-anchor','middle');title.setAttribute('fill','#526579');title.setAttribute('font-size','12');title.textContent='Historical breakout outcome';svg.append(title);
+  const foot=document.createElementNS(ns,'text');foot.setAttribute('x','320');foot.setAttribute('y','245');foot.setAttribute('text-anchor','middle');foot.setAttribute('fill','#526579');foot.setAttribute('font-size','12');foot.textContent='False breakout rate: '+rateText+' · '+falseCount+' false / '+occurrence+' historical occurrences';svg.append(foot);
+  host.append(svg);
+  host.dataset.spFalseBreakoutChart='true';
+ };
+ const observer=new MutationObserver(()=>{if(metricValue('False Breakout Rate')!=='—')draw()});
+ observer.observe(section,{subtree:true,childList:true,characterData:true});
+ draw();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,0));else setTimeout(init,0);
+})();
+
+
+/* ============================================================
+   BID/ASK SPREAD CHART — PUBLIC EMPTY-STATE + AUTO REFRESH
+   Uses only real stored/provider spread observations.
+   No synthetic/fake spread values are generated.
+   ============================================================ */
+(function(){
+'use strict';
+
+const ROOT = document.querySelector('.sp-analysis');
+if(!ROOT) return;
+
+const WP_HISTORY =
+  'https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history';
+const RENDER_BASE = 'https://strike-pulse-relay.onrender.com';
+
+let refreshTimer = null;
+let activeKey = '';
+let refreshBusy = false;
+
+const fmt = (n,d=2) =>
+  Number.isFinite(Number(n))
+    ? Number(n).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d})
+    : '—';
+
+function getResearch(){
+  return ROOT.querySelector('#contract-research');
+}
+
+function getSpreadSlot(){
+  const research = getResearch();
+  if(!research) return null;
+  const slots = [...research.querySelectorAll('.sp-chart-placeholder')];
+  return slots[3] || null;
+}
+
+function nseDerivativesOpen(){
+  const parts = new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Kolkata',
+    weekday:'short',
+    hour:'2-digit',
+    minute:'2-digit',
+    hour12:false
+  }).formatToParts(new Date());
+
+  const weekday = parts.find(x=>x.type==='weekday')?.value || '';
+  const hour = Number(parts.find(x=>x.type==='hour')?.value);
+  const minute = Number(parts.find(x=>x.type==='minute')?.value);
+
+  if(!['Mon','Tue','Wed','Thu','Fri'].includes(weekday)) return false;
+  if(!Number.isFinite(hour)||!Number.isFinite(minute)) return false;
+
+  const now = hour*60+minute;
+  return now >= (9*60+15) && now <= (15*60+40);
+}
+
+function styleSlot(slot){
+  slot.style.cssText =
+    'position:relative;min-height:285px;width:100%;' +
+    'display:flex;align-items:stretch;justify-content:stretch;' +
+    'padding:0;overflow:hidden;background:#f8fafc;' +
+    'border:1px solid #e2e8f0;border-radius:12px;';
+}
+
+function emptyState(slot,title,body,badge){
+  styleSlot(slot);
+  slot.replaceChildren();
+
+  const wrap=document.createElement('div');
+  wrap.style.cssText =
+    'width:100%;min-height:285px;display:flex;flex-direction:column;' +
+    'align-items:center;justify-content:center;text-align:center;padding:28px;';
+
+  const b=document.createElement('span');
+  b.textContent=badge;
+  b.style.cssText =
+    'display:inline-flex;align-items:center;justify-content:center;' +
+    'padding:6px 10px;border-radius:999px;background:#eef2f7;' +
+    'color:#5b6b7d;font-size:10px;font-weight:800;letter-spacing:1.2px;' +
+    'border:1px solid #dce3eb;';
+
+  const h=document.createElement('strong');
+  h.textContent=title;
+  h.style.cssText='margin-top:12px;color:#243447;font-size:15px;';
+
+  const p=document.createElement('small');
+  p.textContent=body;
+  p.style.cssText =
+    'display:block;max-width:470px;margin-top:7px;color:#718096;' +
+    'font-size:12px;line-height:1.6;';
+
+  const hint=document.createElement('span');
+  hint.textContent='No synthetic spread is displayed';
+  hint.style.cssText =
+    'margin-top:12px;color:#94a3b8;font-size:10px;letter-spacing:.5px;';
+
+  wrap.append(b,h,p,hint);
+  slot.append(wrap);
+}
+
+function makeSvgChart(slot,points){
+  styleSlot(slot);
+  slot.replaceChildren();
+
+  const values=points
+    .map(p=>({t:Number(p.t),v:Number(p.spread)}))
+    .filter(p=>Number.isFinite(p.t)&&Number.isFinite(p.v))
+    .sort((a,b)=>a.t-b.t);
+
+  if(values.length<2) return false;
+
+  const W=960,H=285,left=58,right=20,top=28,bottom=42;
+  const pw=W-left-right,ph=H-top-bottom;
+  const rawMin=Math.min(...values.map(x=>x.v));
+  const rawMax=Math.max(...values.map(x=>x.v));
+  const pad=(rawMax-rawMin||Math.max(Math.abs(rawMax)*.08,.01));
+  const min=rawMin-pad*.15;
+  const max=rawMax+pad*.15;
+
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('role','img');
+  svg.setAttribute('aria-label','Historical bid-ask spread chart');
+  svg.style.cssText='display:block;width:100%;height:auto;background:#fff;';
+
+  const el=(tag,attrs={})=>{
+    const n=document.createElementNS(ns,tag);
+    Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,String(v)));
+    return n;
+  };
+
+  const x=i=>left+(i/(values.length-1))*pw;
+  const y=v=>top+ph-((v-min)/(max-min||1))*ph;
+
+  // Chart background/grid
+  svg.append(el('rect',{x:0,y:0,width:W,height:H,fill:'#fff'}));
+  for(let i=0;i<5;i++){
+    const gy=top+(ph*i/4);
+    svg.append(el('line',{
+      x1:left,y1:gy,x2:W-right,y2:gy,
+      stroke:'#e8edf3','stroke-width':1
+    }));
+    const gv=max-((max-min)*i/4);
+    const gt=el('text',{
+      x:left-8,y:gy+4,'text-anchor':'end',
+      fill:'#718096','font-size':10
+    });
+    gt.textContent=fmt(gv,4)+'%';
+    svg.append(gt);
+  }
+
+  svg.append(el('line',{
+    x1:left,y1:top+ph,x2:W-right,y2:top+ph,
+    stroke:'#cbd5e1','stroke-width':1
+  }));
+
+  const path=values.map((p,i)=>(i?'L':'M')+` ${x(i).toFixed(2)} ${y(p.v).toFixed(2)}`).join(' ');
+  svg.append(el('path',{
+    d:path,fill:'none',stroke:'#2563eb',
+    'stroke-width':2.25,'stroke-linejoin':'round','stroke-linecap':'round'
+  }));
+
+  // Real observation points only.
+  values.forEach((p,i)=>{
+    const c=el('circle',{
+      cx:x(i),cy:y(p.v),r:3.2,
+      fill:'#fff',stroke:'#2563eb','stroke-width':1.8
+    });
+    const title=el('title');
+    title.textContent=new Date(p.t).toLocaleString('en-IN',{
+      timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',
+      day:'2-digit',month:'short'
+    })+' · '+fmt(p.v,4)+'%';
+    c.append(title);
+    svg.append(c);
+  });
+
+  const title=el('text',{x:left,y:16,fill:'#334155','font-size':12,'font-weight':700});
+  title.textContent='Bid-Ask Spread History';
+  svg.append(title);
+
+  const count=el('text',{
+    x:W-right,y:16,'text-anchor':'end',
+    fill:'#64748b','font-size':10
+  });
+  count.textContent=values.length+' real observations';
+  svg.append(count);
+
+  const first=el('text',{x:left,y:H-12,fill:'#94a3b8','font-size':10});
+  first.textContent=new Date(values[0].t).toLocaleTimeString('en-IN',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'
+  });
+  svg.append(first);
+
+  const last=el('text',{
+    x:W-right,y:H-12,'text-anchor':'end',
+    fill:'#94a3b8','font-size':10
+  });
+  last.textContent=new Date(values[values.length-1].t).toLocaleTimeString('en-IN',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'
+  });
+  svg.append(last);
+
+  slot.append(svg);
+  slot.dataset.spSpreadChart='real';
+  slot.dataset.spSpreadPoints=String(values.length);
+  return true;
+}
+
+async function fetchHistory(contract){
+  const qs=new URLSearchParams(contract);
+
+  // Prefer persistent WordPress history.
+  try{
+    const r=await fetch(WP_HISTORY+'?'+qs.toString(),{
+      cache:'no-store',
+      credentials:'omit',
+      signal:AbortSignal.timeout(7000)
+    });
+    if(r.ok){
+      const j=await r.json();
+      if(j?.success&&Array.isArray(j.points)){
+        return j;
+      }
+    }
+  }catch(_){}
+
+  // Fall back to the existing Render session-history endpoint.
+  const u=new URL(RENDER_BASE+'/api/analysis/option-history');
+  qs.forEach((v,k)=>u.searchParams.set(k,v));
+  const r=await fetch(u,{cache:'no-store',signal:AbortSignal.timeout(7000)});
+  const j=await r.json();
+  if(!r.ok||!j?.success) throw Error(j?.error||'Historical Bid/Ask data unavailable');
+  return j;
+}
+
+function readContract(){
+  const research=getResearch();
+  const raw=research?.dataset?.spSelectedContract||'';
+  const parts=raw.split('|');
+  if(parts.length!==4) return null;
+  const [symbol,expiry,strike,type]=parts;
+  if(!symbol||!expiry||!strike||!['CE','PE'].includes(type)) return null;
+  return {symbol,expiry,strike,type};
+}
+
+async function refresh(){
+  const contract=readContract();
+  const slot=getSpreadSlot();
+  if(!contract||!slot) return;
+
+  const key=[contract.symbol,contract.expiry,contract.strike,contract.type].join('|');
+  if(key!==activeKey){
+    activeKey=key;
+    if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}
+  }
+
+  if(refreshBusy) return;
+  refreshBusy=true;
+
+  try{
+    const history=await fetchHistory(contract);
+    const points=(history.points||[])
+      .filter(p=>p&&Number.isFinite(Number(p.spread))&&Number.isFinite(Number(p.t)));
+
+    if(points.length>=2){
+      makeSvgChart(slot,points);
+    }else if(!nseDerivativesOpen()){
+      emptyState(
+        slot,
+        'Awaiting Live Quotes',
+        'Live bid/ask unavailable',
+        'MARKET CLOSED'
+      );
+    }else{
+      emptyState(
+        slot,
+        'Awaiting Valid Bid/Ask Observations',
+        'Live bid/ask unavailable',
+        'AWAITING LIVE QUOTES'
+      );
+    }
+  }catch(error){
+    if(!nseDerivativesOpen()){
+      emptyState(
+        slot,
+        'Awaiting Live Quotes',
+        'Live bid/ask unavailable',
+        'MARKET CLOSED'
+      );
+    }else{
+      emptyState(
+        slot,
+        'Bid/Ask Data Unavailable',
+        'No valid real spread observations are available right now. The chart will retry automatically.',
+        'DATA UNAVAILABLE'
+      );
+    }
+  }finally{
+    refreshBusy=false;
+  }
+}
+
+function bind(){
+  const research=getResearch();
+  if(!research) return;
+
+  const observer=new MutationObserver(()=>{
+    if(research.dataset.spSelectedContract){
+      clearTimeout(bind.refreshDebounce);
+      bind.refreshDebounce=setTimeout(refresh,80);
+    }
+  });
+
+  observer.observe(research,{attributes:true,attributeFilter:['data-sp-selected-contract']});
+
+  // Existing contract selection is asynchronous; poll for new real observations.
+  refresh();
+  refreshTimer=setInterval(refresh,60000);
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,150));
+}else{
+  setTimeout(bind,150);
+}
+
+})();
+
+/* Search UX: do not preload/display predefined stock choices. */
+(function(){
+'use strict';
+function clearPredefinedStockChoices(){
+  const root=document.querySelector('.sp-analysis');
+  if(!root)return;
+  const universe=root.querySelector('#stock-universe');
+  if(universe){
+    [...universe.options].forEach(o=>{
+      if(o.value!=='selected-symbol') o.remove();
+    });
+    const selected=universe.querySelector('option[value="selected-symbol"]');
+    if(selected) universe.value='selected-symbol';
+    universe.setAttribute('aria-label','Selected stock from search');
+  }
+  // Remove any static datalist entries tied to stock search inputs.
+  root.querySelectorAll('datalist').forEach(dl=>{
+    const id=dl.id||'';
+    if(/stock|symbol|ticker|nse/i.test(id)) dl.replaceChildren();
+  });
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(clearPredefinedStockChoices,100));
+}else{
+  setTimeout(clearPredefinedStockChoices,100);
+}
+})();
+
+
+/* Chart titles for every research chart container. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const title=(host,text)=>{
+   if(!host)return;
+   let h=host.querySelector(':scope > .sp-chart-title');
+   if(!h){h=document.createElement('h3');h.className='sp-chart-title';h.style.cssText='margin:0 0 10px;color:#243447;font-size:14px;font-weight:700;line-height:1.35';host.prepend(h);}
+   h.textContent=text;
+ };
+ const gridTitles={
+  '#option-scanner .sp-chart-grid':['Premium Observations','Open Interest Observations','IV Observations','Bid-Ask Spread History'],
+  '#volume-lab .sp-chart-grid':['Volume Profile / Data Notes','Historical Volume Chart'],
+  '#correlation-lab .sp-chart-grid':['Rolling Correlation','Relative Performance','Normalized Spread','Daily Return Scatter'],
+  '#backtesting .sp-chart-grid':['Strategy Equity Curve','Drawdown Analysis'],
+  '#statistics .sp-chart-grid':['Historical Return Distribution','Event Study / False Breakout Analysis']
+ };
+ Object.entries(gridTitles).forEach(([sel,titles])=>{
+   const grid=root.querySelector(sel); if(!grid)return;
+   [...grid.children].forEach((box,i)=>title(box,titles[i]||'Research Chart'));
+ });
+ const chartLab=root.querySelector('#chart-lab');
+ if(chartLab){
+   const main=chartLab.querySelector('.sp-main-chart');
+   if(main && !main.querySelector(':scope > .sp-chart-title')) title(main,'Select an NSE Stock · Price Action');
+   const labels=['5-Minute Price Chart','15-Minute Price Chart','1-Hour Price Chart','Daily Price Chart'];
+   const grid=chartLab.querySelector('.sp-chart-grid');
+   if(grid)[...grid.children].forEach((box,i)=>title(box,labels[i]||'Price Chart'));
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,180));else setTimeout(init,180);
+})();
+
+
+
+/* Remove duplicate placeholder labels after chart titles. */
+(function(){
+'use strict';
+function clean(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const removeText={
+  '#option-scanner .sp-chart-grid':['Premium observations','Open interest observations','IV observations','Spread observations'],
+  '#volume-lab .sp-chart-grid':['Volume profile limitations and data notes','Historical volume chart'],
+  '#correlation-lab .sp-chart-grid':['Rolling correlation','Relative performance','Normalized spread','Daily return scatter'],
+  '#backtesting .sp-chart-grid':['Strategy equity curve','Drawdown analysis'],
+  '#statistics .sp-chart-grid':['Historical return distribution','Event study notes']
+ };
+ Object.entries(removeText).forEach(([sel,texts])=>{
+  const grid=root.querySelector(sel); if(!grid)return;
+  [...grid.children].forEach((box,i)=>{
+   const holder=box.classList.contains('sp-chart-placeholder')?box:box.querySelector('.sp-chart-placeholder');
+   if(holder && texts[i] && holder.textContent.trim()===texts[i]) holder.textContent='';
+  });
+ });
+ const chartGrid=root.querySelector('#chart-lab .sp-chart-grid');
+ if(chartGrid){
+  [...chartGrid.children].forEach(box=>{
+   const holder=box.classList.contains('sp-chart-placeholder')?box:box.querySelector('.sp-chart-placeholder');
+   if(holder && /^Select a stock to load (5-minute|15-minute|hourly|daily) chart\\.$/i.test(holder.textContent.trim())) holder.textContent='';
+  });
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(clean,220));else setTimeout(clean,220);
+})();
+
+/* Final universal stock-search UX — one consistent searchable menu + Search button. */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+const IDS=[
+  'stock-symbol',
+  'chart-symbol',
+  'volume-symbol',
+  'correlation-stock-a',
+  'correlation-stock-b',
+  'backtest-symbol',
+  'statistical-symbol'
+];
+
+function init(){
+  const root=document.querySelector('.sp-analysis');
+  if(!root)return;
+
+  IDS.forEach(id=>{
+    const input=root.querySelector('#'+id);
+    if(!input||input.dataset.spFinalSearch)return;
+    input.dataset.spFinalSearch='1';
+    input.type='search';
+    input.autocomplete='off';
+
+    const wrap=document.createElement('div');
+    wrap.className='sp-final-search-wrap';
+    wrap.style.cssText='position:relative;width:100%;';
+    input.parentNode.insertBefore(wrap,input);
+    wrap.appendChild(input);
+
+    const menu=document.createElement('div');
+    menu.className='sp-final-search-menu';
+    menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:240px;overflow:auto;display:none;';
+    wrap.appendChild(menu);
+
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='sp-btn sp-btn-primary sp-final-search-button';
+    button.textContent='Search';
+    button.style.cssText='margin-top:8px;cursor:pointer;';
+    wrap.appendChild(button);
+
+    let timer=null;
+    let selectedSymbol='';
+
+    function selectItem(item){
+      selectedSymbol=String(item.symbol||'').trim().toUpperCase();
+      if(!selectedSymbol)return;
+      input.value=selectedSymbol;
+      input.dataset.selectedSymbol=selectedSymbol;
+      window.__spHasUserSelectedSymbol=true;
+      window.__spSelectedSymbols=[selectedSymbol];
+      menu.style.display='none';
+      button.textContent='Search ✓';
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+
+      const stockUniverse=root.querySelector('#stock-universe');
+      if(stockUniverse){
+        let option=[...stockUniverse.options].find(o=>o.value==='selected-symbol');
+        if(!option){
+          option=document.createElement('option');
+          option.value='selected-symbol';
+          option.textContent='Selected Symbol';
+          stockUniverse.appendChild(option);
+        }
+        stockUniverse.value='selected-symbol';
+      }
+
+      root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
+    }
+
+    function showResults(items){
+      menu.replaceChildren();
+      (Array.isArray(items)?items:[]).forEach(item=>{
+        const symbol=String(item?.symbol||'').trim();
+        if(!symbol)return;
+        const name=String(item?.name||'').trim();
+        const option=document.createElement('button');
+        option.type='button';
+        option.textContent=name ? symbol+' — '+name : symbol;
+        option.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;';
+        option.addEventListener('click',()=>selectItem(item));
+        menu.appendChild(option);
+      });
+      menu.style.display=menu.children.length?'block':'none';
+    }
+
+    input.addEventListener('input',()=>{
+      selectedSymbol='';
+      delete input.dataset.selectedSymbol;
+      window.__spHasUserSelectedSymbol=false;
+      button.textContent='Search';
+      clearTimeout(timer);
+      const q=input.value.trim();
+      menu.replaceChildren();
+      if(!q){menu.style.display='none';return;}
+
+      timer=setTimeout(async()=>{
+        try{
+          const response=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store'});
+          const data=await response.json();
+          if(!response.ok||data?.success===false)throw Error(data?.error||'Search unavailable');
+          showResults(data.results||[]);
+        }catch(_){
+          menu.style.display='none';
+        }
+      },180);
+    });
+
+    input.addEventListener('keydown',e=>{
+      if(e.key==='Escape')menu.style.display='none';
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const first=menu.querySelector('button');
+        if(first)first.click();
+        else button.click();
+      }
+    });
+
+    button.addEventListener('click',()=>{
+      const symbol=(selectedSymbol||input.dataset.selectedSymbol||'').trim().toUpperCase();
+      if(!symbol){
+        input.focus();
+        return;
+      }
+
+      window.__spHasUserSelectedSymbol=true;
+      window.__spSelectedSymbols=[symbol];
+      input.value=symbol;
+
+      if(id==='stock-symbol'){
+        const stockScan=root.querySelector('#run-stock-scan');
+        if(stockScan)stockScan.click();
+        return;
+      }
+
+      const targets={
+        'chart-symbol':'#chart-lab button',
+        'volume-symbol':'#analyze-volume',
+        'correlation-stock-a':'#calculate-correlation',
+        'correlation-stock-b':'#calculate-correlation',
+        'backtest-symbol':'#run-backtest',
+        'statistical-symbol':'#analyze-historical-pattern'
+      };
+
+      const selector=targets[id];
+      if(!selector)return;
+
+      const buttons=[...root.querySelectorAll(selector)];
+      const target=buttons.find(b=>/run|load|analy|calculate/i.test((b.textContent||'')));
+      if(target)setTimeout(()=>target.click(),40);
+    });
+
+    document.addEventListener('click',e=>{
+      if(!wrap.contains(e.target))menu.style.display='none';
+    });
+  });
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(init,120));
+}else{
+  setTimeout(init,120);
+}
+})();
+
+
+/* Professional search buttons — applies to the original top search and every stock search field. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const css=document.createElement('style');
+ css.textContent=`.sp-pro-search-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;margin-top:9px;padding:0 18px;border:1px solid #1d5fd1;border-radius:10px;background:linear-gradient(135deg,#2563eb,#174ea6);color:#fff;font-size:13px;font-weight:800;letter-spacing:.15px;box-shadow:0 5px 14px rgba(37,99,235,.22);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}.sp-pro-search-btn::before{content:'⌕';font-size:18px;line-height:1}.sp-pro-search-btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(37,99,235,.28);filter:brightness(1.04)}.sp-pro-search-btn:active{transform:translateY(0);box-shadow:0 3px 9px rgba(37,99,235,.2)}.sp-pro-search-btn.is-selected{background:linear-gradient(135deg,#0f8a5f,#087044);border-color:#087044}.sp-pro-search-btn.is-selected::before{content:'✓'}.sp-pro-search-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.sp-final-search-wrap .sp-final-search-button{display:inline-flex!important;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 18px;border:1px solid #1d5fd1!important;border-radius:10px!important;background:linear-gradient(135deg,#2563eb,#174ea6)!important;color:#fff!important;font-weight:800;box-shadow:0 5px 14px rgba(37,99,235,.22);transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}.sp-final-search-wrap .sp-final-search-button::before{content:'⌕';font-size:18px}.sp-final-search-wrap .sp-final-search-button:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(37,99,235,.28);filter:brightness(1.04)}.sp-final-search-wrap .sp-final-search-button:active{transform:translateY(0)}.sp-final-search-wrap .sp-final-search-button:has(+ *){}
+@media(max-width:600px){.sp-pro-search-btn,.sp-final-search-wrap .sp-final-search-button{width:100%;min-height:44px}}`;
+ root.appendChild(css);
+ const top=root.querySelector('#sp-universal-search');
+ if(top && !top.querySelector('.sp-pro-search-btn')){
+   const input=top.querySelector('input[type="search"]');
+   const button=document.createElement('button');
+   button.type='button'; button.className='sp-pro-search-btn'; button.textContent='Search';
+   const row=document.createElement('div'); row.className='sp-pro-search-row';
+   if(input){input.parentNode.insertBefore(row,input);row.appendChild(input);row.appendChild(button);}
+   const selected=top.querySelector('div:last-child');
+   button.addEventListener('click',()=>{
+     const value=(input?.value||'').trim();
+     const first=top.querySelector('[role="option"]');
+     if(!value){input?.focus();return;}
+     if(!top.dataset.selectedSymbol){if(first)first.click();else return;}
+     button.textContent='Search ✓';button.classList.add('is-selected');
+     const scan=root.querySelector('#run-stock-scan');
+     if(scan)scan.click();
+   });
+   input?.addEventListener('input',()=>{top.dataset.selectedSymbol='';button.textContent='Search';button.classList.remove('is-selected')});
+   top.addEventListener('sp-symbol-selected',e=>{if(e.detail?.symbol){top.dataset.selectedSymbol=e.detail.symbol;button.textContent='Search ✓';button.classList.add('is-selected')}});
+ }
+ root.querySelectorAll('.sp-final-search-button').forEach(b=>{b.textContent=b.textContent.includes('✓')?'Search ✓':'Search'});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,300));else setTimeout(init,300);
+})();
+
+/* Clean UI: suppress non-essential runtime/status messages across all Market Analysis sections. */
+(function(){
+'use strict';
+function clean(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ root.querySelectorAll('.sp-live-message').forEach(el=>el.remove());
+ root.querySelectorAll('#sp-universal-search > div').forEach(el=>{if(!el.matches('[role="listbox"]'))el.style.display='none';});
+ root.querySelectorAll('.sp-final-search-wrap > div').forEach(el=>{if(el.classList.contains('sp-final-search-menu'))return;});
+ root.querySelectorAll('#sp-extended-tools > p').forEach(el=>el.style.display='none');
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(clean,350));else setTimeout(clean,350);
+})();
+
+/* Final integrity repairs: keep the legacy duplicate UI hidden without blocking functional controls. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const legacy=root.querySelector('#sp-extended-tools');
+ if(legacy)legacy.style.display='none';
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,500));else setTimeout(init,500);
+})();
+
+
+/* Keep Option Scanner underlying synced with the verified stock search selection. */
+(function(){
+'use strict';
+function sync(item){
+ const root=document.querySelector('.sp-analysis');
+ const select=root?.querySelector('#option-underlying');
+ const symbol=String(item?.symbol||'').trim().toUpperCase();
+ if(!select||!symbol)return;
+ let option=[...select.options].find(o=>String(o.value||'').trim().toUpperCase()===symbol);
+ if(!option){
+  option=document.createElement('option');
+  option.value=symbol;
+  option.textContent=String(item?.name||symbol).trim() ? symbol+' — '+String(item.name).trim() : symbol;
+  select.appendChild(option);
+ }
+ select.value=symbol;
+ select.dispatchEvent(new Event('change',{bubbles:true}));
+}
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ if(!root)return;
+ root.addEventListener('sp-symbol-selected',e=>sync(e.detail),true);
+ const selected=String(window.__spSelectedSymbols?.[0]||'').trim().toUpperCase();
+ if(selected){
+  const input=root.querySelector('[data-selected-symbol="'+selected+'"]');
+  sync({symbol:selected,name:input?.value||selected});
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,150));
+else setTimeout(init,150);
+})();
+/* Universe selector: replace Stock Symbol search with searchable NSE index/universe selection. */
+(function(){
+'use strict';
+const CATALOG={
+'Broad Market':[
+'NIFTY 50','NIFTY NEXT 50','NIFTY 100','NIFTY NEXT 100','NIFTY 200','NIFTY TOTAL MARKET','NIFTY 500','NIFTY500 MULTICAP 50:25:25','NIFTY500 LARGEMIDSMALL EQUAL-CAP WEIGHTED','NIFTY MIDCAP 150','NIFTY MIDCAP 50','NIFTY MIDCAP SELECT','NIFTY MIDCAP 100','NIFTY SMALLCAP 500','NIFTY SMALLCAP 250','NIFTY SMALLCAP 50','NIFTY SMALLCAP 100','NIFTY MICROCAP 250','NIFTY LARGEMIDCAP 250','NIFTY MIDSMALLCAP 400','NIFTY MIDSMALLCAP400 50:50','NIFTY INDIA FPI 150'
+],
+'Market Cap':[
+'NIFTY 100','NIFTY MIDCAP 150','NIFTY MIDCAP 100','NIFTY SMALLCAP 500','NIFTY SMALLCAP 250','NIFTY SMALLCAP 100','NIFTY MICROCAP 250','NIFTY LARGEMIDCAP 250','NIFTY MIDSMALLCAP 400','NIFTY TOTAL MARKET'
+],
+'Sectoral':[
+'NIFTY AUTO','NIFTY BANK','NIFTY CAPITAL GOODS','NIFTY CEMENT','NIFTY CHEMICALS','NIFTY COMMERCIAL & TRANSPORT SERVICES','NIFTY CONSTRUCTION','NIFTY CONSUMER DURABLES','NIFTY CONSUMER SERVICES','NIFTY FINANCIAL SERVICES','NIFTY FINANCIAL SERVICES 25/50','NIFTY FINANCIAL SERVICES EX BANK','NIFTY FMCG','NIFTY HEALTHCARE','NIFTY HOSPITALS','NIFTY HOUSING FINANCE','NIFTY INSURANCE','NIFTY IT','NIFTY MEDIA','NIFTY METAL','NIFTY NBFC','NIFTY OIL AND GAS','NIFTY PHARMA','NIFTY POWER','NIFTY PRIVATE BANK','NIFTY PSU BANK','NIFTY REALTY','NIFTY REITS & REALTY','NIFTY RETAIL','NIFTY TELECOMMUNICATIONS','NIFTY500 HEALTHCARE','NIFTY MIDSMALL FINANCIAL SERVICES','NIFTY MIDSMALL HEALTHCARE','NIFTY MIDSMALL IT & TELECOM'
+],
+'Thematic':[
+'NIFTY AI CATALYSTS','NIFTY INDIA CORPORATE GROUP INDEX - ADITYA BIRLA GROUP','NIFTY CAPITAL MARKETS','NIFTY COMMODITIES','NIFTY CONGLOMERATE 50','NIFTY CORE HOUSING','NIFTY CPSE','NIFTY ENERGY','NIFTY EV & NEW AGE AUTOMOTIVE','NIFTY HOUSING','NIFTY100 ESG','NIFTY100 ENHANCED ESG','NIFTY100 ESG SECTOR LEADERS','NIFTY INDIA CONSUMPTION','NIFTY INDIA DEFENCE','NIFTY INDIA DEFENCE EQUAL WEIGHT','NIFTY INDIA DIGITAL','NIFTY INDIA INFRASTRUCTURE & LOGISTICS','NIFTY INDIA INTERNET','NIFTY INDIA MANUFACTURING','NIFTY INDIA NEW AGE CONSUMPTION','NIFTY INDIA RAILWAYS PSU','NIFTY INDIA TOURISM','NIFTY INDIA SELECT 5 CORPORATE GROUPS (MAATR)','NIFTY INFRASTRUCTURE','NIFTY INDIA CORPORATE GROUP INDEX - MAHINDRA GROUP','NIFTY IPO','NIFTY MIDCAP LIQUID 15','NIFTY MNC','NIFTY MOBILITY','NIFTY PSE','NIFTY REITS & INVITS','NIFTY REITS & INVITS 90:10','NIFTY RURAL','NIFTY NON-CYCLICAL CONSUMER','NIFTY SERVICES SECTOR','NIFTY SHARIAH 25','NIFTY SMALL FINANCE BANKS & MICROFINANCE INSTITUTIONS','NIFTY SUGAR & ETHANOL','NIFTY INDIA CORPORATE GROUP INDEX - TATA GROUP','NIFTY INDIA CORPORATE GROUP INDEX - TATA GROUP 25% CAP','NIFTY TRANSPORTATION & LOGISTICS','NIFTY MIDSMALL INDIA CONSUMPTION','NIFTY100 LIQUID 15','NIFTY50 SHARIAH','NIFTY500 SHARIAH','NIFTY500 MULTICAP INDIA MANUFACTURING 50:30:20','NIFTY500 MULTICAP INFRASTRUCTURE 50:30:20','NIFTY500 AHIMSA','NIFTY SME EMERGE','NIFTY WAVES'
+],
+'Strategy / Factor':[
+'NIFTY100 EQUAL WEIGHT','NIFTY100 LOW VOLATILITY 30','NIFTY 50 ARBITRAGE','NIFTY 50 FUTURES PR','NIFTY 50 FUTURES TR','NIFTY200 MOMENTUM 30','NIFTY200 ALPHA 30','NIFTY100 ALPHA 30','NIFTY ALPHA 50','NIFTY ALPHA LOW VOLATILITY 30','NIFTY ALPHA QUALITY LOW VOLATILITY 30','NIFTY ALPHA QUALITY VALUE LOW VOLATILITY 30','NIFTY DIVIDEND OPPORTUNITIES 50','NIFTY HIGH DIVIDEND YIELD 15','NIFTY GROWTH SECTORS 15','NIFTY HIGH BETA 50','NIFTY LOW VOLATILITY 50','NIFTY TOP 10 EQUAL WEIGHT','NIFTY TOP 15 EQUAL WEIGHT','NIFTY TOP 20 EQUAL WEIGHT','NIFTY100 QUALITY 30','NIFTY MIDCAP150 MOMENTUM 50','NIFTY500 FLEXICAP QUALITY 30','NIFTY500 GROWTH 50','NIFTY500 LOW VOLATILITY 50','NIFTY500 MOMENTUM 50','NIFTY500 QUALITY 50','NIFTY500 MULTIFACTOR MQVLV 50','NIFTY MIDCAP150 QUALITY 50','NIFTY SMALLCAP250 QUALITY 50','NIFTY TOTAL MARKET MOMENTUM QUALITY 50','NIFTY500 MULTICAP MOMENTUM QUALITY 50','NIFTY MIDSMALLCAP400 MOMENTUM QUALITY 100','NIFTY SMALLCAP250 MOMENTUM QUALITY 100','NIFTY QUALITY LOW VOLATILITY 30','NIFTY50 DIVIDEND POINTS','NIFTY50 EQUAL WEIGHT','NIFTY50 USD','NIFTY50 PR 1X INVERSE','NIFTY50 PR 2X LEVERAGE','NIFTY50 TR 1X INVERSE','NIFTY50 TR 2X LEVERAGE','NIFTY50 VALUE 20','NIFTY200 VALUE 30','NIFTY500 VALUE 50','NIFTY500 EQUAL WEIGHT','NIFTY200 QUALITY 30'
+],
+'F&O / Derivatives':[
+'ALL F&O STOCKS','F&O STOCKS','NIFTY F&O','BANKNIFTY F&O','FINNIFTY F&O'
+],
+'All NSE Stocks':[
+'ALL NSE EQUITY STOCKS'
+],
+'Industry':[
+'MACRO-ECONOMIC SECTOR','SECTOR','INDUSTRY','BASIC INDUSTRY'
+]
+}
+function init(){
+ const root=document.querySelector('.sp-analysis');if(!root)return;
+ const old=root.querySelector('#stock-symbol');
+ const oldWrap=old?.closest('.sp-final-search-wrap')||old?.parentElement;
+ if(oldWrap)oldWrap.style.display='none';
+ const label=root.querySelector('label[for="stock-symbol"]');
+ if(label)label.textContent='Universe';
+ const universe=root.querySelector('#stock-universe');
+ if(!universe)return;
+ universe.style.display='none';
+ universe.setAttribute('aria-hidden','true');
+ const host=document.createElement('div');
+ host.className='sp-universe-search-wrap';
+ host.style.cssText='position:relative;width:100%;';
+ const input=document.createElement('input');
+ input.type='search';
+ input.id='sp-universe-search';
+ input.autocomplete='off';
+ input.placeholder='Search sector / index...';
+ input.setAttribute('aria-label','Search NSE universe or sector');
+ input.style.cssText='width:100%;box-sizing:border-box;';
+ const menu=document.createElement('div');
+ menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:300px;overflow:auto;display:none;';
+ host.append(input,menu);
+ universe.parentNode.insertBefore(host,universe);
+ const flat=[];
+ Object.entries(CATALOG).forEach(([group,items])=>items.forEach(name=>flat.push({group,name})));
+ const selectedName=String(universe.value||'').trim().toUpperCase();
+ function selectItem(item){
+  input.value=item.name;
+  universe.value=item.name;
+  window.__spSelectedUniverse=item.name;
+  menu.style.display='none';
+  root.dispatchEvent(new CustomEvent('sp-universe-selected',{detail:item}));
+ }
+ function render(q){
+  menu.replaceChildren();
+  const needle=String(q||'').trim().toUpperCase();
+  const matches=flat.filter(x=>!needle||x.name.includes(needle)||x.group.toUpperCase().includes(needle)).slice(0,40);
+  let last='';
+  matches.forEach(item=>{
+   if(item.group!==last){
+    const h=document.createElement('div');h.textContent=item.group;h.style.cssText='padding:8px 12px;font-size:11px;font-weight:700;color:#64748b;background:#f6f9fc;position:sticky;top:0;';menu.append(h);last=item.group;
+   }
+   const b=document.createElement('button');b.type='button';b.textContent=item.name;b.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;font-size:13px;';
+   b.addEventListener('click',()=>selectItem(item));menu.append(b);
+  });
+  menu.style.display=matches.length?'block':'none';
+ }
+ input.addEventListener('focus',()=>render(input.value));
+ input.addEventListener('input',()=>{delete window.__spSelectedUniverse;universe.value='';render(input.value);});
+ input.addEventListener('keydown',e=>{
+  if(e.key==='Escape')menu.style.display='none';
+  if(e.key==='Enter'){e.preventDefault();const b=menu.querySelector('button');if(b)b.click();}
+ });
+ document.addEventListener('click',e=>{if(!host.contains(e.target))menu.style.display='none';});
+ if(selectedName&&!selectedName.includes('SELECTED')){const found=flat.find(x=>x.name===selectedName);if(found){input.value=found.name;window.__spSelectedUniverse=found.name;}}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,180));else setTimeout(init,180);
+})();
+
+/* Repair universe search placement: visible field replaces NSE Symbol and original Universe field is hidden. */
+(function(){
+'use strict';
+function repair(){
+ const root=document.querySelector('.sp-analysis');if(!root)return;
+ const old=root.querySelector('#stock-symbol');
+ const host=root.querySelector('#sp-universe-search')?.closest('.sp-universe-search-wrap');
+ const universe=root.querySelector('#stock-universe');
+ if(!old||!host||!universe)return;
+ const oldField=old.closest('.sp-field')||old.parentElement;
+ const universeField=universe.closest('.sp-field')||universe.parentElement;
+ if(oldField){
+  oldField.style.display='';
+  let label=oldField.querySelector('label');
+  if(!label){label=document.createElement('label');oldField.prepend(label);}
+  label.textContent='Universe';
+  label.htmlFor='sp-universe-search';
+  [...oldField.children].forEach(el=>{if(el!==label&&el!==host)el.style.display='none';});
+  oldField.appendChild(host);
+ }
+ if(universeField)universeField.style.display='none';
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,260));else setTimeout(repair,260);
+})();
+
+/* Sync the verified selected NSE stock across every stock-based chart/research module. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ if(!root||root.dataset.spAllChartsSynced)return;
+ root.dataset.spAllChartsSynced='1';
+ function syncAll(item){
+  const symbol=String(item?.symbol||'').trim().toUpperCase();
+  if(!symbol)return;
+  const ids=['chart-symbol','volume-symbol','statistical-symbol'];
+  ids.forEach(id=>{
+   const el=root.querySelector('#'+id);
+   if(el){el.value=symbol;el.dispatchEvent(new Event('change',{bubbles:true}));}
+  });
+  const corr=root.querySelector('#correlation-stock-a');
+  if(corr){corr.value=symbol;corr.dispatchEvent(new Event('change',{bubbles:true}));}
+  const chart=root.querySelector('#chart-lab');
+  if(chart){
+   const btn=[...chart.querySelectorAll('button')].find(b=>/run|load|search|analy/i.test((b.textContent||'').trim()));
+   if(btn)setTimeout(()=>btn.click(),120);
+  }
+ }
+ root.addEventListener('sp-symbol-selected',e=>syncAll(e.detail),true);
+ const selected=String(window.__spSelectedSymbols?.[0]||'').trim().toUpperCase();
+ if(selected)syncAll({symbol:selected});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,650));
+else setTimeout(init,650);
+})();
+
+/* Option Scanner Underlying search: verified NSE stock selector. */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ const select=root?.querySelector('#option-underlying');
+ if(!root||!select||root.querySelector('#sp-option-underlying-search'))return;
+ const field=select.closest('.sp-field')||select.parentElement;
+ const input=document.createElement('input');
+ input.type='search';
+ input.id='sp-option-underlying-search';
+ input.placeholder='Search NSE stock / symbol (e.g. RELIANCE)';
+ input.autocomplete='off';
+ input.style.cssText='width:100%;box-sizing:border-box;';
+ const menu=document.createElement('div');
+ menu.id='sp-option-underlying-results';
+ menu.setAttribute('role','listbox');
+ menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:260px;overflow:auto;display:none;';
+ const wrap=document.createElement('div');
+ wrap.id='sp-option-underlying-search';
+ wrap.style.cssText='position:relative;width:100%;';
+ wrap.append(input,menu);
+ select.style.display='none';
+ field.style.position='relative';
+ select.parentNode.insertBefore(wrap,select);
+ let timer=null,controller=null;
+ function choose(item){
+  const symbol=String(item?.symbol||'').trim().toUpperCase();
+  if(!symbol)return;
+  let option=[...select.options].find(o=>String(o.value||'').trim().toUpperCase()===symbol);
+  if(!option){
+   option=document.createElement('option');
+   option.value=symbol;
+   option.textContent=String(item?.name||symbol).trim()?symbol+' — '+String(item.name).trim():symbol;
+   select.appendChild(option);
+  }
+  select.value=symbol;
+  input.value=symbol+(item?.name?' — '+String(item.name).trim():'');
+  input.dataset.selectedSymbol=symbol;
+  menu.style.display='none';
+  window.__spHasUserSelectedSymbol=true;
+  window.__spSelectedSymbols=[symbol];
+  root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
+  select.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ function render(items){
+  menu.replaceChildren();
+  for(const item of Array.isArray(items)?items:[]){
+   const b=document.createElement('button');
+   b.type='button';b.setAttribute('role','option');
+   b.textContent=item.symbol+(item.name?' — '+item.name:'');
+   b.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;';
+   b.addEventListener('click',()=>choose(item));
+   menu.appendChild(b);
+  }
+  menu.style.display=menu.children.length?'block':'none';
+ }
+ input.addEventListener('input',()=>{
+  delete input.dataset.selectedSymbol;
+  clearTimeout(timer);
+  const q=input.value.trim();
+  menu.replaceChildren();
+  if(!q){menu.style.display='none';return;}
+  timer=setTimeout(async()=>{
+   if(controller)controller.abort();
+   controller=new AbortController();
+   try{
+    const r=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store',signal:controller.signal});
+    const j=await r.json();
+    if(!r.ok||j?.success===false)throw Error(j?.error||'Search unavailable');
+    render(j.results||[]);
+   }catch(e){if(e.name!=='AbortError')menu.style.display='none';}
+  },180);
+ });
+ input.addEventListener('keydown',e=>{
+  if(e.key==='Escape')menu.style.display='none';
+  if(e.key==='Enter'){e.preventDefault();const first=menu.querySelector('button');if(first)first.click();}
+ });
+ select.addEventListener('change',()=>{
+  const v=String(select.value||'').trim().toUpperCase();
+  if(v&&!input.dataset.selectedSymbol){
+   input.value=v;
+   input.dataset.selectedSymbol=v;
+  }
+ });
+ document.addEventListener('click',e=>{if(!wrap.contains(e.target))menu.style.display='none';});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,220));else setTimeout(init,220);
 })();
