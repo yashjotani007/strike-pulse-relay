@@ -1102,3 +1102,36 @@ function init(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,500));else setTimeout(init,500);
 })();
+
+
+/* Keep Option Scanner underlying synced with the verified stock search selection. */
+(function(){
+'use strict';
+function sync(item){
+ const root=document.querySelector('.sp-analysis');
+ const select=root?.querySelector('#option-underlying');
+ const symbol=String(item?.symbol||'').trim().toUpperCase();
+ if(!select||!symbol)return;
+ let option=[...select.options].find(o=>String(o.value||'').trim().toUpperCase()===symbol);
+ if(!option){
+  option=document.createElement('option');
+  option.value=symbol;
+  option.textContent=String(item?.name||symbol).trim() ? symbol+' — '+String(item.name).trim() : symbol;
+  select.appendChild(option);
+ }
+ select.value=symbol;
+ select.dispatchEvent(new Event('change',{bubbles:true}));
+}
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ if(!root)return;
+ root.addEventListener('sp-symbol-selected',e=>sync(e.detail),true);
+ const selected=String(window.__spSelectedSymbols?.[0]||'').trim().toUpperCase();
+ if(selected){
+  const input=root.querySelector('[data-selected-symbol="'+selected+'"]');
+  sync({symbol:selected,name:input?.value||selected});
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,150));
+else setTimeout(init,150);
+})();
