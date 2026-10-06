@@ -11,7 +11,7 @@ async function nseStocks(){
   const r=await fetch('https://archives.nseindia.com/content/equities/EQUITY_L.csv',{headers:{'User-Agent':UA,'Accept':'text/csv'},signal:AbortSignal.timeout(12000)});
   if(!r.ok)throw Error('NSE directory HTTP '+r.status);
   const csv=await r.text();
-  const lines=csv.split(/\\r?\\n/).filter(Boolean),rows=[];
+  const lines=csv.split(/\r?\n/).filter(Boolean),rows=[];
   const parse=line=>{const out=[];let cur='',quote=false;for(const ch of line){if(ch==='"')quote=!quote;else if(ch===','&&!quote){out.push(cur.trim());cur='';}else cur+=ch;}out.push(cur.trim());return out};
   const head=parse(lines[0]).map(x=>x.replace(/^"|"$/g,'').toUpperCase());
   const si=head.indexOf('SYMBOL'),ni=head.indexOf('NAME OF COMPANY');
@@ -52,3 +52,14 @@ async function search(q){
  const common=['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','ITC','BHARTIARTL','LT','WIPRO','AXISBANK','KOTAKBANK','HINDUNILVR','BAJFINANCE','MARUTI','TATAMOTORS','TATASTEEL','ADANIENT','SUNPHARMA','NTPC','POWERGRID','ONGC','HCLTECH','TECHM','TITAN','ULTRACEMCO','ASIANPAINT','NESTLEIND','JSWSTEEL','M&M'];
  return common.filter(s=>s.startsWith(term)).map(symbol=>({symbol,name:symbol,exchange:'NSE'})).slice(0,25);
 };
+express.application.use=function(...args){return originalUse.call(this,async(req,res,next)=>{
+ const path=req.path||req.originalUrl?.split('?')[0];
+ if(path!=='/api/stock-search'&&path!=='/api/stock-candles')return next();
+ res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Access-Control-Allow-Methods','GET,OPTIONS');res.setHeader('Cache-Control','no-store');
+ if(req.method==='OPTIONS')return res.sendStatus(204);
+ if(req.method!=='GET')return res.sendStatus(405);
+ try{if(path==='/api/stock-search')return res.json({success:true,results:await search(req.query.q)});
+ const symbol=String(req.query.symbol||'').trim().toUpperCase().replace(/\.NS$/,'');return res.json(await stock(symbol));
+ }catch(e){return res.status(502).json({success:false,error:e.message})}
+ },...args)};
+console.log('[STOCK SEARCH] isolated stock endpoints ready');
