@@ -1250,6 +1250,37 @@ function repair(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,260));else setTimeout(repair,260);
 })();
 
+/* Sync the verified selected NSE stock across every stock-based chart/research module. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ if(!root||root.dataset.spAllChartsSynced)return;
+ root.dataset.spAllChartsSynced='1';
+ function syncAll(item){
+  const symbol=String(item?.symbol||'').trim().toUpperCase();
+  if(!symbol)return;
+  const ids=['chart-symbol','volume-symbol','statistical-symbol'];
+  ids.forEach(id=>{
+   const el=root.querySelector('#'+id);
+   if(el){el.value=symbol;el.dispatchEvent(new Event('change',{bubbles:true}));}
+  });
+  const corr=root.querySelector('#correlation-stock-a');
+  if(corr){corr.value=symbol;corr.dispatchEvent(new Event('change',{bubbles:true}));}
+  const chart=root.querySelector('#chart-lab');
+  if(chart){
+   const btn=[...chart.querySelectorAll('button')].find(b=>/run|load|search|analy/i.test((b.textContent||'').trim()));
+   if(btn)setTimeout(()=>btn.click(),120);
+  }
+ }
+ root.addEventListener('sp-symbol-selected',e=>syncAll(e.detail),true);
+ const selected=String(window.__spSelectedSymbols?.[0]||'').trim().toUpperCase();
+ if(selected)syncAll({symbol:selected});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,650));
+else setTimeout(init,650);
+})();
+
 /* Option Scanner Underlying search: verified NSE stock selector. */
 (function(){
 'use strict';
