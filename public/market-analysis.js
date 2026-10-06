@@ -244,7 +244,7 @@ try{
   const slot=historical[k];if(!slot)return;
   const points=(history.points||[]).filter(p=>p[key]!=null&&Number.isFinite(+p[key]));
   if(points.length>=2)plot(slot,points,key,label);
-  else slot.textContent=key==='spread'?'Market Closed — Live bid/ask unavailable':'Only '+points.length+' valid '+label.toLowerCase()+'. Two distinct observations required.';
+  else slot.textContent=key==='spread'?'Market Closed — Live bid/ask unavailable':(points.length===0?'No '+label.toLowerCase()+' observations collected yet.':points.length+' valid '+label.toLowerCase()+' observation'+(points.length===1?' is':'s are')+' available — waiting for a second distinct snapshot.');
  });
  status(h,'Contract research: '+(history.points||[]).length+' collected observations. Snapshots are not OHLC candles; source: '+(history.persistent?'WordPress MySQL (persistent)':'Render session (temporary)')+'.');
 }catch(error){historical.forEach(slot=>{if(slot)slot.textContent='Historical observations unavailable: '+error.message})}
