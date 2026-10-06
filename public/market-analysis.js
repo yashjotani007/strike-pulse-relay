@@ -1249,3 +1249,94 @@ function repair(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,260));else setTimeout(repair,260);
 })();
+
+/* Option Scanner Underlying search: verified NSE stock selector. */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ const select=root?.querySelector('#option-underlying');
+ if(!root||!select||root.querySelector('#sp-option-underlying-search'))return;
+ const field=select.closest('.sp-field')||select.parentElement;
+ const input=document.createElement('input');
+ input.type='search';
+ input.id='sp-option-underlying-search';
+ input.placeholder='Search NSE stock / symbol (e.g. RELIANCE)';
+ input.autocomplete='off';
+ input.style.cssText='width:100%;box-sizing:border-box;';
+ const menu=document.createElement('div');
+ menu.id='sp-option-underlying-results';
+ menu.setAttribute('role','listbox');
+ menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:260px;overflow:auto;display:none;';
+ const wrap=document.createElement('div');
+ wrap.id='sp-option-underlying-search';
+ wrap.style.cssText='position:relative;width:100%;';
+ wrap.append(input,menu);
+ select.style.display='none';
+ field.style.position='relative';
+ select.parentNode.insertBefore(wrap,select);
+ let timer=null,controller=null;
+ function choose(item){
+  const symbol=String(item?.symbol||'').trim().toUpperCase();
+  if(!symbol)return;
+  let option=[...select.options].find(o=>String(o.value||'').trim().toUpperCase()===symbol);
+  if(!option){
+   option=document.createElement('option');
+   option.value=symbol;
+   option.textContent=String(item?.name||symbol).trim()?symbol+' — '+String(item.name).trim():symbol;
+   select.appendChild(option);
+  }
+  select.value=symbol;
+  input.value=symbol+(item?.name?' — '+String(item.name).trim():'');
+  input.dataset.selectedSymbol=symbol;
+  menu.style.display='none';
+  window.__spHasUserSelectedSymbol=true;
+  window.__spSelectedSymbols=[symbol];
+  root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
+  select.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ function render(items){
+  menu.replaceChildren();
+  for(const item of Array.isArray(items)?items:[]){
+   const b=document.createElement('button');
+   b.type='button';b.setAttribute('role','option');
+   b.textContent=item.symbol+(item.name?' — '+item.name:'');
+   b.style.cssText='display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f7;background:#fff;color:#243344;cursor:pointer;';
+   b.addEventListener('click',()=>choose(item));
+   menu.appendChild(b);
+  }
+  menu.style.display=menu.children.length?'block':'none';
+ }
+ input.addEventListener('input',()=>{
+  delete input.dataset.selectedSymbol;
+  clearTimeout(timer);
+  const q=input.value.trim();
+  menu.replaceChildren();
+  if(!q){menu.style.display='none';return;}
+  timer=setTimeout(async()=>{
+   if(controller)controller.abort();
+   controller=new AbortController();
+   try{
+    const r=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store',signal:controller.signal});
+    const j=await r.json();
+    if(!r.ok||j?.success===false)throw Error(j?.error||'Search unavailable');
+    render(j.results||[]);
+   }catch(e){if(e.name!=='AbortError')menu.style.display='none';}
+  },180);
+ });
+ input.addEventListener('keydown',e=>{
+  if(e.key==='Escape')menu.style.display='none';
+  if(e.key==='Enter'){e.preventDefault();const first=menu.querySelector('button');if(first)first.click();}
+ });
+ select.addEventListener('change',()=>{
+  const v=String(select.value||'').trim().toUpperCase();
+  if(v&&!input.dataset.selectedSymbol){
+   input.value=v;
+   input.dataset.selectedSymbol=v;
+  }
+ });
+ document.addEventListener('click',e=>{if(!wrap.contains(e.target))menu.style.display='none';});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,220));else setTimeout(init,220);
+})();
