@@ -29,7 +29,18 @@ async function nseStocks(){
 async function yahoo(path){const r=await fetch('https://query1.finance.yahoo.com'+path,{headers:{'User-Agent':UA,'Accept':'application/json'},signal:AbortSignal.timeout(9000)});if(!r.ok)throw Error('Market provider HTTP '+r.status);return r.json()}
 const numeric=x=>x==null||x===''?null:Number.isFinite(+x)?+x:null;
 async function stock(symbol){
- ifasync function search(q){
+ if(!/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(symbol))throw Error('Invalid NSE symbol');
+ const key=symbol+'.NS',hit=cache.get(key);if(hit&&Date.now()-hit.at<30000)return hit.data;
+ const j=await yahoo('/v8/finance/chart/'+encodeURIComponent(key)+'?range=5d&interval=5m');
+ const q=j?.chart?.result?.[0];if(!q||!String(q.meta?.symbol||'').toUpperCase().endsWith('.NS'))throw Error('NSE symbol unavailable');
+ const quote=q.indicators?.quote?.[0]||{},times=q.timestamp||[];
+ const candles=times.map((t,i)=>({timestamp:t*1000,open:numeric(quote.open?.[i]),high:numeric(quote.high?.[i]),low:numeric(quote.low?.[i]),close:numeric(quote.close?.[i]),volume:numeric(quote.volume?.[i])})).filter(p=>p.open!=null&&p.high!=null&&p.low!=null&&p.close!=null&&p.high>=p.low&&p.open>0&&p.close>0);
+ if(!candles.length)throw Error('Historical candles unavailable');
+ const prev=numeric(q.meta?.chartPreviousClose??q.meta?.previousClose),last=numeric(q.meta?.regularMarketPrice)??candles.at(-1).close;
+ const data={success:true,symbol,name:q.meta?.longName||q.meta?.shortName||symbol,exchange:'NSE',source:'yahoo-finance',interval:'5m',price:last,change:prev?((last-prev)/prev)*100:null,candles,generatedAt:new Date().toISOString()};
+ cache.set(key,{at:Date.now(),data});if(cache.size>150)cache.delete(cache.keys().next().value);return data;
+}
+async function search(q){
  const term=String(q||'').trim().slice(0,50).toUpperCase();
  if(term.length<1)return[];
  let universe=await nseStocks();
