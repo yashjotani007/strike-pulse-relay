@@ -62,7 +62,7 @@ const results=document.createElement('div');results.setAttribute('role','listbox
 const selected=document.createElement('div');selected.style.display='none';
 wrap.append(label,input,results,selected);heading.append(wrap);
 let timer,controller,activeSymbol='';
-function pick(x){activeSymbol=x.symbol;input.value=x.symbol+' — '+x.name;selected.textContent='';results.style.display='none';const chart=root.querySelector('#chart-symbol');if(chart)chart.value=x.symbol;const universe=root.querySelector('#stock-universe');if(universe){let opt=[...universe.options].find(o=>o.value==='selected-symbol');if(!opt){opt=document.createElement('option');opt.value='selected-symbol';opt.textContent='Selected Symbol';universe.append(opt)}universe.value='selected-symbol'}root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:x}));}
+function pick(x){activeSymbol=x.symbol;input.value=x.symbol+' — '+x.name;selected.textContent='';results.style.display='none';const universe=root.querySelector('#stock-universe');if(universe){let opt=[...universe.options].find(o=>o.value==='selected-symbol');if(!opt){opt=document.createElement('option');opt.value='selected-symbol';opt.textContent='Selected Symbol';universe.append(opt)}universe.value='selected-symbol'}root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:x}));}
 input.addEventListener('input',()=>{clearTimeout(timer);activeSymbol='';const q=input.value.trim();if(q.length<1){results.style.display='none';return}timer=setTimeout(async()=>{if(controller)controller.abort();controller=new AbortController();try{const r=await fetch(base+'/api/stock-search?q='+encodeURIComponent(q),{signal:controller.signal}),j=await r.json();if(!j.success)throw Error(j.error||'Search unavailable');results.replaceChildren();for(const x of j.results||[]){const b=document.createElement('button');b.type='button';b.setAttribute('role','option');b.textContent=x.symbol+' — '+x.name;b.style.cssText='display:block;width:100%;text-align:left;padding:11px 13px;border:0;border-bottom:1px solid #eef2f9;background:#fff;color:#243344;cursor:pointer';b.addEventListener('click',()=>pick(x));results.append(b)}if(!results.children.length){const p=document.createElement('p');p.textContent='No matching symbols. Try exact NSE ticker.';p.style.padding='12px';results.append(p)}results.style.display='block'}catch(e){if(e.name!=='AbortError')selected.textContent=''}},260)});
 input.addEventListener('keydown',e=>{if(e.key==='Escape')results.style.display='none';if(e.key==='Enter'){e.preventDefault();const first=results.querySelector('button');if(first)first.click();else selected.textContent=''}});
 document.addEventListener('click',e=>{if(!wrap.contains(e.target))results.style.display='none'});
@@ -1132,37 +1132,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 })();
 
 
-/* Keep Option Scanner underlying synced with the verified stock search selection. */
-(function(){
-'use strict';
-function sync(item){
- const root=document.querySelector('.sp-analysis');
- const select=root?.querySelector('#option-underlying');
- const symbol=String(item?.symbol||'').trim().toUpperCase();
- if(!select||!symbol)return;
- let option=[...select.options].find(o=>String(o.value||'').trim().toUpperCase()===symbol);
- if(!option){
-  option=document.createElement('option');
-  option.value=symbol;
-  option.textContent=String(item?.name||symbol).trim() ? symbol+' — '+String(item.name).trim() : symbol;
-  select.appendChild(option);
- }
- select.value=symbol;
- select.dispatchEvent(new Event('change',{bubbles:true}));
-}
-function init(){
- const root=document.querySelector('.sp-analysis');
- if(!root)return;
- root.addEventListener('sp-symbol-selected',e=>sync(e.detail),true);
- const selected=String(window.__spSelectedSymbols?.[0]||'').trim().toUpperCase();
- if(selected){
-  const input=root.querySelector('[data-selected-symbol="'+selected+'"]');
-  sync({symbol:selected,name:input?.value||selected});
- }
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,150));
-else setTimeout(init,150);
-})();
+/* Section isolation: Option Scanner underlying has its own independent search. */
 /* Universe selector: replace Stock Symbol search with searchable NSE index/universe selection. */
 (function(){
 'use strict';
@@ -1278,37 +1248,7 @@ function repair(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,260));else setTimeout(repair,260);
 })();
 
-/* Sync the verified selected NSE stock across every stock-based chart/research module. */
-(function(){
-'use strict';
-function init(){
- const root=document.querySelector('.sp-analysis');
- if(!root||root.dataset.spAllChartsSynced)return;
- root.dataset.spAllChartsSynced='1';
- function syncAll(item){
-  const symbol=String(item?.symbol||'').trim().toUpperCase();
-  if(!symbol)return;
-  const ids=['chart-symbol','volume-symbol','statistical-symbol'];
-  ids.forEach(id=>{
-   const el=root.querySelector('#'+id);
-   if(el){el.value=symbol;el.dispatchEvent(new Event('change',{bubbles:true}));}
-  });
-  const corr=root.querySelector('#correlation-stock-a');
-  if(corr){corr.value=symbol;corr.dispatchEvent(new Event('change',{bubbles:true}));}
-  const chart=root.querySelector('#chart-lab');
-  if(chart){
-   const btn=[...chart.querySelectorAll('button')].find(b=>/run|load|search|analy/i.test((b.textContent||'').trim()));
-   if(btn)setTimeout(()=>btn.click(),120);
-  }
- }
- root.addEventListener('sp-symbol-selected',e=>syncAll(e.detail),true);
- const selected=String(window.__spSelectedSymbols?.[0]||'').trim().toUpperCase();
- if(selected)syncAll({symbol:selected});
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,650));
-else setTimeout(init,650);
-})();
-
+/* Section isolation: each research search is independent; no stock selection is copied to another section. */
 /* Option Scanner Underlying search: verified NSE stock selector. */
 (function(){
 'use strict';
