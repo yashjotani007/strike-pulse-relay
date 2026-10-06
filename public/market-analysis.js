@@ -1092,32 +1092,11 @@ function clean(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(clean,350));else setTimeout(clean,350);
 })();
 
-/* Final integrity repairs: enforce verified per-field selection and remove duplicate legacy search UI. */
+/* Final integrity repairs: keep the legacy duplicate UI hidden without blocking functional controls. */
 (function(){
 'use strict';
 function init(){
  const root=document.querySelector('.sp-analysis'); if(!root)return;
- const ids=['volume-symbol','correlation-stock-a','correlation-stock-b','backtest-symbol','statistical-symbol'];
- const buttonIds=['analyze-volume','calculate-correlation','run-backtest','analyze-historical-pattern'];
- ids.forEach(id=>{
-   const input=root.querySelector('#'+id); if(!input)return;
-   input.addEventListener('input',()=>{
-     delete input.dataset.selectedSymbol;
-     window.__spHasUserSelectedSymbol=false;
-   },true);
- });
- root.addEventListener('click',e=>{
-   const b=e.target.closest('button'); if(!b)return;
-   const id=b.id;
-   if(!buttonIds.includes(id))return;
-   const required=id==='analyze-volume'?['volume-symbol']:
-     id==='calculate-correlation'?['correlation-stock-a','correlation-stock-b']:
-     id==='run-backtest'?['backtest-symbol']:['statistical-symbol'];
-   const missing=required.some(x=>{
-     const el=root.querySelector('#'+x); return !el||!String(el.dataset.selectedSymbol||'').trim();
-   });
-   if(missing){e.preventDefault();e.stopImmediatePropagation();}
- },true);
  const legacy=root.querySelector('#sp-extended-tools');
  if(legacy)legacy.style.display='none';
 }
