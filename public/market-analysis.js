@@ -1043,3 +1043,38 @@ if(document.readyState==='loading'){
   setTimeout(init,120);
 }
 })();
+
+
+/* Professional search buttons — applies to the original top search and every stock search field. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-analysis'); if(!root)return;
+ const css=document.createElement('style');
+ css.textContent=`.sp-pro-search-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;margin-top:9px;padding:0 18px;border:1px solid #1d5fd1;border-radius:10px;background:linear-gradient(135deg,#2563eb,#174ea6);color:#fff;font-size:13px;font-weight:800;letter-spacing:.15px;box-shadow:0 5px 14px rgba(37,99,235,.22);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}.sp-pro-search-btn::before{content:'⌕';font-size:18px;line-height:1}.sp-pro-search-btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(37,99,235,.28);filter:brightness(1.04)}.sp-pro-search-btn:active{transform:translateY(0);box-shadow:0 3px 9px rgba(37,99,235,.2)}.sp-pro-search-btn.is-selected{background:linear-gradient(135deg,#0f8a5f,#087044);border-color:#087044}.sp-pro-search-btn.is-selected::before{content:'✓'}.sp-pro-search-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.sp-final-search-wrap .sp-final-search-button{display:inline-flex!important;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 18px;border:1px solid #1d5fd1!important;border-radius:10px!important;background:linear-gradient(135deg,#2563eb,#174ea6)!important;color:#fff!important;font-weight:800;box-shadow:0 5px 14px rgba(37,99,235,.22);transition:transform .16s ease,box-shadow .16s ease,filter .16s ease}.sp-final-search-wrap .sp-final-search-button::before{content:'⌕';font-size:18px}.sp-final-search-wrap .sp-final-search-button:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(37,99,235,.28);filter:brightness(1.04)}.sp-final-search-wrap .sp-final-search-button:active{transform:translateY(0)}.sp-final-search-wrap .sp-final-search-button:has(+ *){}
+@media(max-width:600px){.sp-pro-search-btn,.sp-final-search-wrap .sp-final-search-button{width:100%;min-height:44px}}`;
+ root.appendChild(css);
+ const top=root.querySelector('#sp-universal-search');
+ if(top && !top.querySelector('.sp-pro-search-btn')){
+   const input=top.querySelector('input[type="search"]');
+   const button=document.createElement('button');
+   button.type='button'; button.className='sp-pro-search-btn'; button.textContent='Search';
+   const row=document.createElement('div'); row.className='sp-pro-search-row';
+   if(input){input.parentNode.insertBefore(row,input);row.appendChild(input);row.appendChild(button);}
+   const selected=top.querySelector('div:last-child');
+   button.addEventListener('click',()=>{
+     const value=(input?.value||'').trim();
+     const first=top.querySelector('[role="option"]');
+     if(!value){input?.focus();return;}
+     if(!top.dataset.selectedSymbol){if(first)first.click();else return;}
+     button.textContent='Search ✓';button.classList.add('is-selected');
+     const scan=root.querySelector('#run-stock-scan');
+     if(scan)scan.click();
+   });
+   input?.addEventListener('input',()=>{top.dataset.selectedSymbol='';button.textContent='Search';button.classList.remove('is-selected')});
+   top.addEventListener('sp-symbol-selected',e=>{if(e.detail?.symbol){top.dataset.selectedSymbol=e.detail.symbol;button.textContent='Search ✓';button.classList.add('is-selected')}});
+ }
+ root.querySelectorAll('.sp-final-search-button').forEach(b=>{b.textContent=b.textContent.includes('✓')?'Search ✓':'Search'});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,300));else setTimeout(init,300);
+})();
