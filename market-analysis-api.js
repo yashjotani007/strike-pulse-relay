@@ -22,17 +22,54 @@ async function nseIndexConstituents(index){
  const name=String(index||'').trim().toUpperCase();
  if(!name)throw Error('Select an NSE universe');
  const cached=indexCache.get(name);if(cached&&Date.now()-cached.at<300000)return cached.symbols;
- const url='https://www.nseindia.com/api/equity-stockIndices?index='+encodeURIComponent(name);
- const headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36','Accept':'application/json,text/plain,*/*','Referer':'https://www.nseindia.com/'};
- let home=await fetch('https://www.nseindia.com/',{headers,signal:AbortSignal.timeout(10000)}).catch(()=>null);
- const cookie=home?.headers?.get('set-cookie')||'';
- if(cookie)headers.Cookie=cookie.split(',').map(x=>x.split(';')[0]).join('; ');
- const r=await fetch(url,{headers,signal:AbortSignal.timeout(15000)});
- if(!r.ok)throw Error('NSE index data HTTP '+r.status);
- const j=await r.json();
- const symbols=[...new Set((Array.isArray(j?.data)?j.data:[]).map(x=>String(x?.symbol||'').trim().toUpperCase()).filter(x=>/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(x)))];
- if(!symbols.length)throw Error('No constituents available for '+name);
- indexCache.set(name,{at:Date.now(),symbols});return symbols;
+
+ // Primary source: NSE's live index endpoint.
+ const headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36','Accept':'application/json,text/plain,*/*','Accept-Language':'en-US,en;q=0.9','Referer':'https://www.nseindia.com/'};
+ let nseError=null;
+ try{
+  const home=await fetch('https://www.nseindia.com/',{headers,signal:AbortSignal.timeout(10000)}).catch(()=>null);
+  const cookie=home?.headers?.get('set-cookie')||'';
+  if(cookie)headers.Cookie=cookie.split(',').map(x=>x.split(';')[0]).join('; ');
+  const url='https://www.nseindia.com/api/equity-stockIndices?index='+encodeURIComponent(name);
+  const r=await fetch(url,{headers,signal:AbortSignal.timeout(15000)});
+  if(r.ok){
+   const j=await r.json();
+   const symbols=[...new Set((Array.isArray(j?.data)?j.data:[]).map(x=>String(x?.symbol||'').trim().toUpperCase()).filter(x=>/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(x)))];
+   if(symbols.length){indexCache.set(name,{at:Date.now(),symbols});return symbols}
+  }else nseError='NSE index data HTTP '+r.status;
+ }catch(e){nseError=e.message}
+
+ // Fallback: NSE Indices publishes an official constituent CSV for each Nifty index.
+ // Example: Nifty Pharma -> ind_niftypharmalist.csv.
+ const compact=name.toLowerCase().replace(/[^a-z0-9]+/g,'');
+ const aliases={
+  'NIFTY 50':'nifty50','NIFTY NEXT 50':'niftynext50','NIFTY BANK':'niftybank',
+  'NIFTY FINANCIAL SERVICES':'niftyfinancialservices','NIFTY FINANCIAL SERVICES 25/50':'niftyfinancialservices2550',
+  'NIFTY FINANCIAL SERVICES EX BANK':'niftyfinancialservicesexbank','NIFTY OIL AND GAS':'niftyoilgas',
+  'NIFTY OIL & GAS':'niftyoilgas','NIFTY REITS & REALTY':'niftyreitsrealty'
+ };
+ const candidates=[aliases[name]||compact];
+ if(compact.startsWith('nifty')&&!candidates.includes(compact))candidates.push(compact);
+ const csvHeaders={'User-Agent':'Mozilla/5.0','Accept':'text/csv,text/plain,*/*','Referer':'https://www.niftyindices.com/'};
+ for(const slug of candidates){
+  const csvUrl='https://www.niftyindices.com/IndexConstituent/ind_'+slug+'list.csv';
+  try{
+   const r=await fetch(csvUrl,{headers:csvHeaders,signal:AbortSignal.timeout(15000)});
+   if(!r.ok)continue;
+   const csv=await r.text();
+   const lines=csv.replace(/^\\uFEFF/,'').split(/\\r?\\n/).filter(Boolean);
+   if(!lines.length)continue;
+   const header=lines[0].split(',').map(x=>x.trim().replace(/^"|"$/g,'').toUpperCase());
+   const symbolIndex=header.findIndex(x=>x==='SYMBOL'||x.includes('SYMBOL'));
+   if(symbolIndex<0)continue;
+   const symbols=[...new Set(lines.slice(1).map(line=>{
+    const cols=line.split(',').map(x=>x.trim().replace(/^"|"$/g,''));
+    return String(cols[symbolIndex]||'').trim().toUpperCase();
+   }).filter(x=>/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(x)))];
+   if(symbols.length){indexCache.set(name,{at:Date.now(),symbols});return symbols}
+  }catch(e){}
+ }
+ throw Error(nseError||('No constituents available for '+name));
 }
 async function stockScan(q){
  const sample=['RELIANCE','HDFCBANK','ICICIBANK','SBIN','TCS','INFY','ITC','LT','AXISBANK','BHARTIARTL','KOTAKBANK','HINDUNILVR','BAJFINANCE','MARUTI','SUNPHARMA','NTPC','TITAN','TATASTEEL','ONGC','WIPRO'];
