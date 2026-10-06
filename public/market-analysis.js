@@ -600,7 +600,7 @@ function makeSvgChart(slot,points){
       x:left-8,y:gy+4,'text-anchor':'end',
       fill:'#718096','font-size':10
     });
-    gt.textContent=fmt(gv,2)+'%';
+    gt.textContent=fmt(gv,4)+'%';
     svg.append(gt);
   }
 
@@ -625,7 +625,7 @@ function makeSvgChart(slot,points){
     title.textContent=new Date(p.t).toLocaleString('en-IN',{
       timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',
       day:'2-digit',month:'short'
-    })+' · '+fmt(p.v,2)+'%';
+    })+' · '+fmt(p.v,4)+'%';
     c.append(title);
     svg.append(c);
   });
