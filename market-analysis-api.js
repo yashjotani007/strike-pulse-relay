@@ -18,29 +18,149 @@ async function history(symbol,interval='15m',range='5d'){
 function ema(a,n){if(a.length<n)return null;let v=a.slice(0,n).reduce((x,y)=>x+y,0)/n;for(let i=n;i<a.length;i++)v=a[i]*2/(n+1)+v*(n-1)/(n+1);return v}
 function metrics(rows){const c=rows.map(x=>x.c),last=rows.at(-1),prev=rows.at(-2);let pv=0,vol=0;for(const x of rows)if(x.v>0){pv+=(x.h+x.l+x.c)/3*x.v;vol+=x.v}const recent=rows.slice(-20),avg=recent.reduce((s,x)=>s+(x.v||0),0)/recent.length;let gain=0,loss=0;for(let i=Math.max(1,c.length-14);i<c.length;i++){const d=c[i]-c[i-1];gain+=Math.max(0,d);loss+=Math.max(0,-d)}return {price:last.c,change:prev?(last.c/prev.c-1)*100:null,rsi:c.length>14?(loss?100-100/(1+gain/loss):100):null,ema9:ema(c,9),ema21:ema(c,21),ema50:ema(c,50),ema200:ema(c,200),vwap:vol?pv/vol:null,volume:last.v,rvol:avg?last.v/avg:null,high20:rows.length>1?Math.max(...rows.slice(-21,-1).map(x=>x.h)):null,low20:rows.length>1?Math.min(...rows.slice(-21,-1).map(x=>x.l)):null}}
 const indexCache=new Map();
+const universePageCache=new Map();
+const equityCache={at:0,symbols:[]};
+const fnoCache={at:0,symbols:[]};
+
+function csvRows(text){
+ const rows=[];let row=[],cell='',quoted=false;
+ for(let i=0;i<text.length;i++){
+  const ch=text[i];
+  if(ch==='"'){
+   if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted;
+  }else if(ch===','&&!quoted){row.push(cell);cell=''}
+  else if((ch==='\n'||ch==='\r')&&!quoted){
+   if(ch==='\r'&&text[i+1]==='\n')i++;
+   row.push(cell);cell='';
+   if(row.some(x=>String(x).trim()!==''))rows.push(row);
+   row=[];
+  }else cell+=ch;
+ }
+ if(cell!==''||row.length){row.push(cell);if(row.some(x=>String(x).trim()!==''))rows.push(row)}
+ return rows;
+}
+function normName(v){
+ return String(v||'').replace(/&amp;/gi,'&').replace(/&#39;|&#x27;/gi,"'").replace(/&quot;/gi,'"')
+  .replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim().toUpperCase()
+  .replace(/^NIFTY\s+/,'').replace(/[^A-Z0-9]+/g,'');
+}
+function validSymbol(x){
+ return /^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(String(x||'').trim().toUpperCase());
+}
+async function fetchCsvSymbols(url,headers={}){
+ const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36','Accept':'text/csv,text/plain,*/*',...headers},signal:AbortSignal.timeout(15000)});
+ if(!r.ok)throw Error('Constituent CSV HTTP '+r.status);
+ const rows=csvRows((await r.text()).replace(/^\uFEFF/,''));
+ if(!rows.length)throw Error('Empty constituent CSV');
+ const header=rows[0].map(x=>String(x).trim().toUpperCase());
+ const si=header.findIndex(x=>x==='SYMBOL'||x.includes('SYMBOL'));
+ if(si<0)throw Error('SYMBOL column unavailable');
+ return [...new Set(rows.slice(1).map(r=>String(r[si]||'').trim().toUpperCase()).filter(validSymbol))];
+}
+async function allNseEquitySymbols(){
+ if(equityCache.symbols.length&&Date.now()-equityCache.at<6*60*60*1000)return equityCache.symbols;
+ const urls=[
+  'https://archives.nseindia.com/content/equities/EQUITY_L.csv',
+  'https://www.nseindia.com/api/equity-master'
+ ];
+ for(const url of urls){
+  try{
+   let symbols;
+   if(url.includes('EQUITY_L.csv'))symbols=await fetchCsvSymbols(url,{'Referer':'https://www.nseindia.com/'});
+   else{
+    const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'application/json,*/*','Referer':'https://www.nseindia.com/'},signal:AbortSignal.timeout(15000)});
+    if(!r.ok)continue;
+    const j=await r.json();
+    symbols=[...new Set((Array.isArray(j?.data)?j.data:[]).map(x=>String(x?.symbol||'').trim().toUpperCase()).filter(validSymbol))];
+   }
+   if(symbols?.length){equityCache.at=Date.now();equityCache.symbols=symbols;return symbols}
+  }catch(_){}
+ }
+ throw Error('NSE equity directory unavailable');
+}
+async function fnoSymbols(){
+ if(fnoCache.symbols.length&&Date.now()-fnoCache.at<60*60*1000)return fnoCache.symbols;
+ const urls=['https://nsearchives.nseindia.com/content/fo/fo_mktlots.csv','https://archives.nseindia.com/content/fo/fo_mktlots.csv'];
+ for(const url of urls){
+  try{
+   const rows=csvRows((await (await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/csv,text/plain,*/*','Referer':'https://www.nseindia.com/'},signal:AbortSignal.timeout(15000)})).text()).replace(/^\uFEFF/,''));
+   if(!rows.length)continue;
+   const header=rows[0].map(x=>String(x).trim().toUpperCase());
+   let si=header.findIndex(x=>x==='SYMBOL'||x.includes('SYMBOL'));
+   if(si<0)si=1;
+   const symbols=[...new Set(rows.slice(1).map(r=>String(r[si]||'').trim().toUpperCase()).filter(validSymbol))];
+   if(symbols.length){fnoCache.at=Date.now();fnoCache.symbols=symbols;return symbols}
+  }catch(_){}
+ }
+ throw Error('NSE F&O security list unavailable');
+}
+async function discoverConstituentUrl(name){
+ const key=normName(name);
+ const cached=universePageCache.get(key);
+ if(cached&&Date.now()-cached.at<6*60*60*1000)return cached.url;
+ const pages=[
+  'https://www.niftyindices.com/indices/equity/broad-based-indices',
+  'https://www.niftyindices.com/indices/equity/sectoral-indices',
+  'https://www.niftyindices.com/indices/equity/thematic-indices',
+  'https://www.niftyindices.com/indices/equity/strategy-indices'
+ ];
+ const target=normName(name);
+ for(const page of pages){
+  try{
+   const html=await (await fetch(page,{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html,*/*','Referer':'https://www.niftyindices.com/'},signal:AbortSignal.timeout(15000)})).text();
+   const anchors=[...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)];
+   for(const m of anchors){
+    const text=String(m[2]).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    if(normName(text)!==target)continue;
+    const href=m[1];
+    const url=href.startsWith('http')?href:new URL(href,page).href;
+    const pageHtml=await (await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html,*/*','Referer':'https://www.niftyindices.com/'},signal:AbortSignal.timeout(15000)})).text();
+    const hit=pageHtml.match(/href=["']([^"']*IndexConstituent[^"']*\.csv)["']/i);
+    if(hit){
+     const csvUrl=new URL(hit[1],url).href;
+     universePageCache.set(key,{at:Date.now(),url:csvUrl});
+     return csvUrl;
+    }
+   }
+  }catch(_){}
+ }
+ return null;
+}
 async function nseIndexConstituents(index){
  const name=String(index||'').trim().toUpperCase();
  if(!name)throw Error('Select an NSE universe');
- const cached=indexCache.get(name);if(cached&&Date.now()-cached.at<300000)return cached.symbols;
+ const cached=indexCache.get(name);
+ if(cached&&Date.now()-cached.at<300000)return cached.symbols;
 
- // Primary source: NSE's live index endpoint.
- const headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36','Accept':'application/json,text/plain,*/*','Accept-Language':'en-US,en;q=0.9','Referer':'https://www.nseindia.com/'};
- let nseError=null;
+ const special={
+  'NIFTY F&O':'NIFTY 50',
+  'BANKNIFTY F&O':'NIFTY BANK',
+  'FINNIFTY F&O':'NIFTY FINANCIAL SERVICES'
+ };
+ if(name==='ALL NSE EQUITY STOCKS'||name==='ALL NSE STOCKS'||name==='NSE EQUITY STOCKS'){
+  const symbols=await allNseEquitySymbols();indexCache.set(name,{at:Date.now(),symbols});return symbols;
+ }
+ if(name==='ALL F&O STOCKS'||name==='F&O STOCKS'){
+  const symbols=await fnoSymbols();indexCache.set(name,{at:Date.now(),symbols});return symbols;
+ }
+ if(['MACRO-ECONOMIC SECTOR','SECTOR','INDUSTRY','BASIC INDUSTRY'].includes(name)){
+  const symbols=await allNseEquitySymbols();indexCache.set(name,{at:Date.now(),symbols});return symbols;
+ }
+ if(special[name])return nseIndexConstituents(special[name]);
+
+ const nseHeaders={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36','Accept':'application/json,text/plain,*/*','Accept-Language':'en-US,en;q=0.9','Referer':'https://www.nseindia.com/'};
  try{
-  const home=await fetch('https://www.nseindia.com/',{headers,signal:AbortSignal.timeout(10000)}).catch(()=>null);
+  const home=await fetch('https://www.nseindia.com/',{headers:nseHeaders,signal:AbortSignal.timeout(10000)}).catch(()=>null);
   const cookie=home?.headers?.get('set-cookie')||'';
-  if(cookie)headers.Cookie=cookie.split(',').map(x=>x.split(';')[0]).join('; ');
-  const url='https://www.nseindia.com/api/equity-stockIndices?index='+encodeURIComponent(name);
-  const r=await fetch(url,{headers,signal:AbortSignal.timeout(15000)});
+  if(cookie)nseHeaders.Cookie=cookie.split(',').map(x=>x.split(';')[0]).join('; ');
+  const r=await fetch('https://www.nseindia.com/api/equity-stockIndices?index='+encodeURIComponent(name),{headers:nseHeaders,signal:AbortSignal.timeout(15000)});
   if(r.ok){
    const j=await r.json();
-   const symbols=[...new Set((Array.isArray(j?.data)?j.data:[]).map(x=>String(x?.symbol||'').trim().toUpperCase()).filter(x=>/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(x)))];
+   const symbols=[...new Set((Array.isArray(j?.data)?j.data:[]).map(x=>String(x?.symbol||'').trim().toUpperCase()).filter(validSymbol))];
    if(symbols.length){indexCache.set(name,{at:Date.now(),symbols});return symbols}
-  }else nseError='NSE index data HTTP '+r.status;
- }catch(e){nseError=e.message}
+  }
+ }catch(_){}
 
- // Fallback: NSE Indices publishes an official constituent CSV for each Nifty index.
- // Example: Nifty Pharma -> ind_niftypharmalist.csv.
  const compact=name.toLowerCase().replace(/[^a-z0-9]+/g,'');
  const aliases={
   'NIFTY 50':'nifty50','NIFTY NEXT 50':'niftynext50','NIFTY BANK':'niftybank',
@@ -50,42 +170,42 @@ async function nseIndexConstituents(index){
  };
  const candidates=[aliases[name]||compact];
  if(compact.startsWith('nifty')&&!candidates.includes(compact))candidates.push(compact);
- const csvHeaders={'User-Agent':'Mozilla/5.0','Accept':'text/csv,text/plain,*/*','Referer':'https://www.niftyindices.com/'};
  for(const slug of candidates){
-  const csvUrl='https://www.niftyindices.com/IndexConstituent/ind_'+slug+'list.csv';
   try{
-   const r=await fetch(csvUrl,{headers:csvHeaders,signal:AbortSignal.timeout(15000)});
-   if(!r.ok)continue;
-   const csv=await r.text();
-   const lines=csv.replace(/^\\uFEFF/,'').split(/\\r?\\n/).filter(Boolean);
-   if(!lines.length)continue;
-   const header=lines[0].split(',').map(x=>x.trim().replace(/^"|"$/g,'').toUpperCase());
-   const symbolIndex=header.findIndex(x=>x==='SYMBOL'||x.includes('SYMBOL'));
-   if(symbolIndex<0)continue;
-   const symbols=[...new Set(lines.slice(1).map(line=>{
-    const cols=line.split(',').map(x=>x.trim().replace(/^"|"$/g,''));
-    return String(cols[symbolIndex]||'').trim().toUpperCase();
-   }).filter(x=>/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(x)))];
+   const symbols=await fetchCsvSymbols('https://www.niftyindices.com/IndexConstituent/ind_'+slug+'list.csv',{'Referer':'https://www.niftyindices.com/'});
    if(symbols.length){indexCache.set(name,{at:Date.now(),symbols});return symbols}
-  }catch(e){}
+  }catch(_){}
  }
- throw Error(nseError||('No constituents available for '+name));
+
+ const discovered=await discoverConstituentUrl(name);
+ if(discovered){
+  const symbols=await fetchCsvSymbols(discovered,{'Referer':'https://www.niftyindices.com/'});
+  if(symbols.length){indexCache.set(name,{at:Date.now(),symbols});return symbols}
+ }
+ throw Error('No constituents available for '+name);
 }
 async function stockScan(q){
  const sample=['RELIANCE','HDFCBANK','ICICIBANK','SBIN','TCS','INFY','ITC','LT','AXISBANK','BHARTIARTL','KOTAKBANK','HINDUNILVR','BAJFINANCE','MARUTI','SUNPHARMA','NTPC','TITAN','TATASTEEL','ONGC','WIPRO'];
- const selected=String(q.symbol||'').trim().toUpperCase().replace(/\\.NS$/,'');
+ const selected=String(q.symbol||'').trim().toUpperCase().replace(/\.NS$/,'');
  const universe=String(q.universe||'').trim().toUpperCase();
- if(selected&&!/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(selected))throw Error('Invalid NSE symbol');
+ if(selected&&!validSymbol(selected))throw Error('Invalid NSE symbol');
  let target,coverage;
  if(universe&&universe!=='SELECTED-SYMBOL'){
-  target=await nseIndexConstituents(universe);coverage=universe+' · '+target.length+' constituents';
+  target=[...new Set(await nseIndexConstituents(universe))];
+  coverage=universe+' · '+target.length+' constituents';
  }else if(selected){target=[selected];coverage='Selected NSE symbol';}
  else{target=sample;coverage='20 selected NSE stocks; choose an NSE universe for constituent scanning';}
- const settled=await Promise.allSettled(target.map(async symbol=>({symbol,...metrics((await history(symbol,q.interval||'15m',q.range||'5d')).candles)})));
+ const settled=[];
+ const limit=8;
+ for(let i=0;i<target.length;i+=limit){
+  const batch=target.slice(i,i+limit);
+  const results=await Promise.allSettled(batch.map(async symbol=>({symbol,...metrics((await history(symbol,q.interval||'15m',q.range||'5d')).candles)})));
+  settled.push(...results);
+ }
  let rows=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
  const min=num(q.minPrice),rv=num(q.rvol),lo=num(q.rsiMin),hi=num(q.rsiMax);
  rows=rows.filter(x=>(min==null||x.price>=min)&&(rv==null||x.rvol!=null&&x.rvol>=rv)&&(lo==null||x.rsi!=null&&x.rsi>=lo)&&(hi==null||x.rsi!=null&&x.rsi<=hi));
- return {success:true,results:rows,coverage,requested:target.length,failed:settled.filter(x=>x.status==='rejected').length,updated:new Date().toISOString()}
+ return {success:true,results:rows,coverage,requested:target.length,failed:settled.filter(x=>x.status==='rejected').length,updated:new Date().toISOString()};
 }
 // Ephemeral, bounded research snapshots. Never present these as exchange historical candles.
 const optionSnapshots=new Map();
