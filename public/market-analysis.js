@@ -225,41 +225,75 @@ for(const el of research.querySelectorAll('p,span,div')){if(el.children.length==
 research.dataset.spSelectedContract=[x.symbol,x.expiry,x.strike,x.type].join('|');
 try{
  const contract={symbol:x.symbol,expiry:x.expiry,strike:x.strike,type:x.type};
- let history=null;
- try {
-  const cacheKey=[contract.symbol,contract.expiry,contract.strike,contract.type].join('|');
-  window.__SP_OPTION_HISTORY_CACHE__=window.__SP_OPTION_HISTORY_CACHE__||new Map();
-  window.__SP_OPTION_HISTORY_PENDING__=window.__SP_OPTION_HISTORY_PENDING__||new Map();
-  const cached=window.__SP_OPTION_HISTORY_CACHE__.get(cacheKey);
-  if(cached&&cached.expiresAt>Date.now()) history=cached.data;
-  else {
-   let pending=window.__SP_OPTION_HISTORY_PENDING__.get(cacheKey);
-   if(!pending){
-    const wpUrl='https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history?'+new URLSearchParams(contract);
-    pending=fetch(wpUrl,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(8000)})
-      .then(async wpResponse=>{
-        if(!wpResponse.ok)throw Error('WordPress history HTTP '+wpResponse.status);
-        const wpData=await wpResponse.json();
-        if(!wpData?.success||!Array.isArray(wpData.points)||!wpData.points.length)throw Error('No persistent history points');
-        return {...wpData,source:'WordPress MySQL option-chain observations',persistent:true};
-      })
-      .finally(()=>window.__SP_OPTION_HISTORY_PENDING__.delete(cacheKey));
-    window.__SP_OPTION_HISTORY_PENDING__.set(cacheKey,pending);
-   }
-   try {
-    history=await pending;
-    window.__SP_OPTION_HISTORY_CACHE__.set(cacheKey,{data:history,expiresAt:Date.now()+60000});
-   } catch(wpError){console.warn('[SP HISTORY] WordPress read unavailable; using Render session observations:',wpError.message)}
+ const localSnapshot={t:Date.now(),premium:Number(x.ltp),ltp:Number(x.ltp),oi:Number(x.oi),iv:x.iv==null?null:Number(x.iv),spread:x.spread==null?null:Number(x.spread)};
+ try{
+  const localKey='SP_OPTION_HISTORY_'+[contract.symbol,contract.expiry,contract.strike,contract.type].join('|').replace(/[^A-Za-z0-9_-]/g,'_');
+  const previous=JSON.parse(localStorage.getItem(localKey)||'[]');
+  const rows=Array.isArray(previous)?previous:[];
+  const last=rows[rows.length-1];
+  if(!last||Number(localSnapshot.t)-Number(last.t)>5000||JSON.stringify(localSnapshot)!==JSON.stringify(last)){
+   rows.push(localSnapshot);
+   localStorage.setItem(localKey,JSON.stringify(rows.slice(-300)));
   }
- } catch(wpError){console.warn('[SP HISTORY] WordPress read unavailable; using Render session observations:',wpError.message)}
- if(!history)history=await api('/api/analysis/option-history',contract);
+ }catch(_){}
+ let history=null;
+ const cacheKey=[contract.symbol,contract.expiry,contract.strike,contract.type].join('|');
+ const localKey='SP_OPTION_HISTORY_'+cacheKey.replace(/[^A-Za-z0-9_-]/g,'_');
+ const readLocal=()=>{
+  try{
+   const rows=JSON.parse(localStorage.getItem(localKey)||'[]');
+   return Array.isArray(rows)?rows.filter(p=>p&&Number.isFinite(Number(p.t))):[];
+  }catch(_){return []}
+ };
+ const writeLocal=rows=>{
+  try{
+   const clean=rows.filter(p=>p&&Number.isFinite(Number(p.t))).sort((a,b)=>Number(a.t)-Number(b.t)).slice(-300);
+   localStorage.setItem(localKey,JSON.stringify(clean));
+   return clean;
+  }catch(_){return rows}
+ };
+ const localRows=readLocal();
+ if(localRows.length)history={success:true,points:localRows,source:'Browser local option observations',persistent:true};
+ window.__SP_OPTION_HISTORY_CACHE__=window.__SP_OPTION_HISTORY_CACHE__||new Map();
+ window.__SP_OPTION_HISTORY_PENDING__=window.__SP_OPTION_HISTORY_PENDING__||new Map();
+ try{
+  const wpUrl='https://yashjotani.free.nf/wordpress/wp-json/sp/v1/public-option-history?'+new URLSearchParams(contract);
+  const pending=window.__SP_OPTION_HISTORY_PENDING__.get(cacheKey)||fetch(wpUrl,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(5000)})
+   .then(async wpResponse=>{
+    if(!wpResponse.ok)throw Error('WordPress history HTTP '+wpResponse.status);
+    const wpData=await wpResponse.json();
+    if(!wpData?.success||!Array.isArray(wpData.points))throw Error('Invalid persistent history response');
+    return {...wpData,source:'WordPress MySQL option-chain observations',persistent:true};
+   })
+   .finally(()=>window.__SP_OPTION_HISTORY_PENDING__.delete(cacheKey));
+  window.__SP_OPTION_HISTORY_PENDING__.set(cacheKey,pending);
+  const remote=await pending;
+  const merged=[...(Array.isArray(remote.points)?remote.points:[]),...readLocal()]
+   .filter(p=>p&&Number.isFinite(Number(p.t)))
+   .sort((a,b)=>Number(a.t)-Number(b.t))
+   .filter((p,i,a)=>i===0||Number(p.t)!==Number(a[i-1].t)||JSON.stringify(p)!==JSON.stringify(a[i-1]))
+   .slice(-300);
+  history={...remote,points:writeLocal(merged),source:'WordPress MySQL + browser local option observations',persistent:true};
+  window.__SP_OPTION_HISTORY_CACHE__.set(cacheKey,{data:history,expiresAt:Date.now()+60000});
+ }catch(wpError){
+  console.warn('[SP HISTORY] WordPress unavailable; using browser-local/session observations:',wpError.message);
+ }
+ if(!history){
+  try{
+   const session=await api('/api/analysis/option-history',contract);
+   const merged=[...(session.points||[]),...readLocal()].filter(p=>p&&Number.isFinite(Number(p.t))).sort((a,b)=>Number(a.t)-Number(b.t));
+   history={...session,points:writeLocal(merged),source:'Browser local + Render session option observations',persistent:true};
+  }catch(sessionError){
+   history={success:true,points:readLocal(),source:'Browser local option observations',persistent:true};
+  }
+ }
  names.forEach(([key,label],k)=>{
   const slot=historical[k];if(!slot)return;
   const points=(history.points||[]).filter(p=>p[key]!=null&&Number.isFinite(+p[key]));
-  if(points.length>=2)plot(slot,points,key,label);
-  else slot.textContent=key==='spread'?'Market Closed — Live bid/ask unavailable':(points.length===0?'No '+label.toLowerCase()+' observations collected yet.':points.length+' valid '+label.toLowerCase()+' observation'+(points.length===1?' is':'s are')+' available — waiting for a second distinct snapshot.');
+  if(points.length>=1)plot(slot,points,key,label);
+  else slot.textContent=key==='spread'?'Market Closed — Live bid/ask unavailable':'No '+label.toLowerCase()+' observations collected yet.';
  });
- status(h,'Contract research: '+(history.points||[]).length+' collected observations. Snapshots are not OHLC candles; source: '+(history.persistent?'WordPress MySQL (persistent)':'Render session (temporary)')+'.');
+ status(h,'Contract research: '+(history.points||[]).length+' collected observations. Snapshots are not OHLC candles; source: '+(history.source||'provider/session')+'.');
 }catch(error){historical.forEach(slot=>{if(slot)slot.textContent='Historical observations unavailable: '+error.message})}
 research.scrollIntoView({block:'start',behavior:'smooth'})});body.append(tr)}}if(unsupportedOptionPattern)status(h,pattern+' requires previous option-chain snapshots; unavailable from current snapshot.');else if(!rows.length)status(h,'No contracts match all selected filters. Relax the OI, volume, IV or spread filters, or verify that the provider supplied valid bid/ask quotes.');else status(h,rows.length+' contracts match selected filters · '+j.symbol+' · '+j.expiry+' · NSE snapshot. Historical contract charts require timestamped snapshots.');
 // Select an actually displayed liquid contract after every successful scan.
