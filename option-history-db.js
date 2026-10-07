@@ -1,6 +1,6 @@
 'use strict';
 // Authenticated WordPress REST bridge; never log the shared secret.
-const base=process.env.SP_HISTORY_URL?.replace(/\\/$/,'');
+const base=process.env.SP_HISTORY_URL?.replace(/\/$/,'');
 const key=process.env.SP_HISTORY_KEY;
 const enabled=()=>!!(base&&key);
 
@@ -10,7 +10,7 @@ function endpointCandidates(){
   const u=new URL(base);
   if(u.pathname.includes('/wp-json/')){
    const restPath=u.pathname.split('/wp-json/')[1]||'';
-   const root=u.origin+u.pathname.split('/wp-json/')[0].replace(/\\/$/,'');
+   const root=u.origin+u.pathname.split('/wp-json/')[0].replace(/\/$/,'');
    urls.push(root+'/index.php?rest_route=/'+restPath);
   }
  }catch{}
