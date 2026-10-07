@@ -4,7 +4,7 @@ const optionDb=require('./option-history-db');
 const original=express.application.use;
 const num=v=>v==null||v===''?null:Number.isFinite(Number(v))?Number(v):null;
 async function history(symbol,interval='15m',range='5d'){
- const aliases={NIFTY:'^NSEI',BANKNIFTY:'^NSEBANK',FINNIFTY:'^CNXFIN',SENSEX:'^BSESN'};
+ const aliases={NIFTY:'^NSEI',BANKNIFTY:'^NSEBANK',FINNIFTY:'^CNXFIN',SENSEX:'^BSESN',NIFTY100:'^CNX100',NIFTYIT:'^CNXIT'};
  const ticker=aliases[symbol]||symbol+'.NS';
  const url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(ticker)+'?interval='+interval+'&range='+range;
  const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'},signal:AbortSignal.timeout(12000)});
@@ -244,8 +244,7 @@ async function correlationLab(q){
  const parts=String(q.symbols||'').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);
  const a=parts[0],b=parts[1],benchmark=parts[2]||'NIFTY',window=Math.max(20,Math.min(252,Number(q.window)||60));
  if(!a||!b||!validSymbol(a)||!validSymbol(b))throw Error('Invalid correlation symbols');
- const aliases={NIFTY:'^NSEI',NIFTY100:'^CNX100',NIFTYIT:'^CNXIT'};
- const load=async symbol=>{const ticker=aliases[symbol]||symbol+'.NS';const d=await history(ticker,'1d','2y');return d.candles};
+ const load=async symbol=>history(symbol,'1d','2y').then(d=>d.candles);
  const [aa,bb,mm]=await Promise.all([load(a),load(b),load(benchmark)]);
  const map=rows=>new Map(rows.map(x=>[new Date(x.t).toISOString().slice(0,10),x]));
  const ma=map(aa),mb=map(bb),mc=map(mm),dates=[...ma.keys()].filter(k=>mb.has(k)&&mc.has(k)).sort();
