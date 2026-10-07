@@ -1322,7 +1322,7 @@ function init(){
  select.style.display='none';
  field.style.position='relative';
  select.parentNode.insertBefore(wrap,select);
- let timer=null,controller=null;
+ let timer=null,searchRequestId=0;
  function choose(item){
   const symbol=String(item?.symbol||'').trim().toUpperCase();
   if(!symbol)return;
@@ -1360,15 +1360,17 @@ function init(){
   const q=input.value.trim();
   menu.replaceChildren();
   if(!q){menu.style.display='none';return;}
+  const requestId=++searchRequestId;
   timer=setTimeout(async()=>{
-   if(controller)controller.abort();
-   controller=new AbortController();
    try{
-    const r=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store',signal:controller.signal});
+    const r=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store'});
     const j=await r.json();
+    if(requestId!==searchRequestId)return;
     if(!r.ok||j?.success===false)throw Error(j?.error||'Search unavailable');
     render(j.results||[]);
-   }catch(e){if(e.name!=='AbortError')menu.style.display='none';}
+   }catch(e){
+    if(requestId===searchRequestId)menu.style.display='none';
+   }
   },180);
  });
  input.addEventListener('keydown',e=>{
