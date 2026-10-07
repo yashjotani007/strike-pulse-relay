@@ -894,8 +894,9 @@ function init(){
  const title=(host,text)=>{
    if(!host)return;
    let h=host.querySelector(':scope > .sp-chart-title');
-   if(!h){h=document.createElement('h3');h.className='sp-chart-title';h.style.cssText='margin:0 0 10px;color:#243447;font-size:14px;font-weight:700;line-height:1.35';host.prepend(h);}
+   if(!h){h=document.createElement('h3');h.className='sp-chart-title';host.prepend(h);}
    h.textContent=text;
+   h.style.cssText='display:block!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:10!important;margin:0 0 10px!important;padding:0!important;color:#243447!important;font-size:14px!important;font-weight:700!important;line-height:1.35!important;text-align:left!important;';
  };
  const gridTitles={
   '#option-scanner .sp-chart-grid':['Premium Observations','Open Interest Observations','IV Observations','Bid-Ask Spread History'],
@@ -918,6 +919,7 @@ function init(){
  }
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,180));else setTimeout(init,180);
+setInterval(init,1000);
 })();
 
 
