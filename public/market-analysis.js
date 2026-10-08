@@ -1396,7 +1396,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 'use strict';
 const BASE='https://strike-pulse-relay.onrender.com';
 function init(){
- const root=document.querySelector('.sp-analysis');
+ const root=document.querySelector('.sp-terminal') || document.querySelector('.sp-analysis');
  const input=root?.querySelector('#research-symbol');
  const menu=root?.querySelector('#research-suggestions');
  const search=root?.querySelector('#research-search');
