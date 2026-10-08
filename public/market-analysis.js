@@ -1490,3 +1490,120 @@ function repair(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,250));else setTimeout(repair,250);
 setInterval(repair,1000);
 })();
+
+
+/* =========================================================
+   STRIKE PULSE — CURRENT HTML COMPATIBILITY BRIDGE
+   Matches the exact Market Analysis HTML supplied for the page.
+   ========================================================= */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+function boot(){
+  const root=document.querySelector('.sp-terminal');
+  if(!root || root.dataset.spCurrentHtmlBridge==='1') return;
+  root.dataset.spCurrentHtmlBridge='1';
+
+  const $=s=>root.querySelector(s);
+  const $$=s=>[...root.querySelectorAll(s)];
+  const val=id=>($(id)?.value||'').trim();
+  const set=(id,v)=>{const e=$('#'+id);if(e)e.textContent=v==null||v===''?'—':String(v)};
+  const msg=(section,text)=>{
+    if(!section)return;
+    let e=section.querySelector('.sp-current-status');
+    if(!e){e=document.createElement('p');e.className='sp-current-status';e.style.cssText='margin:10px 0;padding:9px 12px;border:1px solid #dbe6f5;border-radius:8px;background:#f7faff;color:#35516f;font-size:12px';section.querySelector('.sp-section-header')?.append(e)}
+    e.textContent=text;
+  };
+  const api=async(path,params={})=>{
+    const u=new URL(BASE+path);
+    Object.entries(params).forEach(([k,v])=>{if(v!==''&&v!=null&&v!==undefined)u.searchParams.set(k,v)});
+    const r=await fetch(u,{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.success===false)throw Error(j.error||('HTTP '+r.status));
+    return j;
+  };
+  const selected=()=>String($('#research-symbol')?.dataset.selectedSymbol||'').trim().toUpperCase();
+  const markSelected=s=>{
+    const symbol=String(s||'').trim().toUpperCase();
+    if(!symbol)return;
+    window.__spHasUserSelectedSymbol=true;
+    window.__spSelectedSymbols=[symbol];
+    const top=$('#research-symbol'); if(top){top.value=symbol;top.dataset.selectedSymbol=symbol}
+    ['#chart-symbol','#volume-symbol','#backtest-symbol','#statistical-symbol','#correlation-stock-a'].forEach(sel=>{const e=$(sel);if(e&&!e.value)e.value=symbol});
+  };
+
+  async function loadChart(symbol){
+    symbol=String(symbol||selected()||'').trim().toUpperCase();
+    if(!symbol){alert('Please select an NSE stock from the search suggestions first.');return}
+    markSelected(symbol);
+    const tf=val('#research-timeframe')||'15m';
+    const interval={ '5m':'5m','15m':'15m','1h':'60m','1D':'1d','1W':'1wk'}[tf]||'15m';
+    const range=(interval==='1d'||interval==='1wk')?'1y':'5d';
+    const box=$('#price-chart');
+    const title=$('#chart-title');
+    const status=$('#chart-data-status');
+    if(title)title.textContent=symbol+' · '+tf;
+    if(status)status.textContent='Loading…';
+    try{
+      const j=await api('/api/analysis/chart',{symbol,interval,range});
+      const candles=Array.isArray(j.candles)?j.candles:[];
+      box?.replaceChildren();
+      if(!candles.length){box.textContent='No historical candles available.';if(status)status.textContent='No data';return}
+      const ns='http://www.w3.org/2000/svg',svg=(t,a={})=>{const e=document.createElementNS(ns,t);Object.entries(a).forEach(([k,v])=>e.setAttribute(k,String(v)));return e};
+      const W=900,H=390,L=55,R=18,T=18,B=30,hi=Math.max(...candles.map(x=>Number(x.h))),lo=Math.min(...candles.map(x=>Number(x.l))),n=candles.length;
+      const x=i=>L+i*(W-L-R)/Math.max(1,n-1),y=v=>H-B-(v-lo)/(hi-lo||1)*(H-T-B);
+      const g=svg('svg',{viewBox:'0 0 900 390',role:'img','aria-label':symbol+' historical price chart'});g.style.cssText='width:100%;height:auto;display:block;background:#fff';
+      candles.forEach((c,i)=>{const o=Number(c.o),h=Number(c.h),l=Number(c.l),cl=Number(c.c),up=cl>=o,xx=x(i),yyO=y(o),yyC=y(cl),yyH=y(h),yyL=y(l);g.append(svg('line',{x1:xx,y1:yyH,x2:xx,y2:yyL,stroke:up?'#16a34a':'#dc3545','stroke-width':1}));const w=Math.max(1,(W-L-R)/n*.65);g.append(svg('rect',{x:xx-w/2,y:Math.min(yyO,yyC),width:w,height:Math.max(1,Math.abs(yyC-yyO)),fill:up?'#16a34a':'#dc3545'}))});
+      for(let i=0;i<=4;i++){const p=lo+(hi-lo)*i/4,yy=y(p),t=svg('text',{x:L-7,y:yy+4,'text-anchor':'end',fill:'#8293ad','font-size':11});t.textContent=p.toLocaleString('en-IN',{maximumFractionDigits:2});g.append(t)}
+      box?.append(g);
+      set('technical-rsi',j.rsi??'—');set('technical-macd',j.macd??'—');set('technical-adx',j.adx??'—');
+      set('data-source',j.source||'Provider');set('data-last-update',j.updated||j.lastUpdate||'—');set('data-bars',candles.length);set('data-missing',j.missingBars??0);
+      set('data-market-status',j.marketStatus||'—');
+      if(status)status.textContent=candles.length+' candles · '+(j.source||'provider');
+      msg($('#technical-analysis'),symbol+' loaded successfully.');
+    }catch(e){if(status)status.textContent='Unavailable';msg($('#technical-analysis'),'Chart unavailable: '+e.message)}
+  }
+
+  $('#research-search')?.addEventListener('click',()=>loadChart(selected()||val('#research-symbol')));
+  $('#research-symbol')?.addEventListener('sp-symbol-selected',e=>loadChart(e.detail?.symbol||selected()));
+  root.addEventListener('sp-symbol-selected',e=>{
+    const s=e.detail?.symbol||selected();
+    if(s)markSelected(s);
+  });
+  $('#research-timeframe')?.addEventListener('change',()=>{if(selected())loadChart(selected())});
+
+  $('#run-stock-scan')?.addEventListener('click',async e=>{
+    e.preventDefault();
+    const section=$('#stock-scanner'),body=$('#stock-results tbody');
+    try{
+      msg(section,'Loading stock scan…');
+      const p={universe:val('#stock-universe'),minPrice:val('#minimum-price'),rvol:val('#relative-volume'),rsiMin:val('#rsi-minimum'),rsiMax:val('#rsi-maximum')};
+      const j=await api('/api/analysis/stock-scanner',p),rows=j.results||[];
+      body?.replaceChildren();
+      rows.forEach(x=>{const tr=document.createElement('tr');[x.symbol,x.price==null?'—':Number(x.price).toFixed(2),x.change==null?'—':Number(x.change).toFixed(2)+'%',x.rsi==null?'—':Number(x.rsi).toFixed(1),x.adx==null?'—':Number(x.adx).toFixed(1),x.rvol==null?'—':Number(x.rvol).toFixed(2)+'x',x.vwap==null?'—':Number(x.vwap).toFixed(2),x.trend||'—',x.structure||'—','Research'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});body?.append(tr)});
+      msg(section,rows.length+' result(s) · '+(j.coverage||'provider data'));
+    }catch(e){msg(section,'Stock scan unavailable: '+e.message)}
+  });
+  $('#reset-stock-scan')?.addEventListener('click',()=>{$$('#stock-results tbody tr').forEach(x=>x.remove());const b=$('#stock-results tbody');if(b)b.innerHTML='<tr><td colspan="10">Run Stock Scan to load research data.</td></tr>';['#minimum-price','#relative-volume','#rsi-minimum','#rsi-maximum'].forEach(x=>{const e=$(x);if(e)e.value=''});$('#stock-trend')&&( $('#stock-trend').selectedIndex=0);$('#stock-volume-condition')&&( $('#stock-volume-condition').selectedIndex=0);$('#stock-structure')&&( $('#stock-structure').selectedIndex=0);msg($('#stock-scanner'),'Filters reset.')});
+  $('#export-stock-csv')?.addEventListener('click',()=>{const rows=$$('#stock-results tr').map(tr=>$$('th,td',tr).map(td=>'"'+td.textContent.replace(/"/g,'""')+'"').join(','));const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\\r\\n')],{type:'text/csv'}));a.download='strike-pulse-stock-scan.csv';a.click()});
+
+  $('#analyze-volume')?.addEventListener('click',async()=>{
+    const s=val('#volume-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}
+    markSelected(s);const sec=$('#volume-analysis');try{msg(sec,'Loading volume analysis…');const j=await api('/api/analysis/volume-lab',{symbol:s,sessions:parseInt(val('#volume-period'))||20});const x=j.data||j;set('volume-current',x.currentVolume??j.currentVolume);set('volume-average',x.averageVolume??j.averageVolume);set('volume-relative',x.relativeVolume??j.relativeVolume);set('volume-change',x.volumeChange??j.volumeChange);set('volume-up',x.upVolume??j.upVolume);set('volume-down',x.downVolume??j.downVolume);msg(sec,s+' volume analysis loaded.')}catch(e){msg(sec,'Volume analysis unavailable: '+e.message)}});
+  $('#run-option-scan')?.addEventListener('click',async()=>{
+    const sec=$('#options');try{msg(sec,'Loading option chain…');const j=await api('/api/analysis/option-scanner',{symbol:val('#option-underlying'),type:val('#option-type'),moneyness:val('#moneyness')});const rows=j.results||[];const body=$('#option-chain tbody');body?.replaceChildren();rows.slice(0,100).forEach(x=>{const tr=document.createElement('tr');[x.oi??'—',x.oiChange??x.oiPct??'—',x.volume??'—',x.iv??'—',x.ltp??'—',x.bidAsk??x.spread??'—',x.strike??'—',x.bidAsk??x.spread??'—',x.ltp??'—',x.iv??'—',x.volume??'—',x.oiChange??x.oiPct??'—',x.oi??'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});body?.append(tr)});set('option-underlying-price',j.underlyingPrice??j.spot??'—');set('option-atm',j.atmStrike??'—');set('option-call-oi',j.callOI??'—');set('option-put-oi',j.putOI??'—');set('option-pcr',j.pcr??'—');set('option-atm-iv',j.atmIV??'—');set('option-dte',j.dte??'—');set('option-expected-move',j.expectedMove??'—');msg(sec,rows.length+' option contract(s) loaded.') }catch(e){msg(sec,'Option analysis unavailable: '+e.message)}});
+  $('#calculate-correlation')?.addEventListener('click',async()=>{
+    const a=val('#correlation-stock-a'),b=val('#correlation-stock-b');if(!a||!b){alert('Enter both instruments first.');return}try{const j=await api('/api/analysis/correlation',{symbolA:a,symbolB:b,benchmark:val('#correlation-benchmark'),sessions:parseInt(val('#correlation-window'))||20});set('correlation-value',j.correlation??j.value);set('rolling-correlation',j.rollingCorrelation);set('correlation-beta',j.beta);set('spread-zscore',j.spreadZscore);set('tracking-error',j.trackingError);set('relative-return',j.relativeReturn);msg($('#correlation'),a+' vs '+b+' calculated.')}catch(e){msg($('#correlation'),'Correlation unavailable: '+e.message)}});
+  $('#run-backtest')?.addEventListener('click',async()=>{
+    const s=val('#backtest-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}markSelected(s);try{const j=await api('/api/analysis/backtest',{symbol:s});set('backtest-pnl',j.netPnl??j.pnl);set('backtest-win-rate',j.winRate);set('backtest-profit-factor',j.profitFactor);set('backtest-expectancy',j.expectancy);set('backtest-drawdown',j.maxDrawdown??j.drawdown);set('backtest-sharpe',j.sharpe);set('backtest-sortino',j.sortino);set('backtest-trades',j.totalTrades??j.trades);msg($('#backtesting'),s+' backtest completed.')}catch(e){msg($('#backtesting'),'Backtest unavailable: '+e.message)}});
+  $('#calculate-risk')?.addEventListener('click',()=>{
+    const cap=Number(val('#risk-capital')),risk=Number(val('#risk-percent')),entry=Number(val('#risk-entry')),stop=Number(val('#risk-stop')),target=Number(val('#risk-target'));
+    if(!(cap>0&&risk>0&&entry>0&&stop>0)){msg($('#risk'),'Enter valid capital, risk, entry and stop values.');return}
+    const amount=cap*risk/100,distance=Math.abs(entry-stop),size=distance?Math.floor(amount/distance):0,reward=Math.abs(target-entry)*size,ratio=amount?reward/amount:0;
+    set('risk-amount',amount.toFixed(2));set('risk-distance',distance.toFixed(2));set('risk-position-size',size);set('risk-reward',reward.toFixed(2));set('risk-ratio',ratio.toFixed(2));msg($('#risk'),'Risk calculation completed locally for research use.');
+  });
+  $('#analyze-historical-pattern')?.addEventListener('click',async()=>{
+    const s=val('#statistical-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}markSelected(s);try{const j=await api('/api/analysis/statistics',{symbol:s,sessions:60});set('stat-occurrences',j.occurrences);set('stat-positive-frequency',j.positiveRatePct??j.positiveFrequency);set('stat-mean-return',j.meanReturn);set('stat-median-return',j.medianReturn);set('stat-standard-deviation',j.standardDeviation??j.stdDev);set('stat-false-breakout',j.falseBreakoutRate);msg($('#statistics'),s+' historical statistics loaded.')}catch(e){msg($('#statistics'),'Statistics unavailable: '+e.message)}});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+})();
