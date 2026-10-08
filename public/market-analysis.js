@@ -1391,6 +1391,87 @@ function init(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,220));else setTimeout(init,220);
 })();
 
+/* Current Market Analysis HTML autocomplete repair — uses #research-symbol and #research-suggestions. */
+(function(){
+'use strict';
+const BASE='https://strike-pulse-relay.onrender.com';
+function init(){
+ const root=document.querySelector('.sp-analysis');
+ const input=root?.querySelector('#research-symbol');
+ const menu=root?.querySelector('#research-suggestions');
+ const search=root?.querySelector('#research-search');
+ if(!root||!input||!menu||input.dataset.spResearchAutocomplete)return;
+ input.dataset.spResearchAutocomplete='1';
+ let timer=null,requestId=0,selectedSymbol='';
+ menu.setAttribute('role','listbox');
+ menu.style.position='absolute';
+ menu.style.zIndex='99999';
+
+ function hide(){menu.replaceChildren();menu.style.display='none';}
+ function select(item){
+   selectedSymbol=String(item?.symbol||'').trim().toUpperCase();
+   if(!selectedSymbol)return;
+   input.value=selectedSymbol;
+   input.dataset.selectedSymbol=selectedSymbol;
+   menu.style.display='none';
+   root.dispatchEvent(new CustomEvent('sp-symbol-selected',{detail:item}));
+   input.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ function render(items){
+   menu.replaceChildren();
+   for(const item of Array.isArray(items)?items:[]){
+     const symbol=String(item?.symbol||'').trim().toUpperCase();
+     if(!symbol)continue;
+     const b=document.createElement('button');
+     b.type='button';
+     b.setAttribute('role','option');
+     b.textContent=symbol+(item?.name?' — '+String(item.name).trim():'');
+     b.style.cssText='display:block;width:100%;box-sizing:border-box;padding:11px 13px;text-align:left;border:0;border-bottom:1px solid #eef2f9;background:#fff;color:#243344;cursor:pointer;';
+     b.addEventListener('click',()=>select(item));
+     menu.appendChild(b);
+   }
+   menu.style.display=menu.children.length?'block':'none';
+ }
+ input.addEventListener('input',()=>{
+   selectedSymbol='';
+   delete input.dataset.selectedSymbol;
+   clearTimeout(timer);
+   const q=input.value.trim();
+   hide();
+   if(!q)return;
+   const id=++requestId;
+   timer=setTimeout(async()=>{
+     try{
+       const r=await fetch(BASE+'/api/stock-search?q='+encodeURIComponent(q),{cache:'no-store'});
+       const j=await r.json();
+       if(id!==requestId)return;
+       if(!r.ok||j?.success!==true)throw Error(j?.error||'Search unavailable');
+       render(j.results||[]);
+     }catch(e){
+       if(id===requestId)hide();
+       if(e.name!=='AbortError')console.warn('[SP SEARCH]',e.message);
+     }
+   },180);
+ });
+ input.addEventListener('keydown',e=>{
+   if(e.key==='Escape')hide();
+   if(e.key==='Enter'){
+     const first=menu.querySelector('button[role="option"]');
+     if(first){e.preventDefault();first.click();}
+   }
+ });
+ document.addEventListener('click',e=>{if(!input.closest('.sp-search-wrap')?.contains(e.target))hide();});
+ if(search){
+   search.addEventListener('click',()=>{
+     const symbol=(selectedSymbol||input.dataset.selectedSymbol||'').trim().toUpperCase();
+     if(symbol)input.value=symbol;
+   },true);
+ }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,120));
+else setTimeout(init,120);
+})();
+
 /* Final chart title visibility repair — keep title above the main chart. */
 (function(){
 'use strict';
