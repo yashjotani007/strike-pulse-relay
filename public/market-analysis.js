@@ -1536,7 +1536,7 @@ function boot(){
     symbol=String(symbol||selected()||'').trim().toUpperCase();
     if(!symbol){alert('Please select an NSE stock from the search suggestions first.');return}
     markSelected(symbol);
-    const tf=val('#research-timeframe')||'15m';
+    const tf=val('#chart-timeframe')||val('#research-timeframe')||'15m';
     const interval={ '5m':'5m','15m':'15m','1h':'60m','1D':'1d','1W':'1wk'}[tf]||'15m';
     const range=(interval==='1d'||interval==='1wk')?'1y':'5d';
     const box=$('#price-chart');
@@ -1571,13 +1571,15 @@ function boot(){
     if(s)markSelected(s);
   });
   $('#research-timeframe')?.addEventListener('change',()=>{if(selected())loadChart(selected())});
+  $('#chart-timeframe')?.addEventListener('change',()=>{if(selected())loadChart(selected())});
+  $('#chart-symbol')?.addEventListener('change',()=>{const s=val('#chart-symbol');if(s)loadChart(s)});
 
   $('#run-stock-scan')?.addEventListener('click',async e=>{
     e.preventDefault();
     const section=$('#stock-scanner'),body=$('#stock-results tbody');
     try{
       msg(section,'Loading stock scan…');
-      const p={universe:val('#stock-universe'),minPrice:val('#minimum-price'),rvol:val('#relative-volume'),rsiMin:val('#rsi-minimum'),rsiMax:val('#rsi-maximum')};
+      const p={universe:val('#stock-universe'),minPrice:val('#minimum-price'),rvol:val('#relative-volume'),rsiMin:val('#rsi-minimum'),rsiMax:val('#rsi-maximum'),trend:val('#stock-trend'),volumeCondition:val('#stock-volume-condition'),structure:val('#stock-structure')};
       const j=await api('/api/analysis/stock-scanner',p),rows=j.results||[];
       body?.replaceChildren();
       rows.forEach(x=>{const tr=document.createElement('tr');[x.symbol,x.price==null?'—':Number(x.price).toFixed(2),x.change==null?'—':Number(x.change).toFixed(2)+'%',x.rsi==null?'—':Number(x.rsi).toFixed(1),x.adx==null?'—':Number(x.adx).toFixed(1),x.rvol==null?'—':Number(x.rvol).toFixed(2)+'x',x.vwap==null?'—':Number(x.vwap).toFixed(2),x.trend||'—',x.structure||'—','Research'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});body?.append(tr)});
@@ -1591,11 +1593,11 @@ function boot(){
     const s=val('#volume-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}
     markSelected(s);const sec=$('#volume-analysis');try{msg(sec,'Loading volume analysis…');const j=await api('/api/analysis/volume-lab',{symbol:s,sessions:parseInt(val('#volume-period'))||20});const x=j.data||j;set('volume-current',x.currentVolume??j.currentVolume);set('volume-average',x.averageVolume??j.averageVolume);set('volume-relative',x.relativeVolume??j.relativeVolume);set('volume-change',x.volumeChange??j.volumeChange);set('volume-up',x.upVolume??j.upVolume);set('volume-down',x.downVolume??j.downVolume);msg(sec,s+' volume analysis loaded.')}catch(e){msg(sec,'Volume analysis unavailable: '+e.message)}});
   $('#run-option-scan')?.addEventListener('click',async()=>{
-    const sec=$('#options');try{msg(sec,'Loading option chain…');const j=await api('/api/analysis/option-scanner',{symbol:val('#option-underlying'),type:val('#option-type'),moneyness:val('#moneyness')});const rows=j.results||[];const body=$('#option-chain tbody');body?.replaceChildren();rows.slice(0,100).forEach(x=>{const tr=document.createElement('tr');[x.oi??'—',x.oiChange??x.oiPct??'—',x.volume??'—',x.iv??'—',x.ltp??'—',x.bidAsk??x.spread??'—',x.strike??'—',x.bidAsk??x.spread??'—',x.ltp??'—',x.iv??'—',x.volume??'—',x.oiChange??x.oiPct??'—',x.oi??'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});body?.append(tr)});set('option-underlying-price',j.underlyingPrice??j.spot??'—');set('option-atm',j.atmStrike??'—');set('option-call-oi',j.callOI??'—');set('option-put-oi',j.putOI??'—');set('option-pcr',j.pcr??'—');set('option-atm-iv',j.atmIV??'—');set('option-dte',j.dte??'—');set('option-expected-move',j.expectedMove??'—');msg(sec,rows.length+' option contract(s) loaded.') }catch(e){msg(sec,'Option analysis unavailable: '+e.message)}});
+    const sec=$('#options');try{msg(sec,'Loading option chain…');const j=await api('/api/analysis/option-scanner',{symbol:val('#option-underlying'),expiry:val('#option-expiry'),type:val('#option-type'),moneyness:val('#moneyness')});const rows=j.results||[];const body=$('#option-chain tbody');body?.replaceChildren();rows.slice(0,100).forEach(x=>{const tr=document.createElement('tr');[x.oi??'—',x.oiChange??x.oiPct??'—',x.volume??'—',x.iv??'—',x.ltp??'—',x.bidAsk??x.spread??'—',x.strike??'—',x.bidAsk??x.spread??'—',x.ltp??'—',x.iv??'—',x.volume??'—',x.oiChange??x.oiPct??'—',x.oi??'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});body?.append(tr)});set('option-underlying-price',j.underlyingPrice??j.spot??'—');set('option-atm',j.atmStrike??'—');set('option-call-oi',j.callOI??'—');set('option-put-oi',j.putOI??'—');set('option-pcr',j.pcr??'—');set('option-atm-iv',j.atmIV??'—');set('option-dte',j.dte??'—');set('option-expected-move',j.expectedMove??'—');msg(sec,rows.length+' option contract(s) loaded.') }catch(e){msg(sec,'Option analysis unavailable: '+e.message)}});
   $('#calculate-correlation')?.addEventListener('click',async()=>{
     const a=val('#correlation-stock-a'),b=val('#correlation-stock-b');if(!a||!b){alert('Enter both instruments first.');return}try{const j=await api('/api/analysis/correlation',{symbolA:a,symbolB:b,benchmark:val('#correlation-benchmark'),sessions:parseInt(val('#correlation-window'))||20});set('correlation-value',j.correlation??j.value);set('rolling-correlation',j.rollingCorrelation);set('correlation-beta',j.beta);set('spread-zscore',j.spreadZscore);set('tracking-error',j.trackingError);set('relative-return',j.relativeReturn);msg($('#correlation'),a+' vs '+b+' calculated.')}catch(e){msg($('#correlation'),'Correlation unavailable: '+e.message)}});
   $('#run-backtest')?.addEventListener('click',async()=>{
-    const s=val('#backtest-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}markSelected(s);try{const j=await api('/api/analysis/backtest',{symbol:s});set('backtest-pnl',j.netPnl??j.pnl);set('backtest-win-rate',j.winRate);set('backtest-profit-factor',j.profitFactor);set('backtest-expectancy',j.expectancy);set('backtest-drawdown',j.maxDrawdown??j.drawdown);set('backtest-sharpe',j.sharpe);set('backtest-sortino',j.sortino);set('backtest-trades',j.totalTrades??j.trades);msg($('#backtesting'),s+' backtest completed.')}catch(e){msg($('#backtesting'),'Backtest unavailable: '+e.message)}});
+    const s=val('#backtest-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}markSelected(s);try{const j=await api('/api/analysis/backtest',{symbol:s,strategy:val('#backtest-strategy'),timeframe:val('#backtest-timeframe'),capital:val('#backtest-capital'),risk:val('#backtest-risk')});set('backtest-pnl',j.netPnl??j.pnl);set('backtest-win-rate',j.winRate);set('backtest-profit-factor',j.profitFactor);set('backtest-expectancy',j.expectancy);set('backtest-drawdown',j.maxDrawdown??j.drawdown);set('backtest-sharpe',j.sharpe);set('backtest-sortino',j.sortino);set('backtest-trades',j.totalTrades??j.trades);msg($('#backtesting'),s+' backtest completed.')}catch(e){msg($('#backtesting'),'Backtest unavailable: '+e.message)}});
   $('#calculate-risk')?.addEventListener('click',()=>{
     const cap=Number(val('#risk-capital')),risk=Number(val('#risk-percent')),entry=Number(val('#risk-entry')),stop=Number(val('#risk-stop')),target=Number(val('#risk-target'));
     if(!(cap>0&&risk>0&&entry>0&&stop>0)){msg($('#risk'),'Enter valid capital, risk, entry and stop values.');return}
@@ -1603,7 +1605,7 @@ function boot(){
     set('risk-amount',amount.toFixed(2));set('risk-distance',distance.toFixed(2));set('risk-position-size',size);set('risk-reward',reward.toFixed(2));set('risk-ratio',ratio.toFixed(2));msg($('#risk'),'Risk calculation completed locally for research use.');
   });
   $('#analyze-historical-pattern')?.addEventListener('click',async()=>{
-    const s=val('#statistical-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}markSelected(s);try{const j=await api('/api/analysis/statistics',{symbol:s,sessions:60});set('stat-occurrences',j.occurrences);set('stat-positive-frequency',j.positiveRatePct??j.positiveFrequency);set('stat-mean-return',j.meanReturn);set('stat-median-return',j.medianReturn);set('stat-standard-deviation',j.standardDeviation??j.stdDev);set('stat-false-breakout',j.falseBreakoutRate);msg($('#statistics'),s+' historical statistics loaded.')}catch(e){msg($('#statistics'),'Statistics unavailable: '+e.message)}});
+    const s=val('#statistical-symbol')||selected();if(!s){alert('Select an NSE stock first.');return}markSelected(s);try{const j=await api('/api/analysis/statistics',{symbol:s,pattern:val('#statistical-pattern'),forwardWindow:val('#forward-window'),sessions:parseInt(val('#forward-window'))||60});set('stat-occurrences',j.occurrences);set('stat-positive-frequency',j.positiveRatePct??j.positiveFrequency);set('stat-mean-return',j.meanReturn);set('stat-median-return',j.medianReturn);set('stat-standard-deviation',j.standardDeviation??j.stdDev);set('stat-false-breakout',j.falseBreakoutRate);msg($('#statistics'),s+' historical statistics loaded.')}catch(e){msg($('#statistics'),'Statistics unavailable: '+e.message)}});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
