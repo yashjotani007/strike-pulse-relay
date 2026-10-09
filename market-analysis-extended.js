@@ -21,9 +21,9 @@ async function correlate(q){
   }
   return candles(key,'2y','1d');
  }
- const symbols=String(q.symbols||'RELIANCE,TCS,NIFTY').toUpperCase().split(',').map(s=>s.trim()).filter(Boolean).slice(0,3);
+ const symbols=String(q.symbols||[q.symbolA,q.symbolB,q.benchmark||'NIFTY'].filter(Boolean).join(',')||'RELIANCE,TCS,NIFTY').toUpperCase().split(',').map(s=>s.trim()).filter(Boolean).slice(0,3);
  if(symbols.length<3)throw Error('Select two instruments and a benchmark');
- const requested=Math.max(20,Math.min(252,+q.window||60));
+ const requested=Math.max(20,Math.min(252,+(q.window||q.sessions)||60));
  const data=[];
  for(const symbol of symbols){
   let lastErr=null;
@@ -51,7 +51,7 @@ async function backtest(q){const symbol=String(q.symbol||'RELIANCE').toUpperCase
 // Historical volume research and descriptive statistics; daily adjusted provider availability may vary.
 async function volumeLab(q){
  const symbol=String(q.symbol||'TCS').trim().toUpperCase();
- const lookback=Math.max(10,Math.min(120,Number(q.lookback)||20));
+ const lookback=Math.max(10,Math.min(120,Number(q.lookback||q.sessions)||20));
  const rows=(await candles(symbol,'1y','1d')).filter(x=>x.v!=null&&x.v>=0);
  if(rows.length<lookback+2)throw Error('Insufficient historical volume data');
  const latest=rows.at(-1),history=rows.slice(-lookback-1,-1),avgVolume=history.reduce((a,x)=>a+x.v,0)/history.length;
