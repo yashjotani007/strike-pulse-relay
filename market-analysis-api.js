@@ -194,17 +194,18 @@ async function stockScan(q){
   target=[...new Set(await nseIndexConstituents(universe))];
   coverage=universe+' · '+target.length+' constituents';
  }else if(selected){target=[selected];coverage='Selected NSE symbol';}
+ else if(universe==='SELECTED-SYMBOL')throw Error('Select a stock from verified search results before scanning.');
  else{target=sample;coverage='20 selected NSE stocks; choose an NSE universe for constituent scanning';}
  const settled=[];
  const limit=8;
  for(let i=0;i<target.length;i+=limit){
   const batch=target.slice(i,i+limit);
-  const results=await Promise.allSettled(batch.map(async symbol=>({symbol,...metrics((await history(symbol,q.interval||'15m',q.range||'5d')).candles)})));
+  const results=await Promise.allSettled(batch.map(async symbol=>{const m=metrics((await history(symbol,q.interval||'15m',q.range||'5d')).candles);const trend=m.ema9==null||m.ema21==null?'unknown':m.ema9>m.ema21?'bullish':m.ema9<m.ema21?'bearish':'neutral';const structure=m.high20!=null&&m.price>m.high20?'breakout':m.low20!=null&&m.price<m.low20?'breakdown':'range';const volumeCondition=m.rvol==null?'unknown':m.rvol>=1.5?'high volume':m.rvol>=1?'above average':'low volume';return {symbol,...m,trend,structure,volumeCondition}}));
   settled.push(...results);
  }
  let rows=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
  const min=num(q.minPrice),rv=num(q.rvol),lo=num(q.rsiMin),hi=num(q.rsiMax);
- rows=rows.filter(x=>(min==null||x.price>=min)&&(rv==null||x.rvol!=null&&x.rvol>=rv)&&(lo==null||x.rsi!=null&&x.rsi>=lo)&&(hi==null||x.rsi!=null&&x.rsi<=hi));
+ const trend=String(q.trend||'').trim().toLowerCase(),volumeCondition=String(q.volumeCondition||'').trim().toLowerCase(),structure=String(q.structure||'').trim().toLowerCase();const active=v=>v!==''&&!['all','any','none','no filter','-'].includes(v);rows=rows.filter(x=>{if(!((min==null||x.price>=min)&&(rv==null||x.rvol!=null&&x.rvol>=rv)&&(lo==null||x.rsi!=null&&x.rsi>=lo)&&(hi==null||x.rsi!=null&&x.rsi<=hi)))return false;if(active(trend)&&!x.trend.includes(trend)&&!(trend.includes('up')&&x.trend==='bullish')&&!(trend.includes('down')&&x.trend==='bearish'))return false;if(active(volumeCondition)&&!x.volumeCondition.includes(volumeCondition.replace(/[_-]/g,' ')))return false;if(active(structure)&&!x.structure.includes(structure.replace(/[_-]/g,' ')))return false;return true;});
  return {success:true,results:rows,coverage,requested:target.length,failed:settled.filter(x=>x.status==='rejected').length,updated:new Date().toISOString()};
 }
 // Ephemeral, bounded research snapshots. Never present these as exchange historical candles.
