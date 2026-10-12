@@ -81,6 +81,23 @@
     const cards=all('.sp-metric',panel);
     cards.forEach((card,i)=>{ if(values[i]===undefined)return; const strong=card.querySelector('strong'); if(strong)strong.textContent=values[i]; });
   }
+  function metricByLabel(panel,label,value) {
+    const card=all('.sp-metric',panel).find(c=>new RegExp(label,'i').test(c.querySelector('span,.sp-metric-label,label')?.textContent||c.textContent||''));
+    const strong=card?.querySelector('strong'); if(strong)strong.textContent=value;
+  }
+  function rsiSeries(candles,period=14) {
+    const out=[]; let gains=0,losses=0;
+    for(let i=1;i<candles.length;i++){const delta=candles[i].c-candles[i-1].c;
+      if(i<=period){gains+=Math.max(delta,0);losses+=Math.max(-delta,0);if(i<period)continue;if(i===period){gains/=period;losses/=period;}}
+      else {gains=(gains*(period-1)+Math.max(delta,0))/period;losses=(losses*(period-1)+Math.max(-delta,0))/period;}
+      out.push({t:candles[i].t,c:losses===0?100:100-100/(1+gains/losses)});
+    } return out;
+  }
+  function atrValue(candles,period=14) {
+    if(candles.length<period+1)return null; const tr=[];
+    for(let i=1;i<candles.length;i++)tr.push(Math.max(candles[i].h-candles[i].l,Math.abs(candles[i].h-candles[i-1].c),Math.abs(candles[i].l-candles[i-1].c)));
+    const tail=tr.slice(-period);return tail.reduce((a,b)=>a+b,0)/tail.length;
+  }
   function drawLine(host, points, key='c', label='Price') {
     if(!host)return;
     const clean=(points||[]).map(p=>({x:Number(p.t),y:num(p[key])})).filter(p=>p.y!=null);
@@ -135,6 +152,15 @@
       const selectedType=val('option-type');
       const data=await api('/api/analysis/option-scanner',{symbol,type:selectedType==='Call Options Only'||selectedType==='CE'?'CE':selectedType==='Put Options Only'||selectedType==='PE'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
       lastOptionRows=data.results||[];
+      const strikes=lastOptionRows.map(r=>num(r.strike)).filter(v=>v!=null);
+      const spot=num(data.underlyingPrice??data.spot??data.underlying?.price);
+      const atm=strikes.length?(spot==null?null:strikes.reduce((best,v)=>Math.abs(v-spot)<Math.abs(best-spot)?v:best,strikes[0])):null;
+      const ceOi=lastOptionRows.filter(r=>String(r.type).toUpperCase()==='CE').reduce((sum,r)=>sum+(num(r.oi)||0),0);
+      const peOi=lastOptionRows.filter(r=>String(r.type).toUpperCase()==='PE').reduce((sum,r)=>sum+(num(r.oi)||0),0);
+      const ivs=lastOptionRows.map(r=>num(r.iv)).filter(v=>v!=null&&v>=0&&v<=300);
+      metricByLabel(sec,'ATM Strike',atm==null?'—':fmt(atm,0));
+      metricByLabel(sec,'Put/Call Ratio',ceOi>0?fmt(peOi/ceOi,2):'—');
+      metricByLabel(sec,'Implied Volatility',ivs.length?fmt(ivs.reduce((a,b)=>a+b,0)/ivs.length,1)+'%':'—');
       const table=sec.querySelector('.sp-table');
       setTable(table,['Underlying','Strike','Type','Expiry','LTP','OI','OI Change','Volume','IV','Pattern','Research'],lastOptionRows.map(r=>[
         esc(r.symbol),esc(fmt(r.strike,0)),esc(r.type),esc(r.expiry),esc(fmt(r.ltp)),esc(fmt(r.oi,0)),esc(pct(r.oiPct)),esc(fmt(r.volume,0)),esc(r.iv==null?'—':fmt(r.iv,1)+'%'),esc(r.oiPct>=15?'OI Spike':r.volume>=100000?'High Volume':'Observed'),'<a class="sp-text-link" href="#contract-research" data-contract="'+esc(JSON.stringify({symbol:r.symbol,strike:r.strike,type:r.type,expiry:r.expiry}))+'">Analyze</a>'
@@ -146,7 +172,9 @@
     const sec=section('chart-lab'); const rawSymbol=(val('chart-symbol')||'RELIANCE').trim().toUpperCase().replace(/\.NS$/,''); const symbol=rawSymbol==='RELIENCE'?'RELIANCE':rawSymbol;
     msg(sec,'Loading '+symbol+' historical candles.');
     try {
-      const tf=val('chart-timeframe')||'15m';
+      const rawTf=val('chart-timeframe')||'15m';
+      const tfMap={'1 minute':'1m','5 minutes':'5m','15 minutes':'15m','30 minutes':'30m','1 hour':'1h','daily':'1D','weekly':'1W','5m':'5m','15m':'15m','30m':'30m','60m':'1h','1d':'1D','1wk':'1W'};
+      const tf=tfMap[rawTf.toLowerCase()]||rawTf;
       const data=await api('/api/analysis/chart',{symbol,timeframe:tf});
       lastChart=data; const candles=data.candles||[];
       const heading=sec.querySelector('.sp-main-chart .sp-chart-heading h4');
@@ -155,10 +183,13 @@
       if(main)drawLine(main,candles,'c',symbol+' historical close price');
       const chartBoxes=all('.sp-chart-box',sec);
       const rsiBox=chartBoxes.find(x=>/Relative Strength Index/i.test(x.innerText));
-      if(rsiBox)drawLine(rsiBox.querySelector('.sp-chart-placeholder'),candles.map((c,i)=>({t:c.t,c:data.metrics?.rsi??null})).filter(x=>x.c!=null),'c','RSI');
+      if(rsiBox)drawLine(rsiBox.querySelector('.sp-chart-placeholder'),rsiSeries(candles),'c','RSI');
       const macdBox=chartBoxes.find(x=>/^MACD/m.test(x.innerText));
       if(macdBox)drawLine(macdBox.querySelector('.sp-chart-placeholder'),candles.map(c=>({t:c.t,c:c.c})).slice(-60),'c','MACD price proxy');
       const metrics=data.metrics||{};
+      metricByLabel(sec,'Trend',candles.length>1?(candles.at(-1).c>=candles.at(-2).c?'Up':'Down'):'—');
+      metricByLabel(sec,'RSI',metrics.rsi==null?(rsiSeries(candles).at(-1)?.c==null?'—':fmt(rsiSeries(candles).at(-1).c,1)):fmt(metrics.rsi,1));
+      metricByLabel(sec,'ATR',fmt(atrValue(candles),2));
       msg(sec,'Loaded '+candles.length+' candles from '+(data.source||'provider')+'. Last close ₹'+fmt(metrics.price??candles.at(-1)?.c)+', change '+pct(metrics.change)+'.');
       setStatus('LIVE HISTORY LOADED',true);
     } catch(e) { msg(sec,'Chart request failed: '+e.message,true); }
