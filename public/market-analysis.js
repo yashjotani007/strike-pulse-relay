@@ -82,9 +82,12 @@
     cards.forEach((card,i)=>{ if(values[i]===undefined)return; const strong=card.querySelector('strong'); if(strong)strong.textContent=values[i]; });
   }
   function metricByLabel(panel,label,value) {
-    const card=all('.sp-metric',panel).find(c=>new RegExp(label,'i').test(c.querySelector('span,.sp-metric-label,label')?.textContent||c.textContent||''));
+    const card=all('.sp-metric,.sp-mini-metric',panel).find(c=>new RegExp(label,'i').test(c.querySelector('span,.sp-metric-label,label')?.textContent||c.textContent||''));
     const strong=card?.querySelector('strong'); if(strong)strong.textContent=value;
   }
+  function setText(id,value){const el=$(id);if(el)el.textContent=value==null?'—':String(value);}
+  function setTbody(id,headers,rows,empty='No data returned by provider.'){const body=$(id);if(!body)return;body.innerHTML=rows.length?rows.map(row=>'<tr>'+row.map(cell=>'<td>'+cell+'</td>').join('')+'</tr>').join(''):'<tr><td colspan="'+headers.length+'" class="sp-empty-cell">'+esc(empty)+'</td></tr>';}
+
   function rsiSeries(candles,period=14) {
     const out=[]; let gains=0,losses=0;
     for(let i=1;i<candles.length;i++){const delta=candles[i].c-candles[i-1].c;
@@ -112,13 +115,10 @@
     catch(e) { setStatus('DATA API UNAVAILABLE',false); msg(section('stock-scanner'),'Backend status check failed: '+e.message,true); }
   }
   function stockParams() {
-    const universe=val('stock-universe');
-    const symbol=universe==='All Available Stocks'?'':universe==='F&O Stocks'?'F&O':universe.replace('NIFTY ','NIFTY ');
-    const universeMap={'NIFTY 50':'NIFTY 50','NIFTY 100':'NIFTY 100','NIFTY 200':'NIFTY 200','NIFTY 500':'NIFTY 500','F&O Stocks':'ALL F&O STOCKS','All Available Stocks':'ALL NSE EQUITY STOCKS'};
-    const tf=val('stock-timeframe');
-    const intervals={'5 Minutes':'5m','15 Minutes':'15m','30 Minutes':'30m','1 Hour':'60m','Daily':'1d','Weekly':'1wk','5m':'5m','15m':'15m','30m':'30m','60m':'60m','1d':'1d','1wk':'1wk'};
-    const pattern=val('scan-pattern');
-    return {symbol:'',universe:universeMap[universe]||'',timeframe:tf,interval:intervals[tf]||'15m',pattern,direction:val('stock-direction'),minPrice:val('minimum-price'),rvol:val('relative-volume').replace('x','').replace('Any Volume',''),rsiMin:val('rsi-minimum'),rsiMax:val('rsi-maximum'),trend:val('stock-direction')==='Bullish Conditions'?'bullish':val('stock-direction')==='Bearish Conditions'?'bearish':'',structure:pattern==='Price Breakout'?'breakout':pattern==='Price Breakdown'?'breakdown':'',volumeCondition:pattern==='Volume Breakout'?'high volume':'',aboveVwap:checkedText('Above VWAP'),aboveEma50:checkedText('Above 50 EMA'),aboveEma200:checkedText('Above 200 EMA'),unusualVolume:checkedText('Unusual Volume'),atrExpansion:checkedText('ATR Expansion'),trendlineBreak:checkedText('Trendline Break')};
+    const preset=val('stock-preset'),tf=val('stock-timeframe')||'1d',trend=val('stock-trend');
+    const intervals={'5 Minutes':'5m','15 Minutes':'15m','30 Minutes':'30m','1 Hour':'60m','Daily':'1d','Weekly':'1wk','5m':'5m','15m':'15m','30m':'30m','60m':'60m','1h':'60m','1d':'1d','1wk':'1wk'};
+    const search=(val('stock-search')||'').trim().toUpperCase().replace(/\\.NS$/,'');
+    return {symbol:search,universe:'',timeframe:tf,interval:intervals[tf]||'1d',pattern:preset,trend:trend==='all'?'':trend,structure:preset==='breakout'?'breakout':'',volumeCondition:['momentum','volume'].includes(preset)?'high volume':'',rsiMin:'',rsiMax:preset==='oversold'?'30':''};
   }
   function checkedText(label) {
     const el=all('.sp-check').find(x=>x.innerText.trim().includes(label));
@@ -136,11 +136,9 @@
         if(p.rvol && p.rvol!=='Any Volume' && num(r.rvol)<Number(p.rvol))return false;
         return true;
       });
-      const table=sec.querySelector('.sp-table');
-      setTable(table,['Symbol','LTP','Change','RSI','RVOL','VWAP Distance','Pattern','Timeframe','Chart'],lastStockRows.map(r=>[
-        '<strong>'+esc(r.symbol)+'</strong>',esc(fmt(r.price??r.ltp)),esc(pct(r.change)),esc(fmt(r.rsi,1)),esc(num(r.rvol)==null?'—':fmt(r.rvol,1)+'x'),esc(pct(r.vwapDistancePct)),esc(r.pattern||p.pattern||'Historical scan'),esc(p.timeframe),'<a class="sp-text-link" href="#chart-lab" data-chart-symbol="'+esc(r.symbol)+'">View</a>'
-      ]));
-      msg(sec,'Received '+lastStockRows.length+' provider-backed result(s). Source: '+(data.source||'market relay')+'.');
+      setTbody('sp-stock-scanner-results',['Symbol','Price','Change %','Trend','RSI','Volume','Setup'],lastStockRows.map(r=>['<strong>'+esc(r.symbol)+'</strong>',esc(fmt(r.price??r.ltp)),esc(pct(r.change)),esc(r.trend||'—'),esc(fmt(r.rsi,1)),esc(fmt(r.volume??r.latestVolume,0)),esc(r.pattern||r.structure||p.pattern||'Historical scan')]),'No stocks match these filters or the provider returned no usable history.');
+      setText('sp-stock-scanner-status','Loaded '+lastStockRows.length+' result(s)');
+      msg(sec,'Received '+lastStockRows.length+' provider-backed result(s). '+(data.coverage||'')+' Source: '+(data.source||'market relay')+'.');
     } catch(e) { msg(sec,'Stock scan failed: '+e.message,true); }
   }
   async function runOptionScan() {
@@ -161,10 +159,10 @@
       metricByLabel(sec,'ATM Strike',atm==null?'—':fmt(atm,0));
       metricByLabel(sec,'Put/Call Ratio',ceOi>0?fmt(peOi/ceOi,2):'—');
       metricByLabel(sec,'Implied Volatility',ivs.length?fmt(ivs.reduce((a,b)=>a+b,0)/ivs.length,1)+'%':'—');
-      const table=sec.querySelector('.sp-table');
-      setTable(table,['Underlying','Strike','Type','Expiry','LTP','OI','OI Change','Volume','IV','Pattern','Research'],lastOptionRows.map(r=>[
-        esc(r.symbol),esc(fmt(r.strike,0)),esc(r.type),esc(r.expiry),esc(fmt(r.ltp)),esc(fmt(r.oi,0)),esc(pct(r.oiPct)),esc(fmt(r.volume,0)),esc(r.iv==null?'—':fmt(r.iv,1)+'%'),esc(r.oiPct>=15?'OI Spike':r.volume>=100000?'High Volume':'Observed'),'<a class="sp-text-link" href="#contract-research" data-contract="'+esc(JSON.stringify({symbol:r.symbol,strike:r.strike,type:r.type,expiry:r.expiry}))+'">Analyze</a>'
-      ]));
+      setText('sp-options-atm',atm==null?'—':fmt(atm,0));setText('sp-options-pcr',ceOi?fmt(peOi/ceOi,2):'—');setText('sp-options-iv',ivs.length?fmt(ivs.reduce((x,y)=>x+y,0)/ivs.length,1)+'%':'—');
+      const byStrike=new Map();lastOptionRows.forEach(r=>{const row=byStrike.get(r.strike)||{strike:r.strike};row[r.type]={ltp:r.ltp,oi:r.oi,iv:r.iv};byStrike.set(r.strike,row);});
+      setTbody('sp-options-results',['Strike','CE LTP','CE OI','CE IV','PE IV','PE OI','PE LTP'],[...byStrike.values()].sort((x,y)=>x.strike-y.strike).map(r=>[esc(fmt(r.strike,0)),esc(fmt(r.CE?.ltp)),esc(fmt(r.CE?.oi,0)),esc(r.CE?.iv==null?'—':fmt(r.CE.iv,1)+'%'),esc(r.PE?.iv==null?'—':fmt(r.PE.iv,1)+'%'),esc(fmt(r.PE?.oi,0)),esc(fmt(r.PE?.ltp))]));
+      setText('sp-options-status','Loaded '+lastOptionRows.length+' contracts');
       msg(sec,'Received '+lastOptionRows.length+' contract(s) for '+symbol+'. Source: '+(data.source||'market relay')+'.');
     } catch(e) { msg(sec,'Option scan failed: '+e.message,true); }
   }
@@ -177,9 +175,9 @@
       const tf=tfMap[rawTf.toLowerCase()]||rawTf;
       const data=await api('/api/analysis/chart',{symbol,timeframe:tf});
       lastChart=data; const candles=data.candles||[];
-      const heading=sec.querySelector('.sp-main-chart .sp-chart-heading h4');
-      if(heading)heading.textContent=symbol+' · Price Action';
-      const main=sec.querySelector('.sp-main-chart .sp-chart-placeholder');
+      const heading=sec.querySelector('.sp-main-chart .sp-chart-heading h4');if(heading)heading.textContent=symbol+' · Price Action';
+      let main=sec.querySelector('.sp-main-chart .sp-chart-placeholder');
+      if(!main){const host=$('sp-chart-container');if(host){host.innerHTML='<div class="sp-main-chart"><div class="sp-chart-placeholder"></div></div>';main=host.querySelector('.sp-chart-placeholder');}}
       if(main)drawLine(main,candles,'c',symbol+' historical close price');
       const chartBoxes=all('.sp-chart-box',sec);
       const rsiBox=chartBoxes.find(x=>/Relative Strength Index/i.test(x.innerText));
@@ -187,9 +185,8 @@
       const macdBox=chartBoxes.find(x=>/^MACD/m.test(x.innerText));
       if(macdBox)drawLine(macdBox.querySelector('.sp-chart-placeholder'),candles.map(c=>({t:c.t,c:c.c})).slice(-60),'c','MACD price proxy');
       const metrics=data.metrics||{};
-      metricByLabel(sec,'Trend',candles.length>1?(candles.at(-1).c>=candles.at(-2).c?'Up':'Down'):'—');
-      metricByLabel(sec,'RSI',metrics.rsi==null?(rsiSeries(candles).at(-1)?.c==null?'—':fmt(rsiSeries(candles).at(-1).c,1)):fmt(metrics.rsi,1));
-      metricByLabel(sec,'ATR',fmt(atrValue(candles),2));
+      const trendText=candles.length>1?(candles.at(-1).c>=candles.at(-2).c?'Bullish':'Bearish'):'—',rsiNow=metrics.rsi??rsiSeries(candles).at(-1)?.c;
+      setText('sp-chart-trend',trendText);setText('sp-chart-rsi',rsiNow==null?'—':fmt(rsiNow,1));setText('sp-chart-atr',fmt(atrValue(candles),2));
       msg(sec,'Loaded '+candles.length+' candles from '+(data.source||'provider')+'. Last close ₹'+fmt(metrics.price??candles.at(-1)?.c)+', change '+pct(metrics.change)+'.');
       setStatus('LIVE HISTORY LOADED',true);
     } catch(e) { msg(sec,'Chart request failed: '+e.message,true); }
@@ -200,7 +197,8 @@
     msg(sec,'Loading historical volume for '+symbol+'.');
     try {
       const d=await api('/api/analysis/volume-lab',{symbol,lookback});
-      metricValues(sec,[d.relativeVolume==null?'—':fmt(d.relativeVolume,2)+'x',d.points?.length?fmt(d.points.at(-1).volume,0):'—','—','—']);
+      setText('sp-relative-volume',d.relativeVolume==null?'—':fmt(d.relativeVolume,2)+'x');setText('sp-vwap-value','—');setText('sp-liquidity-status',d.latestVolume==null?'Unavailable':'Volume history available');
+      setTbody('sp-volume-results',['Metric','Value','Interpretation'],[['Relative volume',esc(d.relativeVolume==null?'—':fmt(d.relativeVolume,2)+'x'),d.relativeVolume==null?'Insufficient history':d.relativeVolume>=1.5?'Above average participation':d.relativeVolume>=1?'Near/above average':'Below average'],['Latest volume',esc(fmt(d.latestVolume,0)),'Most recent daily candle'],['Average volume',esc(fmt(d.averageVolume,0)),'Prior observations'],['VWAP','—','Not supplied by the daily-volume endpoint']]);
       const boxes=all('.sp-chart-box',sec);
       if(boxes[1])drawLine(boxes[1].querySelector('.sp-chart-placeholder'),(d.points||[]).map(p=>({t:p.t,c:p.volume})),'c','Volume history');
       if(boxes[0]) {
@@ -236,13 +234,12 @@
   async function runBacktest() {
     const sec=section('backtesting'); const strategy=val('backtest-strategy');
     const fast=strategy.includes('EMA')?10:10, slow=strategy.includes('EMA')?30:30;
-    const symbol=val('backtest-universe')==='Selected Symbol'?'RELIANCE':'RELIANCE';
+    const symbol=(val('backtest-universe')||'RELIANCE').trim().toUpperCase().replace(/\\.NS$/,'');
     msg(sec,'Running daily historical moving-average crossover backtest for '+symbol+'. The API currently supports this strategy only.');
     try {
       const d=await api('/api/analysis/backtest',{symbol,fast,slow,cost:(num(val('backtest-cost'))||0)+(num(val('backtest-slippage'))||0)});
-      const cards=all('.sp-metric',sec);
-      const values=[d.trades,d.winRate==null?'—':fmt(d.winRate,1)+'%',d.profitFactor==null?'—':fmt(d.profitFactor),d.expectancy==null?'—':fmt(d.expectancy,2),d.maxDrawdown==null?'—':fmt(d.maxDrawdown,2)+'%',d.sharpe==null?'—':fmt(d.sharpe,2)];
-      cards.forEach((c,i)=>{if(c.querySelector('strong')&&values[i]!==undefined)c.querySelector('strong').textContent=values[i]});
+      setText('sp-backtest-win-rate',d.winRate==null?'—':fmt(d.winRate,1)+'%');setText('sp-backtest-profit-factor',fmt(d.profitFactor));setText('sp-backtest-drawdown',d.maxDrawdown==null?'—':fmt(d.maxDrawdown,2)+'%');
+      setTbody('sp-backtest-results',['Metric','Result'],[['Symbol',esc(symbol)],['Trades',esc(d.trades??d.totalTrades??'—')],['Win rate',esc(d.winRate==null?'—':fmt(d.winRate,1)+'%')],['Profit factor',esc(fmt(d.profitFactor))],['Expectancy',esc(fmt(d.expectancy,2))],['Maximum drawdown',esc(d.maxDrawdown==null?'—':fmt(d.maxDrawdown,2)+'%')],['Sharpe ratio',esc(fmt(d.sharpe,2))]]);
       const boxes=all('.sp-chart-box',sec);
       if(boxes[0])drawLine(boxes[0].querySelector('.sp-chart-placeholder'),(d.curve||d.equityCurve||[]).map((p,i)=>({t:p.t??i,c:p.equity??p.value??p})), 'c','Backtest equity curve');
       if(boxes[1])drawLine(boxes[1].querySelector('.sp-chart-placeholder'),(d.curve||[]).map((p,i)=>({t:p.t??i,c:p.drawdown??0})),'c','Drawdown history');
@@ -255,8 +252,8 @@
     msg(sec,'Calculating descriptive historical daily-return statistics for '+symbol+'. This endpoint does not yet calculate the selected named pattern.');
     try {
       const d=await api('/api/analysis/statistics',{symbol,sessions});
-      const cards=all('.sp-metric',sec),values=[d.sessions??'—',d.positiveRatePct==null?'—':fmt(d.positiveRatePct,1)+'%',pct(d.medianDailyReturnPct),'Not provided by current API'];
-      cards.forEach((c,i)=>{if(c.querySelector('strong')&&values[i]!==undefined)c.querySelector('strong').textContent=values[i]});
+      setText('sp-stat-sample',d.sessions??'—');setText('sp-stat-win-rate',d.positiveRatePct==null?'—':fmt(d.positiveRatePct,1)+'%');setText('sp-stat-expectancy',d.meanDailyReturnPct==null?'—':pct(d.meanDailyReturnPct));
+      setTbody('sp-statistics-results',['Setup','Sample Size','Win Rate','Expectancy','Period'],[[esc(symbol),esc(d.sessions??'—'),esc(d.positiveRatePct==null?'—':fmt(d.positiveRatePct,1)+'%'),esc(d.meanDailyReturnPct==null?'—':pct(d.meanDailyReturnPct)),esc(text||'—')]]);
       const boxes=all('.sp-chart-box',sec);
       if(boxes[0])drawLine(boxes[0].querySelector('.sp-chart-placeholder'),(d.points||[]).map(p=>({t:p.t,c:p.returnPct})),'c','Daily return history');
       if(boxes[1])drawLine(boxes[1].querySelector('.sp-chart-placeholder'),(d.points||[]).map((p,i)=>({t:p.t,c:p.close})),'c','Historical closes');
@@ -277,6 +274,7 @@
     const validTarget=target!=null&&target>0&&(entry>stop?target>entry:target<entry);
     const reward=validTarget?Math.abs(target-entry):null;
     const rr=reward==null?null:reward/perUnit;
+    setText('sp-risk-amount','₹'+fmt(riskAmount));setText('sp-risk-quantity',quantity);setText('sp-risk-reward',rr==null?'—':'1 : '+fmt(rr,2));setText('sp-risk-status','Calculated · '+direction);
     const lines=['Risk per trade: ₹'+fmt(riskAmount),'Risk per unit: ₹'+fmt(perUnit),'Position quantity: '+quantity+' unit(s)','Position value: ₹'+fmt(quantity*entry),'Direction assumed: '+direction,(rr==null?'Risk/reward: unavailable (check target direction)':'Risk/reward: 1 : '+fmt(rr,2)),'Estimate only; excludes slippage, taxes and lot-size rules.'];
     msg(sec,lines.join(' · '),false);
     console.info('[Strike Pulse] Risk calculation', {account,riskPct,entry,stop,target,quantity,riskAmount,riskPerUnit:perUnit,riskReward:rr});
@@ -302,6 +300,7 @@
     bindId('sp-run-volatility',()=>unsupportedFeature('volatility','Volatility Lab'));
     bindId('sp-calculate-risk',runRisk);
     bindId('sp-refresh-health',loadStatus);
+    const reset=$('sp-reset-stock-scanner');if(reset&&!reset.dataset.spBound){reset.dataset.spBound='1';reset.addEventListener('click',()=>{const e=$('sp-stock-search');if(e)e.value='';['sp-stock-preset','sp-stock-trend'].forEach(id=>{const x=$(id);if(x)x.selectedIndex=0;});setText('sp-stock-scanner-status','Filters reset');});}
     // Keep text-based compatibility for older page markup.
     bindText('Run Stock Scan',runStockScan,section('stock-scanner'));
     bindText('Run Option Scan',runOptionScan,section('option-scanner'));
@@ -331,14 +330,14 @@
     });
     ['chart-symbol','volume-symbol','correlation-stock-a','correlation-stock-b','statistical-symbol'].forEach(id=>{
       const el=$(id); if(!el)return;
-      el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(id==='chart-symbol')runChart();else if(id==='volume-symbol')runVolume();else if(id.startsWith('correlation'))runCorrelation();else runStatistics();}});
+      el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(id==='chart-symbol')runChart();else if(id==='volume-symbol')runVolume();else if(id.startsWith('correlation'))runCorrelation();else if(id==='backtest-universe')runBacktest();else runStockScan();}});
     });
     const nav=all('.sp-nav-link');
     const updateNav=()=>{const id=location.hash;nav.forEach(a=>a.classList.toggle('sp-nav-active',a.getAttribute('href')===id));};
     window.addEventListener('hashchange',updateNav);updateNav();
   }
   function bindStockSuggestions() {
-    const ids=['chart-symbol','volume-symbol','correlation-stock-a','correlation-stock-b','statistical-symbol','futures-symbol','volatility-symbol'];
+    const ids=['stock-search','chart-symbol','volume-symbol','correlation-stock-a','correlation-stock-b','backtest-universe','futures-symbol','volatility-symbol'];
     ids.forEach(id=>{
       const input=$(id); if(!input||input.dataset.spSuggestBound)return;
       input.dataset.spSuggestBound='1';
