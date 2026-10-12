@@ -57,6 +57,35 @@ async function fetchCsvSymbols(url,headers={}){
  if(si<0)throw Error('SYMBOL column unavailable');
  return [...new Set(rows.slice(1).map(r=>String(r[si]||'').trim().toUpperCase()).filter(validSymbol))];
 }
+const equityCompaniesCache={at:0,rows:[]};
+async function allNseEquityCompanies(){
+ if(equityCompaniesCache.rows.length&&Date.now()-equityCompaniesCache.at<6*60*60*1000)return equityCompaniesCache.rows;
+ const urls=['https://archives.nseindia.com/content/equities/EQUITY_L.csv','https://www.nseindia.com/api/equity-master'];
+ for(const url of urls){
+  try{
+   let rows=[];
+   if(url.includes('EQUITY_L.csv')){
+    const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36','Accept':'text/csv,text/plain,*/*','Referer':'https://www.nseindia.com/'},signal:AbortSignal.timeout(15000)});
+    if(!r.ok)continue;
+    const csv=csvRows((await r.text()).replace(/^\\uFEFF/,''));
+    const header=csv[0].map(x=>String(x).trim().toUpperCase());
+    const si=header.findIndex(x=>x==='SYMBOL'||x.includes('SYMBOL'));
+    const ni=header.findIndex(x=>x.includes('NAME OF COMPANY')||x==='COMPANY NAME'||x==='NAME');
+    if(si<0)continue;
+    rows=csv.slice(1).map(r=>({symbol:String(r[si]||'').trim().toUpperCase(),name:String(ni>=0?r[ni]||r[si]:r[si]).trim()})).filter(x=>validSymbol(x.symbol));
+   }else{
+    const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept':'application/json,*/*','Referer':'https://www.nseindia.com/'},signal:AbortSignal.timeout(15000)});
+    if(!r.ok)continue;
+    const j=await r.json();
+    rows=(Array.isArray(j?.data)?j.data:[]).map(x=>({symbol:String(x?.symbol||'').trim().toUpperCase(),name:String(x?.companyName||x?.companyname||x?.name||x?.symbol||'').trim()})).filter(x=>validSymbol(x.symbol));
+   }
+   const unique=[...new Map(rows.map(x=>[x.symbol,x])).values()];
+   if(unique.length){equityCompaniesCache.at=Date.now();equityCompaniesCache.rows=unique;return unique;}
+  }catch(_){}
+ }
+ const symbols=await allNseEquitySymbols();
+ return symbols.map(symbol=>({symbol,name:symbol}));
+}
 async function allNseEquitySymbols(){
  if(equityCache.symbols.length&&Date.now()-equityCache.at<6*60*60*1000)return equityCache.symbols;
  const urls=[
@@ -254,7 +283,7 @@ async function correlationLab(q){
  const series=[{symbol:a,points:ret(ma)},{symbol:b,points:ret(mb)},{symbol:benchmark,points:ret(mc)}];
  return {success:true,symbols:[a,b,benchmark],window,sessions:series[0].points.length,series,source:'yahoo-finance',updated:new Date().toISOString()};
 }
-const routes={'/api/analysis/status':async()=>({success:true,features:{stockScanner:'selected symbol or 20-stock sample',optionScanner:'existing NSE relay',chart:'historical closing prices',backtest:'SMA historical research route available; provider-dependent',correlation:'Historical daily-return correlation route available; provider-dependent',universe:'NSE directory route available; provider-dependent',batchScanner:'Five stocks per request; provider-dependent'},updated:new Date().toISOString()}),'/api/analysis/universe':async q=>{const term=String(q.q||'').trim().toUpperCase();const limit=Math.min(20,Math.max(1,Number(q.limit)||10));const symbols=await allNseEquitySymbols();const exact=symbols.filter(x=>x===term);const prefix=symbols.filter(x=>x.startsWith(term)&&x!==term);return {success:true,results:[...exact,...prefix].slice(0,limit).map(symbol=>({symbol,name:symbol,matchType:symbol===term?'exact':'prefix'})),updated:new Date().toISOString()}},'/api/analysis/stock-scanner':stockScan,'/api/analysis/option-scanner':optionScan,'/api/analysis/option-history':optionHistory,'/api/analysis/volume-lab':volumeLab,'/api/analysis/correlation':correlationLab,'/api/analysis/chart':async q=>{const symbol=String(q.symbol||'RELIANCE').toUpperCase().replace(/[^A-Z0-9&-]/g,'');const timeframeMap={'1m':{interval:'1m',range:'5d'},'5m':{interval:'5m',range:'5d'},'15m':{interval:'15m',range:'5d'},'1h':{interval:'60m',range:'5d'},'1D':{interval:'1d',range:'1y'},'1W':{interval:'1wk',range:'1y'}};const tf=String(q.timeframe||'');const mapped=timeframeMap[tf];const requestedInterval=String(q.interval||'');const interval=mapped?.interval||(['1m','5m','15m','30m','60m','1d','1wk'].includes(requestedInterval)?requestedInterval:'15m');const range=['1d','5d','1mo','3mo','6mo','1y','2y','5y'].includes(q.range)?q.range:(mapped?.range||((interval==='1d'||interval==='1wk')?'1y':'5d'));const d=await history(symbol,interval,range);return {...d,timeframe:tf||null,metrics:metrics(d.candles)}}};
+const routes={'/api/analysis/status':async()=>({success:true,features:{stockScanner:'selected symbol or 20-stock sample',optionScanner:'existing NSE relay',chart:'historical closing prices',backtest:'SMA historical research route available; provider-dependent',correlation:'Historical daily-return correlation route available; provider-dependent',universe:'NSE directory route available; provider-dependent',batchScanner:'Five stocks per request; provider-dependent'},updated:new Date().toISOString()}),'/api/analysis/universe':async q=>{const term=String(q.q||'').trim().toUpperCase();const limit=Math.min(30,Math.max(1,Number(q.limit)||12));const rows=await allNseEquityCompanies();const normalized=term.replace(/[^A-Z0-9]+/g,'');const matches=rows.filter(x=>!term||x.symbol.startsWith(term)||x.name.toUpperCase().startsWith(term)||x.name.toUpperCase().includes(' '+term)||normName(x.name).startsWith(normalized));matches.sort((a,b)=>(a.symbol===term?-2:a.symbol.startsWith(term)?-1:0)-(b.symbol===term?-2:b.symbol.startsWith(term)?-1:0)||a.symbol.localeCompare(b.symbol));return {success:true,results:matches.slice(0,limit).map(x=>({...x,matchType:x.symbol===term?'exact':x.symbol.startsWith(term)?'symbol-prefix':'name-match'})),total:rows.length,updated:new Date().toISOString()}},'/api/analysis/stock-scanner':stockScan,'/api/analysis/option-scanner':optionScan,'/api/analysis/option-history':optionHistory,'/api/analysis/volume-lab':volumeLab,'/api/analysis/correlation':correlationLab,'/api/analysis/chart':async q=>{const symbol=String(q.symbol||'RELIANCE').toUpperCase().replace(/[^A-Z0-9&-]/g,'');const timeframeMap={'1m':{interval:'1m',range:'5d'},'5m':{interval:'5m',range:'5d'},'15m':{interval:'15m',range:'5d'},'1h':{interval:'60m',range:'5d'},'1D':{interval:'1d',range:'1y'},'1W':{interval:'1wk',range:'1y'}};const tf=String(q.timeframe||'');const mapped=timeframeMap[tf];const requestedInterval=String(q.interval||'');const interval=mapped?.interval||(['1m','5m','15m','30m','60m','1d','1wk'].includes(requestedInterval)?requestedInterval:'15m');const range=['1d','5d','1mo','3mo','6mo','1y','2y','5y'].includes(q.range)?q.range:(mapped?.range||((interval==='1d'||interval==='1wk')?'1y':'5d'));const d=await history(symbol,interval,range);return {...d,timeframe:tf||null,metrics:metrics(d.candles)}}};
 express.application.use=function(...args){return original.call(this,async(req,res,next)=>{const fn=routes[req.path];if(!fn)return next();res.set('Access-Control-Allow-Origin','*').set('Cache-Control','no-store');if(req.method==='OPTIONS')return res.sendStatus(204);try{return res.json(await fn(req.query||{}))}catch(e){return res.status(502).json({success:false,error:e.message})}},...args)};
 // Collect new snapshots while the web service is awake; free instances may sleep.
 let collecting=false;
