@@ -337,10 +337,38 @@
     const updateNav=()=>{const id=location.hash;nav.forEach(a=>a.classList.toggle('sp-nav-active',a.getAttribute('href')===id));};
     window.addEventListener('hashchange',updateNav);updateNav();
   }
+  function bindStockSuggestions() {
+    const ids=['chart-symbol','volume-symbol','correlation-stock-a','correlation-stock-b','statistical-symbol','futures-symbol','volatility-symbol'];
+    ids.forEach(id=>{
+      const input=$(id); if(!input||input.dataset.spSuggestBound)return;
+      input.dataset.spSuggestBound='1';
+      const listId='sp-suggestions-'+id;
+      let list=$(listId);
+      if(!list){list=document.createElement('datalist');list.id=listId;document.body.appendChild(list);}
+      input.setAttribute('list',listId);
+      input.setAttribute('autocomplete','off');
+      let timer=null,last='';
+      input.addEventListener('input',()=>{
+        const q=input.value.trim(); clearTimeout(timer);
+        if(q.length<1){list.replaceChildren();return;}
+        timer=setTimeout(async()=>{
+          if(q===last)return; last=q;
+          try{
+            const d=await api('/api/analysis/universe',{q,limit:12});
+            if(document.activeElement!==input&&input.value.trim()!==q)return;
+            list.replaceChildren(...(d.results||[]).map(item=>{
+              const opt=document.createElement('option');opt.value=item.symbol;opt.label=item.name&&item.name!==item.symbol?item.symbol+' — '+item.name:item.symbol;return opt;
+            }));
+          }catch(e){console.warn('[Strike Pulse] Stock suggestions unavailable:',e.message);}
+        },180);
+      });
+    });
+  }
   function init() {
     if (!document.querySelector('.sp-analysis')) return;
     clearSampleRows();
     bind();
+    bindStockSuggestions();
     loadStatus();
     const heading=document.querySelector('.sp-header .sp-data-badge');
     if(heading)heading.title='Backend API connectivity status';
