@@ -24,10 +24,24 @@
   async function api(path, params={}) {
     const u = new URL(API + path);
     Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== null && v !== '') u.searchParams.set(k,String(v)); });
-    const r = await fetch(u.toString(), {headers:{Accept:'application/json'}, signal:AbortSignal.timeout(35000)});
+    console.info('[Strike Pulse] API REQUEST →', u.toString());
+    let r;
+    try {
+      r = await fetch(u.toString(), {headers:{Accept:'application/json'}, signal:AbortSignal.timeout(35000)});
+    } catch (e) {
+      console.error('[Strike Pulse] API NETWORK ERROR ✗', u.toString(), e);
+      throw e;
+    }
     let data;
-    try { data=await r.json(); } catch { throw Error('API returned a non-JSON response (HTTP '+r.status+').'); }
-    if (!r.ok || data?.success === false) throw Error(data?.error || ('API request failed (HTTP '+r.status+').'));
+    try { data=await r.json(); } catch {
+      console.error('[Strike Pulse] API INVALID RESPONSE ✗', r.status, u.toString());
+      throw Error('API returned a non-JSON response (HTTP '+r.status+').');
+    }
+    if (!r.ok || data?.success === false) {
+      console.error('[Strike Pulse] API ERROR ✗', r.status, u.toString(), data);
+      throw Error(data?.error || ('API request failed (HTTP '+r.status+').');
+    }
+    console.info('[Strike Pulse] API SUCCESS ✓', r.status, u.toString(), data);
     return data;
   }
   function section(id){ return $(SECTION_ALIASES[id] || id); }
