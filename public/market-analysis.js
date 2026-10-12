@@ -116,9 +116,16 @@
       const d=await api('/api/analysis/status');setStatus('DATA API CONNECTED',true);
       setText('sp-api-health','Connected');setText('sp-api-health-detail','Status endpoint responded successfully.');
       setText('sp-data-freshness',d.updated?new Date(d.updated).toLocaleString('en-IN'):'Timestamp unavailable');
-      setText('sp-data-warnings','—');
-      setText('sp-market-status-text','API connected');
+      setText('sp-data-warnings','Market overview/futures feeds unavailable');
+      setText('sp-market-status-text','API connected · partial feeds');
       setText('sp-last-updated',d.updated?new Date(d.updated).toLocaleTimeString('en-IN'):'Status checked');
+      setText('sp-market-regime','Unavailable');
+      setText('sp-market-regime-detail','No market-overview endpoint is exposed by the current backend.');
+      setText('sp-advances','—');setText('sp-declines','—');setText('sp-unchanged','—');
+      setHtml('sp-sector-strength','<span class="sp-muted">Sector-strength feed is not configured.</span>');
+      ['sp-nifty-value','sp-banknifty-value','sp-sensex-value','sp-vix-value'].forEach(id=>setText(id,'Unavailable'));
+      ['sp-nifty-change','sp-banknifty-change','sp-sensex-change','sp-vix-change'].forEach(id=>setText(id,'No verified index-feed endpoint'));
+      setTbody('sp-indices-table',['Index','Last Price','Change','Change %'],[],'The current backend does not expose a verified live-index endpoint.');
       setTbody('sp-health-results',['Check','Status','Details'],[
         ['API health','OK','Status endpoint responded in '+(Date.now()-started)+' ms'],
         ['Stock universe',d.features?.universe?'Available':'Unknown',d.features?.universe||'Not reported'],
