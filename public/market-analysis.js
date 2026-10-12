@@ -116,7 +116,7 @@
         if(p.minPrice && num(r.price??r.ltp)<Number(p.minPrice))return false;
         if(p.rsiMin && num(r.rsi)<Number(p.rsiMin))return false;
         if(p.rsiMax && num(r.rsi)>Number(p.rsiMax))return false;
-        if(p.minRvol && p.minRvol!=='Any Volume' && num(r.rvol)<Number(p.minRvol))return false;
+        if(p.rvol && p.rvol!=='Any Volume' && num(r.rvol)<Number(p.rvol))return false;
         return true;
       });
       const table=sec.querySelector('.sp-table');
@@ -180,7 +180,7 @@
     } catch(e) { msg(sec,'Volume analysis failed: '+e.message,true); }
   }
   async function runCorrelation() {
-    const sec=section('correlation-lab'),a=(val('correlation-stock-a')||'RELIANCE').trim().toUpperCase(),b=(val('correlation-stock-b')||'ONGC').trim().toUpperCase();
+    const sec=section('correlation-lab'),rawA=(val('correlation-stock-a')||'RELIANCE').trim().toUpperCase(),rawB=(val('correlation-stock-b')||'ONGC').trim().toUpperCase(),a=rawA==='RELIENCE'?'RELIANCE':rawA,b=rawB==='RELIENCE'?'RELIANCE':rawB;
     const benchmark=val('correlation-benchmark').includes('100')?'NIFTY100':'NIFTY';
     const window=Number((val('correlation-window').match(/\d+/)||[])[0]||60);
     msg(sec,'Loading aligned daily returns for '+a+', '+b+' and '+benchmark+'.');
@@ -257,7 +257,7 @@
   function bind() {
     const buttons=all('button');
     const byText=(text,fn,root=document)=>all('button',root).find(b=>b.textContent.trim().toLowerCase()===text.toLowerCase());
-    const bindText=(text,fn,root=document)=>{const b=byText(text,fn,root);if(b)b.addEventListener('click',e=>{e.preventDefault();fn()})};
+    const bindText=(text,fn,root=document)=>{const b=byText(text,fn,root);if(b&&!b.dataset.spBound){b.dataset.spBound='1';b.addEventListener('click',e=>{e.preventDefault();Promise.resolve(fn()).catch(err=>console.error('[Strike Pulse] '+text+' failed:',err));})}};
     const bindId=(id,fn)=>{const b=$(id);if(b&&!b.dataset.spBound){b.dataset.spBound='1';b.addEventListener('click',e=>{e.preventDefault();Promise.resolve(fn()).catch(err=>console.error('[Strike Pulse] '+id+' failed:',err));});}};
     // Bind using the real IDs present in the current WordPress page.
     bindId('sp-run-stock-scanner',runStockScan);
