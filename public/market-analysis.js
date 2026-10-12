@@ -4,7 +4,9 @@
   window.__SP_MARKET_ANALYSIS_V1__ = true;
 
   const API = 'https://strike-pulse-relay.onrender.com';
-  const $ = id => document.getElementById(id);
+  const ID_ALIASES = {'stock-universe':'sp-stock-preset','stock-timeframe':'sp-stock-timeframe','stock-direction':'sp-stock-trend','chart-symbol':'sp-chart-symbol','chart-timeframe':'sp-chart-timeframe','volume-symbol':'sp-volume-symbol','volume-period':'sp-volume-timeframe','option-underlying':'sp-options-underlying','option-type':'sp-options-type','minimum-option-volume':'sp-options-min-volume','futures-symbol':'sp-futures-symbol','volatility-symbol':'sp-volatility-symbol','correlation-stock-a':'sp-correlation-symbol-a','correlation-stock-b':'sp-correlation-symbol-b','correlation-window':'sp-correlation-period','backtest-strategy':'sp-backtest-strategy','backtest-universe':'sp-backtest-symbol','backtest-cost':'sp-backtest-cost','statistical-period':'sp-statistics-period','statistical-type':'sp-statistics-type'};
+  const SECTION_ALIASES = {'chart-lab':'technical-analysis','volume-lab':'volume-analysis','option-scanner':'options','correlation-lab':'correlation'};
+  const $ = id => document.getElementById(id) || document.getElementById(ID_ALIASES[id] || '__sp_missing__');
   const all = (selector, root=document) => [...root.querySelectorAll(selector)];
   const num = v => v === '' || v == null || !Number.isFinite(Number(v)) ? null : Number(v);
   const fmt = (v, d=2) => num(v) == null ? '—' : Number(v).toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
@@ -28,7 +30,7 @@
     if (!r.ok || data?.success === false) throw Error(data?.error || ('API request failed (HTTP '+r.status+').'));
     return data;
   }
-  function section(id){ return $(id); }
+  function section(id){ return $(SECTION_ALIASES[id] || id); }
   function setStatus(text, good=true) {
     const badge=document.querySelector('.sp-data-badge');
     if (badge) { badge.lastChild.textContent=' '+text; badge.style.color=good?'#166534':'#9f1239'; }
@@ -83,7 +85,7 @@
     const symbol=universe==='All Available Stocks'?'':universe==='F&O Stocks'?'F&O':universe.replace('NIFTY ','NIFTY ');
     const universeMap={'NIFTY 50':'NIFTY 50','NIFTY 100':'NIFTY 100','NIFTY 200':'NIFTY 200','NIFTY 500':'NIFTY 500','F&O Stocks':'ALL F&O STOCKS','All Available Stocks':'ALL NSE EQUITY STOCKS'};
     const tf=val('stock-timeframe');
-    const intervals={'5 Minutes':'5m','15 Minutes':'15m','30 Minutes':'30m','1 Hour':'60m','Daily':'1d','Weekly':'1wk'};
+    const intervals={'5 Minutes':'5m','15 Minutes':'15m','30 Minutes':'30m','1 Hour':'60m','Daily':'1d','Weekly':'1wk','5m':'5m','15m':'15m','30m':'30m','60m':'60m','1d':'1d','1wk':'1wk'};
     const pattern=val('scan-pattern');
     return {symbol:'',universe:universeMap[universe]||'',timeframe:tf,interval:intervals[tf]||'15m',pattern,direction:val('stock-direction'),minPrice:val('minimum-price'),rvol:val('relative-volume').replace('x','').replace('Any Volume',''),rsiMin:val('rsi-minimum'),rsiMax:val('rsi-maximum'),trend:val('stock-direction')==='Bullish Conditions'?'bullish':val('stock-direction')==='Bearish Conditions'?'bearish':'',structure:pattern==='Price Breakout'?'breakout':pattern==='Price Breakdown'?'breakdown':'',volumeCondition:pattern==='Volume Breakout'?'high volume':'',aboveVwap:checkedText('Above VWAP'),aboveEma50:checkedText('Above 50 EMA'),aboveEma200:checkedText('Above 200 EMA'),unusualVolume:checkedText('Unusual Volume'),atrExpansion:checkedText('ATR Expansion'),trendlineBreak:checkedText('Trendline Break')};
   }
@@ -116,7 +118,8 @@
       const underlying=val('option-underlying');
       const symbol=underlying==='Selected F&O Stock'||underlying==='All Available F&O'?'NIFTY':underlying;
       const moneyness=val('moneyness').toLowerCase().includes('itm')?'itm':val('moneyness').toLowerCase().includes('otm')?'otm':val('moneyness').toLowerCase().includes('atm')?'atm':'all';
-      const data=await api('/api/analysis/option-scanner',{symbol,type:val('option-type')==='Call Options Only'?'CE':val('option-type')==='Put Options Only'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
+      const selectedType=val('option-type');
+      const data=await api('/api/analysis/option-scanner',{symbol,type:selectedType==='Call Options Only'||selectedType==='CE'?'CE':selectedType==='Put Options Only'||selectedType==='PE'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
       lastOptionRows=data.results||[];
       const table=sec.querySelector('.sp-table');
       setTable(table,['Underlying','Strike','Type','Expiry','LTP','OI','OI Change','Volume','IV','Pattern','Research'],lastOptionRows.map(r=>[
@@ -203,7 +206,7 @@
   }
   async function runStatistics() {
     const sec=section('statistics'),symbol=(val('statistical-symbol')||'TCS').trim().toUpperCase();
-    const text=val('statistical-period'),sessions=text.includes('3 Months')?60:text.includes('6 Months')?120:text.includes('3 Years')?240:240;
+    const text=val('statistical-period'),sessions=/^\\d+$/.test(text)?Math.max(5,Number(text)):text.includes('3 Months')?60:text.includes('6 Months')?120:text.includes('3 Years')?240:240;
     msg(sec,'Calculating descriptive historical daily-return statistics for '+symbol+'. This endpoint does not yet calculate the selected named pattern.');
     try {
       const d=await api('/api/analysis/statistics',{symbol,sessions});
@@ -222,6 +225,16 @@
     const buttons=all('button');
     const byText=(text,fn,root=document)=>all('button',root).find(b=>b.textContent.trim().toLowerCase()===text.toLowerCase());
     const bindText=(text,fn,root=document)=>{const b=byText(text,fn,root);if(b)b.addEventListener('click',e=>{e.preventDefault();fn()})};
+    const bindId=(id,fn)=>{const b=$(id);if(b&&!b.dataset.spBound){b.dataset.spBound='1';b.addEventListener('click',e=>{e.preventDefault();Promise.resolve(fn()).catch(err=>console.error('[Strike Pulse] '+id+' failed:',err));});}};
+    // Bind using the real IDs present in the current WordPress page.
+    bindId('sp-run-stock-scanner',runStockScan);
+    bindId('sp-load-chart',runChart);
+    bindId('sp-run-volume-lab',runVolume);
+    bindId('sp-run-options-scanner',runOptionScan);
+    bindId('sp-run-correlation',runCorrelation);
+    bindId('sp-run-backtest',runBacktest);
+    bindId('sp-run-statistics',runStatistics);
+    // Keep text-based compatibility for older page markup.
     bindText('Run Stock Scan',runStockScan,section('stock-scanner'));
     bindText('Run Option Scan',runOptionScan,section('option-scanner'));
     bindText('Load Chart',runChart,section('chart-lab'));
