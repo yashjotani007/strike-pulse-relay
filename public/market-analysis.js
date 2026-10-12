@@ -81,7 +81,11 @@
   function stockParams() {
     const universe=val('stock-universe');
     const symbol=universe==='All Available Stocks'?'':universe==='F&O Stocks'?'F&O':universe.replace('NIFTY ','NIFTY ');
-    return {symbol,universe,timeframe:val('stock-timeframe'),pattern:val('scan-pattern'),direction:val('stock-direction'),minPrice:val('minimum-price'),minRvol:val('relative-volume').replace('x',''),rsiMin:val('rsi-minimum'),rsiMax:val('rsi-maximum'),aboveVwap:checkedText('Above VWAP'),aboveEma50:checkedText('Above 50 EMA'),aboveEma200:checkedText('Above 200 EMA'),unusualVolume:checkedText('Unusual Volume'),atrExpansion:checkedText('ATR Expansion'),trendlineBreak:checkedText('Trendline Break')};
+    const universeMap={'NIFTY 50':'NIFTY 50','NIFTY 100':'NIFTY 100','NIFTY 200':'NIFTY 200','NIFTY 500':'NIFTY 500','F&O Stocks':'ALL F&O STOCKS','All Available Stocks':'ALL NSE EQUITY STOCKS'};
+    const tf=val('stock-timeframe');
+    const intervals={'5 Minutes':'5m','15 Minutes':'15m','30 Minutes':'30m','1 Hour':'60m','Daily':'1d','Weekly':'1wk'};
+    const pattern=val('scan-pattern');
+    return {symbol:'',universe:universeMap[universe]||'',timeframe:tf,interval:intervals[tf]||'15m',pattern,direction:val('stock-direction'),minPrice:val('minimum-price'),rvol:val('relative-volume').replace('x','').replace('Any Volume',''),rsiMin:val('rsi-minimum'),rsiMax:val('rsi-maximum'),trend:val('stock-direction')==='Bullish Conditions'?'bullish':val('stock-direction')==='Bearish Conditions'?'bearish':'',structure:pattern==='Price Breakout'?'breakout':pattern==='Price Breakdown'?'breakdown':'',volumeCondition:pattern==='Volume Breakout'?'high volume':'',aboveVwap:checkedText('Above VWAP'),aboveEma50:checkedText('Above 50 EMA'),aboveEma200:checkedText('Above 200 EMA'),unusualVolume:checkedText('Unusual Volume'),atrExpansion:checkedText('ATR Expansion'),trendlineBreak:checkedText('Trendline Break')};
   }
   function checkedText(label) {
     const el=all('.sp-check').find(x=>x.innerText.trim().includes(label));
@@ -90,11 +94,8 @@
   async function runStockScan() {
     const sec=section('stock-scanner'); msg(sec,'Requesting real historical data; larger universes may take time.');
     try {
-      const p=stockParams(); let data;
-      if (p.universe==='NIFTY 50' || p.universe==='NIFTY 100' || p.universe==='NIFTY 200' || p.universe==='NIFTY 500' || p.universe==='F&O Stocks' || p.universe==='All Available Stocks') {
-        const limit=p.universe==='NIFTY 50'?5:p.universe==='NIFTY 100'?5:5;
-        data=await api('/api/analysis/scan-batch',{limit,offset:0});
-      } else data=await api('/api/analysis/stock-scanner',p);
+      const p=stockParams();
+      const data=await api('/api/analysis/stock-scanner',p);
       lastStockRows=(data.results||[]).filter(r=>{
         if(p.minPrice && num(r.price??r.ltp)<Number(p.minPrice))return false;
         if(p.rsiMin && num(r.rsi)<Number(p.rsiMin))return false;
@@ -115,7 +116,7 @@
       const underlying=val('option-underlying');
       const symbol=underlying==='Selected F&O Stock'||underlying==='All Available F&O'?'NIFTY':underlying;
       const moneyness=val('moneyness').toLowerCase().includes('itm')?'itm':val('moneyness').toLowerCase().includes('otm')?'otm':val('moneyness').toLowerCase().includes('atm')?'atm':'all';
-      const data=await api('/api/analysis/option-scanner',{symbol,expiry:val('option-expiry'),type:val('option-type')==='Call Options Only'?'CE':val('option-type')==='Put Options Only'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
+      const data=await api('/api/analysis/option-scanner',{symbol,type:val('option-type')==='Call Options Only'?'CE':val('option-type')==='Put Options Only'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
       lastOptionRows=data.results||[];
       const table=sec.querySelector('.sp-table');
       setTable(table,['Underlying','Strike','Type','Expiry','LTP','OI','OI Change','Volume','IV','Pattern','Research'],lastOptionRows.map(r=>[
