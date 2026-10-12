@@ -297,8 +297,28 @@
     msg(sec,lines.join(' · '),false);
     console.info('[Strike Pulse] Risk calculation', {account,riskPct,entry,stop,target,quantity,riskAmount,riskPerUnit:perUnit,riskReward:rr});
   }
+  async function runVolatility(){
+    const sec=section('volatility'),symbol=(val('volatility-symbol')||'NIFTY').trim().toUpperCase().replace(/\\.NS$/,''),period=Math.max(5,Number(val('sp-volatility-period')||14));
+    msg(sec,'Loading real historical candles to calculate volatility for '+symbol+'.');
+    try{
+      const d=await api('/api/analysis/chart',{symbol,timeframe:'1D'}),candles=d.candles||[];
+      if(candles.length<period+1)throw Error('Not enough daily candles to calculate the selected lookback.');
+      const tr=[],rets=[];
+      for(let i=1;i<candles.length;i++){const c=candles[i],p=candles[i-1];tr.push(Math.max(c.h-c.l,Math.abs(c.h-p.c),Math.abs(c.l-p.c)));if(p.c>0)rets.push(Math.log(c.c/p.c));}
+      const atr=tr.slice(-period).reduce((x,y)=>x+y,0)/period,rr=rets.slice(-period),mean=rr.reduce((x,y)=>x+y,0)/rr.length;
+      const hv=Math.sqrt(rr.reduce((x,y)=>x+(y-mean)**2,0)/Math.max(1,rr.length-1))*Math.sqrt(252)*100;
+      setText('sp-volatility-atr',fmt(atr,2));setText('sp-historical-volatility',fmt(hv,2)+'%');setText('sp-implied-volatility','—');
+      setText('sp-volatility-status','Calculated from '+rr.length+' daily returns');
+      msg(sec,'ATR and annualised historical volatility calculated from '+d.source+' daily candles. Implied volatility is unavailable from this historical-price endpoint.');
+    }catch(e){setText('sp-volatility-atr','—');setText('sp-historical-volatility','—');setText('sp-implied-volatility','—');setText('sp-volatility-status','Unavailable');msg(sec,'Volatility calculation failed: '+e.message,true);}
+  }
   function unsupportedFeature(sectionId, name) {
-    msg(section(sectionId),name+' is not connected to a verified backend endpoint yet. No market data or result has been fabricated.',true);
+    const sec=section(sectionId);
+    msg(sec,name+' is not connected to a verified backend endpoint yet. No market data or result has been fabricated.',true);
+    if(sectionId==='futures'){
+      setTbody('sp-futures-results',['Contract','Expiry','Futures Price','Basis','OI','Volume'],[],'No verified futures-data endpoint is configured; live futures metrics are unavailable.');
+      setText('sp-futures-status','Endpoint unavailable');
+    }
     console.warn('[Strike Pulse] '+name+' is not implemented by the current backend; no API request sent.');
   }
   function bind() {
@@ -315,7 +335,7 @@
     bindId('sp-run-backtest',runBacktest);
     bindId('sp-run-statistics',runStatistics);
     bindId('sp-run-futures-scanner',()=>unsupportedFeature('futures','Futures Scanner'));
-    bindId('sp-run-volatility',()=>unsupportedFeature('volatility','Volatility Lab'));
+    bindId('sp-run-volatility',runVolatility);
     bindId('sp-calculate-risk',runRisk);
     bindId('sp-refresh-health',loadStatus);
     const reset=$('sp-reset-stock-scanner');if(reset&&!reset.dataset.spBound){reset.dataset.spBound='1';reset.addEventListener('click',()=>{const e=$('sp-stock-search');if(e)e.value='';['sp-stock-preset','sp-stock-trend'].forEach(id=>{const x=$(id);if(x)x.selectedIndex=0;});setText('sp-stock-scanner-status','Filters reset');});}
