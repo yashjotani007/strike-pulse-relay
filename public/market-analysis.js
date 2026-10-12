@@ -143,7 +143,7 @@
     } catch(e) { msg(sec,'Option scan failed: '+e.message,true); }
   }
   async function runChart() {
-    const sec=section('chart-lab'); const symbol=(val('chart-symbol')||'RELIANCE').trim().toUpperCase().replace(/\.NS$/,'');
+    const sec=section('chart-lab'); const rawSymbol=(val('chart-symbol')||'RELIANCE').trim().toUpperCase().replace(/\.NS$/,''); const symbol=rawSymbol==='RELIENCE'?'RELIANCE':rawSymbol;
     msg(sec,'Loading '+symbol+' historical candles.');
     try {
       const tf=val('chart-timeframe')||'15m';
@@ -235,6 +235,25 @@
       msg(sec,'Descriptive historical return statistics loaded for '+d.symbol+'. This is not a named-pattern occurrence study; the backend does not currently expose that calculation.');
     } catch(e) { msg(sec,'Statistics request failed: '+e.message,true); }
   }
+  function runRisk() {
+    const sec=section('risk');
+    const account=num(val('risk-account')), riskPct=num(val('risk-percent')), entry=num(val('risk-entry')), stop=num(val('risk-stop')), target=num(val('risk-target'));
+    if (![account,riskPct,entry,stop].every(v=>v!=null) || account<=0 || riskPct<=0 || entry<=0 || stop<=0 || entry===stop) {
+      msg(sec,'Enter a positive account size, risk percentage, entry and stop-loss. Entry and stop-loss must be different.',true); return;
+    }
+    const riskAmount=account*riskPct/100, perUnit=Math.abs(entry-stop), quantity=Math.floor(riskAmount/perUnit);
+    const direction=entry>stop?'Long':'Short';
+    const validTarget=target!=null&&target>0&&(entry>stop?target>entry:target<entry);
+    const reward=validTarget?Math.abs(target-entry):null;
+    const rr=reward==null?null:reward/perUnit;
+    const lines=['Risk per trade: ₹'+fmt(riskAmount),'Risk per unit: ₹'+fmt(perUnit),'Position quantity: '+quantity+' unit(s)','Position value: ₹'+fmt(quantity*entry),'Direction assumed: '+direction,(rr==null?'Risk/reward: unavailable (check target direction)':'Risk/reward: 1 : '+fmt(rr,2)),'Estimate only; excludes slippage, taxes and lot-size rules.'];
+    msg(sec,lines.join(' · '),false);
+    console.info('[Strike Pulse] Risk calculation', {account,riskPct,entry,stop,target,quantity,riskAmount,riskPerUnit:perUnit,riskReward:rr});
+  }
+  function unsupportedFeature(sectionId, name) {
+    msg(section(sectionId),name+' is not connected to a verified backend endpoint yet. No market data or result has been fabricated.',true);
+    console.warn('[Strike Pulse] '+name+' is not implemented by the current backend; no API request sent.');
+  }
   function bind() {
     const buttons=all('button');
     const byText=(text,fn,root=document)=>all('button',root).find(b=>b.textContent.trim().toLowerCase()===text.toLowerCase());
@@ -248,6 +267,10 @@
     bindId('sp-run-correlation',runCorrelation);
     bindId('sp-run-backtest',runBacktest);
     bindId('sp-run-statistics',runStatistics);
+    bindId('sp-run-futures-scanner',()=>unsupportedFeature('futures','Futures Scanner'));
+    bindId('sp-run-volatility',()=>unsupportedFeature('volatility','Volatility Lab'));
+    bindId('sp-calculate-risk',runRisk);
+    bindId('sp-refresh-health',loadStatus);
     // Keep text-based compatibility for older page markup.
     bindText('Run Stock Scan',runStockScan,section('stock-scanner'));
     bindText('Run Option Scan',runOptionScan,section('option-scanner'));
@@ -257,6 +280,7 @@
     bindText('Run Historical Test',runBacktest,section('backtesting'));
     bindText('Run Backtest',runBacktest,section('backtesting'));
     bindText('Calculate Statistics',runStatistics,section('statistics'));
+    bindText('Calculate Risk',runRisk,section('risk'));
     bindText('Analyze Historical Pattern',runStatistics,section('statistics'));
     const exportResearch=byText('Export Research');
     if(exportResearch)exportResearch.addEventListener('click',()=>downloadCSV('strike-pulse-research.csv',[
