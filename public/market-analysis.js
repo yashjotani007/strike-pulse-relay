@@ -111,8 +111,25 @@
     host.innerHTML='<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+esc(label)+' chart" style="width:100%;height:auto;min-height:180px"><line x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad)+'" y2="'+(h-pad)+'" stroke="#cbd5e1"/><line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(h-pad)+'" stroke="#cbd5e1"/><path d="'+path+'" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><text x="'+pad+'" y="18" font-size="13" fill="#334155">'+esc(fmt(hi))+'</text><text x="'+pad+'" y="'+(h-5)+'" font-size="13" fill="#334155">'+esc(fmt(lo))+'</text></svg>';
   }
   async function loadStatus() {
-    try { await api('/api/analysis/status'); setStatus('DATA API CONNECTED',true); }
-    catch(e) { setStatus('DATA API UNAVAILABLE',false); msg(section('stock-scanner'),'Backend status check failed: '+e.message,true); }
+    const started=Date.now();
+    try {
+      const d=await api('/api/analysis/status');setStatus('DATA API CONNECTED',true);
+      setText('sp-api-health','Connected');setText('sp-api-health-detail','Status endpoint responded successfully.');
+      setText('sp-data-freshness',d.updated?new Date(d.updated).toLocaleString('en-IN'):'Timestamp unavailable');
+      setText('sp-data-warnings','—');
+      setText('sp-market-status-text','API connected');
+      setText('sp-last-updated',d.updated?new Date(d.updated).toLocaleTimeString('en-IN'):'Status checked');
+      setTbody('sp-health-results',['Check','Status','Details'],[
+        ['API health','OK','Status endpoint responded in '+(Date.now()-started)+' ms'],
+        ['Stock universe',d.features?.universe?'Available':'Unknown',d.features?.universe||'Not reported'],
+        ['Historical chart',d.features?.chart?'Available':'Unknown',d.features?.chart||'Not reported'],
+        ['Options scanner',d.features?.optionScanner?'Available':'Unknown',d.features?.optionScanner||'Not reported']
+      ]);
+    } catch(e) {
+      setStatus('DATA API UNAVAILABLE',false);setText('sp-api-health','Unavailable');setText('sp-api-health-detail',e.message);setText('sp-data-warnings','1+');setText('sp-market-status-text','API unavailable');
+      setTbody('sp-health-results',['Check','Status','Details'],[['API health','Failed',esc(e.message)]]);
+      msg(section('stock-scanner'),'Backend status check failed: '+e.message,true);
+    }
   }
   function stockParams() {
     const preset=val('stock-preset'),tf=val('stock-timeframe')||'1d',trend=val('stock-trend');
@@ -148,7 +165,8 @@
       const symbol=underlying==='Selected F&O Stock'||underlying==='All Available F&O'?'NIFTY':underlying;
       const moneyness=val('moneyness').toLowerCase().includes('itm')?'itm':val('moneyness').toLowerCase().includes('otm')?'otm':val('moneyness').toLowerCase().includes('atm')?'atm':'all';
       const selectedType=val('option-type');
-      const data=await api('/api/analysis/option-scanner',{symbol,type:selectedType==='Call Options Only'||selectedType==='CE'?'CE':selectedType==='Put Options Only'||selectedType==='PE'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
+      const data=await api('/api/analysis/option-scanner',{symbol,expiry:val('sp-options-expiry'),type:selectedType==='Call Options Only'||selectedType==='CE'?'CE':selectedType==='Put Options Only'||selectedType==='PE'?'PE':'both',moneyness,minOi:val('oi-change'),minVolume:val('minimum-option-volume'),minIv:val('minimum-iv'),maxSpread:val('maximum-spread')});
+      const expirySelect=$('sp-options-expiry');if(expirySelect&&data.expiry){let opt=[...expirySelect.options].find(o=>o.value===data.expiry);if(!opt){opt=document.createElement('option');opt.value=data.expiry;opt.textContent=data.expiry;expirySelect.appendChild(opt);}if(!expirySelect.value)expirySelect.value=data.expiry;}
       lastOptionRows=data.results||[];
       const strikes=lastOptionRows.map(r=>num(r.strike)).filter(v=>v!=null);
       const spot=num(data.underlyingPrice??data.spot??data.underlying?.price);
@@ -209,9 +227,9 @@
     } catch(e) { msg(sec,'Volume analysis failed: '+e.message,true); }
   }
   async function runCorrelation() {
-    const sec=section('correlation-lab'),rawA=(val('correlation-stock-a')||'RELIANCE').trim().toUpperCase(),rawB=(val('correlation-stock-b')||'ONGC').trim().toUpperCase(),a=rawA==='RELIENCE'?'RELIANCE':rawA,b=rawB==='RELIENCE'?'RELIANCE':rawB;
-    const benchmark=val('correlation-benchmark').includes('100')?'NIFTY100':'NIFTY';
-    const window=Number((val('correlation-window').match(/\d+/)||[])[0]||60);
+    const sec=section('correlation-lab'),rawA=(val('correlation-stock-a')||'RELIANCE').trim().toUpperCase(),rawB=(val('correlation-stock-b')||'NIFTY').trim().toUpperCase(),a=rawA==='RELIENCE'?'RELIANCE':rawA,b=rawB==='RELIENCE'?'RELIANCE':rawB;
+    const benchmark='NIFTY';
+    const window=Number(val('correlation-window')||60);
     msg(sec,'Loading aligned daily returns for '+a+', '+b+' and '+benchmark+'.');
     try {
       const d=await api('/api/analysis/correlation',{symbols:[a,b,benchmark].join(','),window});
@@ -219,14 +237,14 @@
       const returns=series.map(s=>(s.points||[]).map(p=>p.r).filter(Number.isFinite));
       const corr=(x,y)=>{const n=Math.min(x.length,y.length);if(n<3)return null;const xx=x.slice(-n),yy=y.slice(-n),mx=xx.reduce((s,v)=>s+v,0)/n,my=yy.reduce((s,v)=>s+v,0)/n;let xy=0,xxs=0,yys=0;for(let i=0;i<n;i++){xy+=(xx[i]-mx)*(yy[i]-my);xxs+=(xx[i]-mx)**2;yys+=(yy[i]-my)**2}return xxs&&yys?xy/Math.sqrt(xxs*yys):null;};
       const r=corr(returns[0]||[],returns[1]||[]);
-      const cards=all('.sp-metric',sec); if(cards[0]?.querySelector('strong'))cards[0].querySelector('strong').textContent=r==null?'—':r.toFixed(3);
-      if(cards[1]?.querySelector('strong'))cards[1].querySelector('strong').textContent='—';
-      if(cards[2]?.querySelector('strong'))cards[2].querySelector('strong').textContent='—';
-      if(cards[3]?.querySelector('strong'))cards[3].querySelector('strong').textContent=returns[0]?.length&&returns[2]?.length?fmt(Math.sqrt(returns[0].slice(-window).reduce((s,v,i)=>s+(v-(returns[2].slice(-window)[i]||0))**2,0)/Math.min(window,returns[0].length))*100,2)+'%':'—';
-      const box=all('.sp-chart-box',sec)[0]?.querySelector('.sp-chart-placeholder');
+      setText('sp-correlation-value',r==null?'—':r.toFixed(3));
+      const rel=returns[0]?.length&&returns[1]?.length?((returns[0].slice(-window).reduce((x,y)=>x*(1+y),1)-1)-(returns[1].slice(-window).reduce((x,y)=>x*(1+y),1)-1))*100:null;
+      setText('sp-relative-strength',rel==null?'—':(rel>0?'+':'')+fmt(rel,2)+'%');
+      setText('sp-correlation-sample',d.sessions??Math.min(returns[0]?.length||0,returns[1]?.length||0));
+      let box=$('sp-correlation-chart')?.querySelector('.sp-chart-placeholder');
+      if(!box&&$('sp-correlation-chart')){$('sp-correlation-chart').innerHTML='<div class="sp-chart-placeholder"></div>';box=$('sp-correlation-chart').querySelector('.sp-chart-placeholder');}
       if(box)drawLine(box,(series[0]?.points||[]).map((p,i)=>({t:p.t,c:corr((returns[0]||[]).slice(0,i+1),(returns[1]||[]).slice(0,i+1))})).filter(p=>p.c!=null),'c','Rolling correlation');
-      const perf=all('.sp-chart-box',sec)[1]?.querySelector('.sp-chart-placeholder');
-      if(perf)drawLine(perf,(series[0]?.points||[]).map((p,i)=>({t:p.t,c:100*((returns[0]||[]).slice(0,i+1).reduce((x,y)=>x*(1+y),1)-1)})),'c','Relative performance');
+      setTbody('sp-correlation-results',['Symbol','Aligned sessions','Source'],series.map(s=>[esc(s.symbol),String(s.points?.length||0),esc(d.source||'provider')]));
       addResultsTable(sec,'correlation',['Symbol','Aligned sessions','Source'],series.map(s=>[esc(s.symbol),String(s.points?.length||0),esc(d.source||'provider')]));
       msg(sec,'Correlation calculated from '+(d.sessions||0)+' aligned sessions. Pearson coefficient ('+a+' vs '+b+'): '+(r==null?'unavailable':r.toFixed(3))+'. Beta and spread Z-score are not available from the current API and are left unreported.');
     } catch(e) { msg(sec,'Correlation analysis failed: '+e.message,true); }
