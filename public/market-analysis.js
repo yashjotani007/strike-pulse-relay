@@ -39,7 +39,7 @@
     }
     if (!r.ok || data?.success === false) {
       console.error('[Strike Pulse] API ERROR ✗', r.status, u.toString(), data);
-      throw Error(data?.error || ('API request failed (HTTP '+r.status+').');
+      throw Error(data?.error || ('API request failed (HTTP '+r.status+').'));
     }
     console.info('[Strike Pulse] API SUCCESS ✓', r.status, u.toString(), data);
     return data;
