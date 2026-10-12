@@ -122,7 +122,7 @@
       setText('sp-market-regime','Unavailable');
       setText('sp-market-regime-detail','No market-overview endpoint is exposed by the current backend.');
       setText('sp-advances','—');setText('sp-declines','—');setText('sp-unchanged','—');
-      setHtml('sp-sector-strength','<span class="sp-muted">Sector-strength feed is not configured.</span>');
+      setText('sp-sector-strength','Sector-strength feed is not configured.');
       ['sp-nifty-value','sp-banknifty-value','sp-sensex-value','sp-vix-value'].forEach(id=>setText(id,'Unavailable'));
       ['sp-nifty-change','sp-banknifty-change','sp-sensex-change','sp-vix-change'].forEach(id=>setText(id,'No verified index-feed endpoint'));
       setTbody('sp-indices-table',['Index','Last Price','Change','Change %'],[],'The current backend does not expose a verified live-index endpoint.');
