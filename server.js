@@ -16,5 +16,6 @@ require("./market-intelligence-loader-route.js");
 require("./market-intelligence-page-route.js");
 require("./oi-analysis-route.js");
 require("./oi-analysis-loader-route.js");
+require("./market-analysis-loader-route.js");
 require("./market-analysis/index.js");
 require("./server-original.js");
