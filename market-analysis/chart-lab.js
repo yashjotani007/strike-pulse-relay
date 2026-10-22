@@ -19,6 +19,7 @@ async function chart(q) {
       if (first && last && first.close && bm.get(first.t) && bm.get(last.t)) relativeStrength = { benchmark, stockReturnPct: (last.close / first.close - 1) * 100, benchmarkReturnPct: (bm.get(last.t) / bm.get(first.t) - 1) * 100, excessReturnPct: (last.close / first.close - bm.get(last.t) / bm.get(first.t)) * 100 };
     } catch (_) { relativeStrength = null; }
   }
-  return { success: true, symbol, timeframe, range: data.range, interval: data.interval, candles: rows.map(x => ({ timestamp: x.t, open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume })), count: rows.length, relativeStrength, source: data.source, updated: data.updated, note: 'Historical provider candles. The newest candle may be incomplete; this endpoint is not an exchange-certified live feed.' };
+  const candles = rows.map(x => ({ timestamp: x.t, t: x.t, open: x.open, high: x.high, low: x.low, close: x.close, c: x.close, h: x.high, l: x.low, volume: x.volume, v: x.volume }));
+  return { success: true, symbol, timeframe, range: data.range, interval: data.interval, candles, rows: candles, count: rows.length, relativeStrength, source: data.source, updated: data.updated, note: 'Historical provider candles. The newest candle may be incomplete; this endpoint is not an exchange-certified live feed.' };
 }
 module.exports = { '/api/analysis/chart': chart, '/api/analysis/chart-lab': chart };
