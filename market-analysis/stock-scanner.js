@@ -30,13 +30,16 @@ async function stockScanner(q) {
   const symbols = String(q.symbols || q.symbol || 'RELIANCE,TCS,INFY,SBIN,HDFCBANK').toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
   const rows = await getUniverse();
   const known = new Set(rows.map(x => x.symbol));
-  const minPrice = q.minPrice === undefined ? null : Number(q.minPrice);
-  const minRvol = q.minRvol === undefined && q.relativeVolume === undefined ? null : Number(q.minRvol ?? q.relativeVolume);
-  const rsiMin = q.rsiMin === undefined ? 0 : Number(q.rsiMin);
-  const rsiMax = q.rsiMax === undefined ? 100 : Number(q.rsiMax);
+  const minPrice = q.minPrice === undefined || q.minPrice === '' ? null : Number(q.minPrice);
+  const maxPrice = q.maxPrice === undefined || q.maxPrice === '' ? null : Number(q.maxPrice);
+  const minVolume = q.minVolume === undefined || q.minVolume === '' ? null : Number(q.minVolume);
+  const minRvol = q.minRvol === undefined && q.relativeVolume === undefined && q.rvol === undefined ? null : Number(q.minRvol ?? q.relativeVolume ?? q.rvol);
+  const rsiMin = Number(q.rsiMin ?? q.rsiMinimum ?? 0);
+  const rsiMax = Number(q.rsiMax ?? q.rsiMaximum ?? 100);
+  const minChange = q.minChange === undefined || q.minChange === '' ? null : Number(q.minChange);
   const settled = await Promise.allSettled(symbols.filter(s => known.has(s) || s.startsWith('NIFTY')).map(async symbol => Object.assign({ symbol }, calcStats((await fetchCandles(symbol, '1mo', '1d')).rows))));
   const all = settled.filter(x => x.status === 'fulfilled').map(x => x.value);
-  const results = all.filter(x => (minPrice == null || x.price >= minPrice) && (minRvol == null || x.relativeVolume != null && x.relativeVolume >= minRvol) && x.rsi14 >= rsiMin && x.rsi14 <= rsiMax);
-  return { success: true, results, totalChecked: symbols.length, matched: results.length, failed: settled.filter(x => x.status === 'rejected').map(x => x.reason && x.reason.message || 'Data unavailable'), filters: { minPrice, minRvol, rsiMin, rsiMax }, source: 'Historical market candles', updated: new Date().toISOString(), note: 'Filters are applied to available historical candles; results are research data, not trading advice.' };
+  const results = all.filter(x => (minPrice == null || x.price >= minPrice) && (maxPrice == null || x.price <= maxPrice) && (minVolume == null || x.volume != null && x.volume >= minVolume) && (minRvol == null || x.relativeVolume != null && x.relativeVolume >= minRvol) && x.rsi14 >= rsiMin && x.rsi14 <= rsiMax && (minChange == null || x.changePct != null && x.changePct >= minChange));
+  return { success: true, results, totalChecked: symbols.length, matched: results.length, failed: settled.filter(x => x.status === 'rejected').map(x => x.reason && x.reason.message || 'Data unavailable'), filters: { minPrice, maxPrice, minVolume, minRvol, rsiMin, rsiMax, minChange }, source: 'Historical market candles', updated: new Date().toISOString(), note: 'Filters are applied to available historical candles; results are research data, not trading advice.' };
 }
 module.exports = { '/api/analysis/universe': universe, '/api/analysis/scan-batch': scanBatch, '/api/analysis/stock-scanner': stockScanner };
