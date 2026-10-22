@@ -6,7 +6,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/
 const num = v => v == null || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
 const universeCache = { at: 0, rows: [] };
 const candleCache = new Map();
-const INDEX_ALIASES = { NIFTY: '^NSEI', NIFTY50: '^NSEI', BANKNIFTY: '^NSEBANK', FINNIFTY: '^CNXFIN', MIDCPNIFTY: '^NSEMDCP50', NIFTYIT: '^CNXIT', NIFTY100: '^CNX100', SENSEX: '^BSESN', INDIA VIX: '^INDIAVIX' };
+const INDEX_ALIASES = { NIFTY: '^NSEI', NIFTY50: '^NSEI', BANKNIFTY: '^NSEBANK', FINNIFTY: '^CNXFIN', MIDCPNIFTY: '^NSEMDCP50', NIFTYIT: '^CNXIT', NIFTY100: '^CNX100', SENSEX: '^BSESN', INDIAVIX: '^INDIAVIX' };
 
 function cleanSymbol(value) {
   const symbol = String(value || '').trim().toUpperCase().replace(/\s+/g, '');
