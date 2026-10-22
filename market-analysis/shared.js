@@ -91,14 +91,11 @@ function calcStats(rows) {
   }
   const rsi = loss === 0 ? (gain === 0 ? 50 : 100) : 100 - 100 / (1 + gain / loss);
   const previous = rows.slice(-21, -1);
-  return {
-    price: last.close, changePct: prev && prev.close ? (last.close / prev.close - 1) * 100 : null,
-    rsi14: rsi, volume: last.volume, averageVolume20: avgVolume,
-    relativeVolume: avgVolume > 0 && last.volume != null ? last.volume / avgVolume : null,
-    high20: previous.length ? Math.max.apply(null, previous.map(x => x.high)) : null,
-    low20: previous.length ? Math.min.apply(null, previous.map(x => x.low)) : null,
-    candleTime: last.t
-  };
+  const changePct = prev && prev.close ? (last.close / prev.close - 1) * 100 : null;
+  const relativeVolume = avgVolume > 0 && last.volume != null ? last.volume / avgVolume : null;
+  const high20 = previous.length ? Math.max.apply(null, previous.map(x => x.high)) : null;
+  const low20 = previous.length ? Math.min.apply(null, previous.map(x => x.low)) : null;
+  return { price: last.close, changePct, change: changePct, rsi14: rsi, rsi, volume: last.volume, averageVolume20: avgVolume, relativeVolume, rvol: relativeVolume, high20, low20, candleTime: last.t };
 }
 function pearson(a, b) {
   const n = Math.min(a.length, b.length); if (n < 10) return null;
