@@ -1718,13 +1718,13 @@ function init(){
  const classify=text=>{
   const t=text.toLowerCase();
   if(/loading|scanning|calculating|processing|please wait|fetching/.test(t))return ['loading','In progress'];
-  if(/unavailable|failed|failure|error|could not load|request timed out|http \\d{3}|insufficient data|select .* first|enter valid|no data available/.test(t))return ['error','Needs attention'];
+  if(/unavailable|failed|failure|error|could not load|request timed out|http \d{3}|insufficient data|select .* first|enter valid|no data available/.test(t))return ['error','Needs attention'];
   if(/no results?|0 result|no .* matched|no contracts|not enough|no matching|no records/.test(t))return ['warning','No results'];
-  if(/completed|loaded|result\\(s\\)|contract\\(s\\)|calculation successful|filters reset|\\d+ result|\\d+ option contract/.test(t))return ['success','Completed'];
+  if(/completed|loaded|result\(s\)|contract\(s\)|calculation successful|filters reset|\d+ result|\d+ option contract/.test(t))return ['success','Completed'];
   return ['info','Update'];
  };
  function show(text,forcedKind){
-  text=String(text||'').replace(/\\s+/g,' ').trim();
+  text=String(text||'').replace(/\s+/g,' ').trim();
   if(!text)return;
   const now=Date.now();
   if(text===lastText&&now-lastAt<900)return;
