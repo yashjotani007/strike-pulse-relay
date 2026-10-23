@@ -1736,7 +1736,9 @@ function init(){
   const body=document.createElement('span');body.textContent=text;
   toast.append(heading,body);toast.style.display='block';
   clearTimeout(hideTimer);
-  if((forcedKind||kind)!=='loading')hideTimer=setTimeout(()=>{toast.style.display='none'},6500);
+  // Always auto-dismiss notifications; loading messages get a longer fallback timeout so they cannot stay stuck forever.
+  const ttl=(forcedKind||kind)==='loading'?12000:6500;
+  hideTimer=setTimeout(()=>{toast.style.display='none'},ttl);
  }
  const statusSelector='.sp-current-status,.sp-live-message,#chart-data-status,[role="status"]';
  const seen=new WeakMap();
