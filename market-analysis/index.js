@@ -7,7 +7,7 @@ const modules = [
   require('./stock-scanner'), require('./option-scanner'), require('./chart-lab'),
   require('./volume-lab'), require('./correlation-lab'), require('./backtesting'),
   require('./statistics'), require('./market-breadth'), require('./relative-strength'),
-  require('./volatility-lab'), require('./watchlist')
+  require('./volatility-lab'), require('./watchlist'), require('./option-history')
 ];
 const handlers = Object.assign({}, ...modules);
 handlers['/api/analysis/status'] = async function () {
