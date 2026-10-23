@@ -1609,3 +1609,85 @@ function boot(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
+
+/* Market Analysis HTML compatibility bridge (light-theme page markup).
+   Adds the legacy IDs/controls consumed by existing research handlers without
+   replacing scanner engines or fabricating market data. */
+(function(){
+'use strict';
+function compat(){
+ const root=document.querySelector('.sp-terminal')||document.querySelector('.sp-analysis');
+ if(!root||root.dataset.spHtmlCompat==='1')return;
+ root.dataset.spHtmlCompat='1';
+ const q=(sel)=>root.querySelector(sel);
+ const make=(tag,attrs,parent)=>{const el=document.createElement(tag);Object.entries(attrs||{}).forEach(([k,v])=>{if(k==='text')el.textContent=v;else if(k==='html')el.innerHTML=v;else el.setAttribute(k,v)});(parent||root).append(el);return el};
+ const ensureButton=(section,id,label)=>{if(!section||q('#'+id))return q('#'+id);const row=section.querySelector('.sp-action-row')||section;const b=make('button',{id,type:'button',class:'sp-btn-primary',text:label},row);return b};
+ const ensureControl=(section,id,label,options)=>{if(q('#'+id))return q('#'+id);const grid=section?.querySelector('.sp-filter-grid')||section;if(!grid)return null;const wrap=make('div',{class:'sp-field', 'data-sp-compat-control':'1'},grid);make('label',{for:id,text:label},wrap);const sel=make('select',{id},wrap);options.forEach(([v,t])=>make('option',{value:v,text:t},sel));return sel};
+ const ensureMetric=(section,id,label)=>{if(q('#'+id))return q('#'+id);let grid=section.querySelector('.sp-metric-grid');if(!grid){grid=make('div',{class:'sp-metric-grid'},section)}const card=make('div',{class:'sp-metric'},grid);make('span',{text:label},card);return make('strong',{id,text:'—'},card)};
+ 
+ /* Give result tables the exact IDs expected by the existing engines. */
+ const stockTable=q('#stock-scanner .sp-table');
+ if(stockTable){stockTable.id='stock-results';const head=stockTable.querySelector('thead tr');if(head){head.replaceChildren();['Symbol','Price','Change %','RSI','ADX','Relative Volume','VWAP','Trend','Structure','Action'].forEach(t=>make('th',{text:t},head))}}
+ const optionTable=q('#option-scanner .sp-table');
+ if(optionTable)optionTable.id='option-chain';
+ 
+ /* Chart rendering targets */
+ const chart=q('#chart-lab .sp-chart-placeholder');
+ if(chart&&!q('#price-chart'))chart.id='price-chart';
+ const chartTitle=q('#chart-lab .sp-chart-title');
+ if(chartTitle&&!q('#chart-title'))chartTitle.id='chart-title';
+ if(!q('#chart-data-status')){const status=make('div',{id:'chart-data-status',class:'sp-live-message',role:'status','aria-live':'polite',text:'Chart data will appear after a valid symbol is selected.'},q('#chart-lab'))}
+ 
+ /* Stock scanner controls used by older and newer JS handlers. */
+ const stock=q('#stock-scanner');
+ if(stock){
+  ensureControl(stock,'stock-timeframe','Scan timeframe',[['15 Minutes','15 Minutes'],['5 Minutes','5 Minutes'],['30 Minutes','30 Minutes'],['1 Hour','1 Hour'],['Daily','Daily'],['Weekly','Weekly']]);
+  ensureControl(stock,'stock-direction','Direction filter',[['Any','Any direction'],['Bullish','Bullish'],['Bearish','Bearish'],['Sideways','Sideways']]);
+  ensureControl(stock,'scan-pattern','Pattern filter',[['Any','Any pattern'],['Price Breakout','Price Breakout'],['Price Breakdown','Price Breakdown']]);
+  ensureButton(stock,'reset-stock-scan','Reset Filters');
+  ensureButton(stock,'export-stock-csv','Export CSV');
+ }
+ 
+ /* Option scanner: the existing select is retained; the engine fills expiry choices when available. */
+ const options=q('#option-scanner');
+ if(options&&!q('#option-chain .sp-empty-state')){const body=q('#option-chain tbody');if(body)body.innerHTML='<tr><td colspan="11" class="sp-empty-state">Run the option scanner to view available contracts.</td></tr>'}
+ 
+ /* Volume Lab output + run action */
+ const volume=q('#volume-lab');
+ if(volume){
+  const placeholder=q('#volume-lab .sp-chart-placeholder');if(placeholder&&!q('#volume-analysis'))placeholder.id='volume-analysis';
+  ensureButton(volume,'analyze-volume','Analyze Volume');
+ }
+ 
+ /* Correlation Lab output and action */
+ const corr=q('#correlation-lab');
+ if(corr){
+  if(!q('#correlation')){const out=make('div',{id:'correlation',class:'sp-chart-box'},corr);make('div',{class:'sp-chart-placeholder',text:'Correlation results will appear after analysis.'},out)}
+  ensureButton(corr,'calculate-correlation','Calculate Correlation');
+ }
+ 
+ /* Backtest result targets and action */
+ const back=q('#backtesting');
+ if(back){
+  [['backtest-pnl','Total Return'],['backtest-win-rate','Win Rate'],['backtest-profit-factor','Profit Factor'],['backtest-expectancy','Expectancy'],['backtest-drawdown','Max Drawdown'],['backtest-sharpe','Sharpe'],['backtest-sortino','Sortino'],['backtest-trades','Trades']].forEach(([id,label])=>ensureMetric(back,id,label));
+  ensureButton(back,'run-backtest','Run Historical Backtest');
+  ensureButton(back,'calculate-risk','Calculate Risk Metrics');
+ }
+ 
+ /* Statistics Lab controls and result targets */
+ const stats=q('#statistics');
+ if(stats){
+  ensureControl(stats,'statistical-period','Historical period',[['60','60 sessions'],['120','120 sessions'],['240','240 sessions'],['720','720 sessions'],['1200','1200 sessions']]);
+  ensureControl(stats,'statistical-pattern','Pattern analysis',[['Daily Returns','Daily Returns'],['Opening Range','Opening Range'],['Time-of-Day','Time-of-Day']]);
+  ensureButton(stats,'analyze-historical-pattern','Analyze Historical Pattern');
+  const metrics=stats.querySelectorAll('.sp-metric strong');
+  const metricIds=['statistics-return','statistics-volatility','statistics-drawdown','statistics-observations'];
+  metrics.forEach((el,i)=>{if(metricIds[i]&&!el.id)el.id=metricIds[i]});
+ }
+ 
+ /* Keep old JS timeframe controls synchronized with the visible Chart Lab timeframe. */
+ const visibleTf=q('#chart-timeframe'),stockTf=q('#stock-timeframe');
+ if(visibleTf&&stockTf){const sync=()=>{const map={'5m':'5 Minutes','15m':'15 Minutes','30m':'30 Minutes','1h':'1 Hour','1D':'Daily','1W':'Weekly'};stockTf.value=map[visibleTf.value]||'15 Minutes'};sync();visibleTf.addEventListener('change',sync)}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',compat,{once:true});else compat();
+})();
