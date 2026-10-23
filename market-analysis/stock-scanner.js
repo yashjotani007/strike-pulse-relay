@@ -26,8 +26,32 @@ async function scanBatch(q) {
   const failed = settled.filter(x => x.status === 'rejected').map((x, i) => ({ error: x.reason && x.reason.message || 'Provider unavailable' }));
   return { success: results.length > 0, results, requested: symbols.length, failed, nextOffset: offset + limit, total: rows.length, hasMore: offset + limit < rows.length, source: 'NSE directory / historical market candles', updated: new Date().toISOString(), note: 'Scanner results use the latest available provider candle and may not be real-time.' };
 }
+function ema(rows, period) {
+  if (!Array.isArray(rows) || rows.length < period) return null;
+  const k = 2 / (period + 1);
+  let value = rows.slice(0, period).reduce((sum, row) => sum + row.close, 0) / period;
+  for (let i = period; i < rows.length; i++) value = rows[i].close * k + value * (1 - k);
+  return Number.isFinite(value) ? value : null;
+}
+function addIndicators(rows, interval) {
+  const stats = calcStats(rows);
+  const intraday = /^(1m|2m|5m|15m|30m|60m|90m|1h)$/.test(interval);
+  let vwap = null;
+  if (intraday && rows.length) {
+    const dayKey = t => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
+    const lastDay = dayKey(rows[rows.length - 1].t);
+    const dayRows = rows.filter(x => dayKey(x.t) === lastDay && x.volume != null && x.volume > 0);
+    const volume = dayRows.reduce((sum, x) => sum + x.volume, 0);
+    if (volume > 0) vwap = dayRows.reduce((sum, x) => sum + ((x.high + x.low + x.close) / 3) * x.volume, 0) / volume;
+  }
+  return Object.assign({}, stats, { ema20: ema(rows, 20), ema50: ema(rows, 50), ema200: ema(rows, 200), vwap });
+}
 async function stockScanner(q) {
   const symbols = String(q.symbols || q.symbol || 'RELIANCE,TCS,INFY,SBIN,HDFCBANK').toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
+  const intervalRaw = String(q.interval || '1d');
+  const interval = ['1m','2m','5m','15m','30m','60m','90m','1h','1d','5d','1wk','1mo','3mo'].includes(intervalRaw) ? intervalRaw : '1d';
+  const defaultRange = ['1d','1wk'].includes(interval) ? '1y' : '5d';
+  const range = String(q.range || defaultRange);
   const rows = await getUniverse();
   const known = new Set(rows.map(x => x.symbol));
   const minPrice = q.minPrice === undefined || q.minPrice === '' ? null : Number(q.minPrice);
@@ -37,9 +61,9 @@ async function stockScanner(q) {
   const rsiMin = Number(q.rsiMin ?? q.rsiMinimum ?? 0);
   const rsiMax = Number(q.rsiMax ?? q.rsiMaximum ?? 100);
   const minChange = q.minChange === undefined || q.minChange === '' ? null : Number(q.minChange);
-  const settled = await Promise.allSettled(symbols.filter(s => known.has(s) || s.startsWith('NIFTY')).map(async symbol => Object.assign({ symbol }, calcStats((await fetchCandles(symbol, '1mo', '1d')).rows))));
+  const settled = await Promise.allSettled(symbols.filter(s => known.has(s) || s.startsWith('NIFTY') || ['BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX','INDIAVIX'].includes(s)).map(async symbol => Object.assign({ symbol }, addIndicators((await fetchCandles(symbol, range, interval)).rows, interval))));
   const all = settled.filter(x => x.status === 'fulfilled').map(x => x.value);
   const results = all.filter(x => (minPrice == null || x.price >= minPrice) && (maxPrice == null || x.price <= maxPrice) && (minVolume == null || x.volume != null && x.volume >= minVolume) && (minRvol == null || x.relativeVolume != null && x.relativeVolume >= minRvol) && x.rsi14 >= rsiMin && x.rsi14 <= rsiMax && (minChange == null || x.changePct != null && x.changePct >= minChange));
-  return { success: true, results, totalChecked: symbols.length, matched: results.length, failed: settled.filter(x => x.status === 'rejected').map(x => x.reason && x.reason.message || 'Data unavailable'), filters: { minPrice, maxPrice, minVolume, minRvol, rsiMin, rsiMax, minChange }, source: 'Historical market candles', updated: new Date().toISOString(), note: 'Filters are applied to available historical candles; results are research data, not trading advice.' };
+  return { success: true, results, totalChecked: symbols.length, matched: results.length, coverage: `${all.length}/${symbols.length} symbol(s) returned valid candles`, failed: settled.filter(x => x.status === 'rejected').map(x => x.reason && x.reason.message || 'Data unavailable'), filters: { minPrice, maxPrice, minVolume, minRvol, rsiMin, rsiMax, minChange, interval, range }, source: 'Yahoo Finance historical candles; NSE equity directory for symbol validation', updated: new Date().toISOString(), note: 'Scanner results use the latest available provider candle and may be delayed; not a guaranteed real-time feed.' };
 }
 module.exports = { '/api/analysis/universe': universe, '/api/analysis/scan-batch': scanBatch, '/api/analysis/stock-scanner': stockScanner };
