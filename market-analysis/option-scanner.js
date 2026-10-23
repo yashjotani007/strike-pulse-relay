@@ -12,7 +12,8 @@ async function scan(q) {
   const minOiPct = q.minOi == null || q.minOi === '' ? null : Number(q.minOi);
   const minOIChange = q.oiChange == null || q.oiChange === '' ? null : Number(q.oiChange);
   const minVolume = q.minVolume == null || q.minVolume === '' ? 0 : Number(q.minVolume);
-  const minIV = q.minIV == null && q.minIv == null || (q.minIV === '' && q.minIv === '') ? null : Number(q.minIV ?? q.minIv);
+  const ivRaw = q.minIV ?? q.minIv;
+  const minIV = ivRaw == null || ivRaw === '' ? null : Number(ivRaw);
   const maxSpread = q.maxSpread == null ? null : Number(q.maxSpread);
   const rows = [];
   for (const row of chain.rows) {
