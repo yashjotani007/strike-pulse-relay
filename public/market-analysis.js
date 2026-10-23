@@ -1318,7 +1318,7 @@ function init(){
  menu.setAttribute('role','listbox');
  menu.style.cssText='position:absolute;left:0;right:0;top:100%;z-index:99999;background:#fff;border:1px solid #d7e3f2;border-radius:10px;box-shadow:0 10px 25px rgba(20,40,70,.15);max-height:260px;overflow:auto;display:none;';
  const wrap=document.createElement('div');
- wrap.id='sp-option-underlying-search';
+ wrap.id='sp-option-underlying-search-wrap';
  wrap.style.cssText='position:relative;width:100%;';
  wrap.append(input,menu);
  select.style.display='none';
