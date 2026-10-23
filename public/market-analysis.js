@@ -1691,3 +1691,95 @@ function compat(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',compat,{once:true});else compat();
 })();
+
+
+/* Strike Pulse shared notifications: mirrors real tool status into a consistent toast. */
+(function(){
+'use strict';
+function init(){
+ const root=document.querySelector('.sp-terminal')||document.querySelector('.sp-analysis');
+ if(!root||root.dataset.spNotifications==='1')return;
+ root.dataset.spNotifications='1';
+ const style=document.createElement('style');
+ style.textContent=`
+ #sp-global-notice{position:fixed;z-index:2147483000;right:18px;bottom:18px;width:min(390px,calc(100vw - 28px));padding:13px 15px;border:1px solid #dbe4f0;border-left:4px solid #2563eb;border-radius:12px;background:#fff;color:#172033;box-shadow:0 12px 34px rgba(15,23,42,.18);font:500 13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;display:none;white-space:normal;overflow-wrap:anywhere}
+ #sp-global-notice[data-kind="success"]{border-left-color:#16a34a}
+ #sp-global-notice[data-kind="warning"]{border-left-color:#d97706}
+ #sp-global-notice[data-kind="error"]{border-left-color:#dc2626}
+ #sp-global-notice[data-kind="loading"]{border-left-color:#2563eb}
+ #sp-global-notice .sp-notice-title{display:block;font-size:12px;font-weight:800;letter-spacing:.02em;margin-bottom:3px}
+ @media(max-width:600px){#sp-global-notice{right:12px;bottom:12px;width:calc(100vw - 24px)}}
+ `;
+ document.head.append(style);
+ const toast=document.createElement('div');
+ toast.id='sp-global-notice';toast.setAttribute('role','status');toast.setAttribute('aria-live','polite');
+ root.append(toast);
+ let hideTimer=null,lastText='',lastAt=0;
+ const classify=text=>{
+  const t=text.toLowerCase();
+  if(/loading|scanning|calculating|processing|please wait|fetching/.test(t))return ['loading','In progress'];
+  if(/unavailable|failed|failure|error|could not load|request timed out|http \\d{3}|insufficient data|select .* first|enter valid|no data available/.test(t))return ['error','Needs attention'];
+  if(/no results?|0 result|no .* matched|no contracts|not enough|no matching|no records/.test(t))return ['warning','No results'];
+  if(/completed|loaded|result\\(s\\)|contract\\(s\\)|calculation successful|filters reset|\\d+ result|\\d+ option contract/.test(t))return ['success','Completed'];
+  return ['info','Update'];
+ };
+ function show(text,forcedKind){
+  text=String(text||'').replace(/\\s+/g,' ').trim();
+  if(!text)return;
+  const now=Date.now();
+  if(text===lastText&&now-lastAt<900)return;
+  lastText=text;lastAt=now;
+  const [kind,title]=classify(text);
+  toast.dataset.kind=forcedKind||kind;
+  toast.replaceChildren();
+  const heading=document.createElement('span');heading.className='sp-notice-title';heading.textContent=forcedKind==='error'?'Action needed':title;
+  const body=document.createElement('span');body.textContent=text;
+  toast.append(heading,body);toast.style.display='block';
+  clearTimeout(hideTimer);
+  if((forcedKind||kind)!=='loading')hideTimer=setTimeout(()=>{toast.style.display='none'},6500);
+ }
+ const statusSelector='.sp-current-status,.sp-live-message,#chart-data-status,[role="status"]';
+ const seen=new WeakMap();
+ function inspect(node){
+  if(!(node instanceof Element))return;
+  const items=[];
+  if(node.matches(statusSelector))items.push(node);
+  node.querySelectorAll?.(statusSelector).forEach(el=>items.push(el));
+  items.forEach(el=>{
+   if(el===toast||toast.contains(el))return;
+   const text=(el.textContent||'').trim();
+   if(!text||seen.get(el)===text)return;
+   seen.set(el,text);
+   show(text);
+  });
+ }
+ const observer=new MutationObserver(records=>{
+  for(const record of records){
+   if(record.type==='characterData')inspect(record.target.parentElement);
+   else record.addedNodes.forEach(inspect);
+   if(record.type==='childList'&&record.target instanceof Element&&record.target.matches(statusSelector))inspect(record.target);
+  }
+ });
+ observer.observe(root,{subtree:true,childList:true,characterData:true});
+ root.addEventListener('click',e=>{
+  const button=e.target.closest('button');
+  if(!button||!root.contains(button))return;
+  const labels={
+   'run-stock-scan':'Starting stock scan…',
+   'run-option-scan':'Loading option scanner…',
+   'analyze-volume':'Starting volume analysis…',
+   'calculate-correlation':'Calculating correlation…',
+   'run-backtest':'Starting historical backtest…',
+   'analyze-historical-pattern':'Running statistics analysis…',
+   'calculate-risk':'Calculating risk metrics…'
+  };
+  if(labels[button.id])show(labels[button.id],'loading');
+ });
+ // Keep validation feedback in the same notification style on this analysis page.
+ const nativeAlert=window.alert;
+ window.alert=function(message){show(String(message||'Please check the required inputs.'),'warning');};
+ // Expose a small helper for any future tools added to this same file.
+ window.spNotify=function(message,kind){show(message,kind||null);};
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
