@@ -1,0 +1,4 @@
+'use strict';
+function calculateEMA(values,period){if(!Array.isArray(values)||!values.length||period<1)return[];const a=2/(period+1);let prev=null;return values.map(v=>{const n=Number(v);if(!Number.isFinite(n))return null;prev=prev===null?n:n*a+prev*(1-a);return prev;});}
+function calculateRSI(values,period=14){const out=Array((values||[]).length).fill(null);if(!Array.isArray(values)||values.length<=period)return out;let g=0,l=0;for(let i=1;i<=period;i++){const d=values[i]-values[i-1];if(d>0)g+=d;else l-=d;}let ag=g/period,al=l/period;out[period]=al===0?100:100-100/(1+ag/al);for(let i=period+1;i<values.length;i++){const d=values[i]-values[i-1];ag=(ag*(period-1)+Math.max(d,0))/period;al=(al*(period-1)+Math.max(-d,0))/period;out[i]=al===0?100:100-100/(1+ag/al);}return out;}
+module.exports={calculateEMA,calculateRSI};

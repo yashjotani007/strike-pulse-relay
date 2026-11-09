@@ -1,0 +1,3 @@
+'use strict';
+function summarizeReturns(input){const v=(input||[]).map(Number).filter(Number.isFinite);if(!v.length)return{trades:0,winRate:null,averageReturn:null,profitFactor:null,maxDrawdown:null};const wins=v.filter(x=>x>0),losses=v.filter(x=>x<0);let eq=1,peak=1,dd=0;for(const r of v){eq*=1+r/100;peak=Math.max(peak,eq);dd=Math.max(dd,(peak-eq)/peak*100);}const gw=wins.reduce((a,b)=>a+b,0),gl=Math.abs(losses.reduce((a,b)=>a+b,0));return{trades:v.length,winRate:wins.length/v.length*100,averageReturn:v.reduce((a,b)=>a+b,0)/v.length,profitFactor:gl?gw/gl:(gw?null:0),maxDrawdown:dd};}
+module.exports={summarizeReturns};
