@@ -1,30 +1,49 @@
 'use strict';
-const fs=require('fs'),path=require('path'),config=require('./config');
-const {unavailable}=require('./shared');
+const path=require('path'),fs=require('fs'),config=require('./config');
+const {unavailable,safeSymbol}=require('./shared');
 const {getOverview}=require('./overview/overview');
 const {scanStock}=require('./scanners/stock-scanner');
 const {scanOptions}=require('./scanners/option-scanner');
 const {getOptionChain}=require('./options/option-chain');
 const {getChart}=require('./charts/chart-data');
+const {correlation}=require('./research/correlation');
+const {relativeStrength}=require('./research/relative-strength');
+const {runEmaCrossover}=require('./backtesting/engine');
+const {summarizeReturns}=require('./risk/statistics');
 let installed=false;
+const aligned=(a,b)=>{
+ const map=d=>new Map((d.candles||[]).filter(x=>x.timestamp&&Number.isFinite(Number(x.close))).map(x=>[new Date(x.timestamp).toISOString().slice(0,10),Number(x.close)]));
+ const x=map(a),y=map(b),dates=[...x.keys()].filter(k=>y.has(k)).sort(),ra=[],rb=[];
+ for(let i=1;i<dates.length;i++){const p=dates[i-1],q=dates[i];if(x.get(p)>0&&y.get(p)>0){ra.push((x.get(q)/x.get(p)-1)*100);rb.push((y.get(q)/y.get(p)-1)*100);}}
+ return{dates:dates.slice(1),a:ra,b:rb};
+};
+const stats=(returns)=>{
+ const v=returns.filter(Number.isFinite),n=v.length;if(!n)return{observations:0,cagr:null,annualizedVolatility:null,sharpe:null,sortino:null,maxDrawdown:null,beta:null,alpha:null};
+ const mean=v.reduce((s,x)=>s+x,0)/n,variance=v.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,n-1),down=v.filter(x=>x<0),downVar=down.length?down.reduce((s,x)=>s+x*x,0)/down.length:0;
+ let eq=1,peak=1,dd=0;for(const r of v){eq*=1+r/100;peak=Math.max(peak,eq);dd=Math.max(dd,(peak-eq)/peak*100);}
+ return{observations:n,cagr:(Math.pow(Math.max(eq,0.0000001),252/n)-1)*100,annualizedVolatility:Math.sqrt(variance*252),sharpe:variance?mean/Math.sqrt(variance)*Math.sqrt(252):null,sortino:downVar?mean/Math.sqrt(downVar)*Math.sqrt(252):null,maxDrawdown:dd};
+};
 module.exports=function(app){
  if(installed)return;installed=true;
  const publicFile=path.join(__dirname,'..','public','market-analysis.js');
- app.get(config.loaderPath,(req,res)=>{
-  res.set('Access-Control-Allow-Origin','*').set('Cache-Control','no-store, max-age=0, must-revalidate').type('application/javascript');
-  if(!fs.existsSync(publicFile))return res.status(503).send('console.error("[Strike Pulse] Market Analysis loader unavailable");');
-  return res.sendFile(publicFile);
- });
- app.get(config.apiBase+'/health',(req,res)=>res.json({success:true,module:'market-analysis',version:config.version,mode:config.mode,integrations:{marketIntelligence:typeof global.__SP_MARKET_INTELLIGENCE_HANDLER__==='function',optionChain:typeof global.__SP_LOAD_CHAIN__==='function',stockSearch:true,stockCandles:true},endpoints:['overview','stock-scan','option-chain','option-scan','chart'],generatedAt:new Date().toISOString()}));
+ app.get(config.loaderPath,(req,res)=>{res.set('Access-Control-Allow-Origin','*').set('Cache-Control','no-store, max-age=0, must-revalidate').type('application/javascript');if(!fs.existsSync(publicFile))return res.status(503).send('console.error("[Strike Pulse] Market Analysis loader unavailable");');return res.sendFile(publicFile);});
+ app.get(config.apiBase+'/health',(req,res)=>res.json({success:true,module:'market-analysis',version:'2.0.0',mode:'research-only',integrations:{marketIntelligence:typeof global.__SP_MARKET_INTELLIGENCE_HANDLER__==='function',optionChain:typeof global.__SP_LOAD_CHAIN__==='function',stockSearch:true,stockCandles:true},endpoints:['overview','stock-scan','stock-scan-batch','option-chain','option-scan','chart','trading-intelligence','research','backtest','statistics'],generatedAt:new Date().toISOString()}));
  app.get(config.apiBase+'/overview',async(req,res)=>{try{res.json(await getOverview());}catch(e){res.status(502).json(unavailable('overview',e.message));}});
  app.get(config.apiBase+'/stock-scan',async(req,res)=>{try{res.json(await scanStock(req.query.symbol));}catch(e){res.status(502).json(unavailable('stock-scanner',e.message));}});
+ app.get(config.apiBase+'/stock-scan-batch',async(req,res)=>{try{const symbols=String(req.query.symbols||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,20);if(!symbols.length)throw Error('Provide at least one symbol; maximum 20 per scan');const results=await Promise.allSettled(symbols.map(scanStock));res.json({success:true,available:results.some(x=>x.status==='fulfilled'),results:results.map((x,i)=>x.status==='fulfilled'?x.value:{success:false,available:false,symbol:symbols[i],error:x.reason?.message||'Unavailable'}),generatedAt:new Date().toISOString()});}catch(e){res.status(400).json(unavailable('stock-scanner',e.message));}});
  app.get(config.apiBase+'/option-chain',async(req,res)=>{try{res.json(await getOptionChain(req.query.symbol,req.query.expiry));}catch(e){res.status(502).json(unavailable('option-chain',e.message));}});
  app.get(config.apiBase+'/option-scan',async(req,res)=>{try{res.json(await scanOptions(req.query.symbol,req.query.expiry));}catch(e){res.status(502).json(unavailable('option-scanner',e.message));}});
  app.get(config.apiBase+'/chart',async(req,res)=>{try{res.json(await getChart(req.query.symbol,req.query.range,req.query.interval));}catch(e){res.status(502).json(unavailable('chart-lab',e.message));}});
- app.get(config.apiBase+'/research/:module',(req,res)=>{
-  const allowed=['correlation','relative-strength','historical-patterns','market-regime','volume'];
-  if(!allowed.includes(req.params.module))return res.status(404).json(unavailable('research','Unknown research module'));
-  return res.status(501).json({success:false,available:false,module:req.params.module,error:'Registered; verified provider workflow is not connected yet.',generatedAt:new Date().toISOString()});
- });
- console.log('[MARKET ANALYSIS] routes registered');
+ app.get(config.apiBase+'/trading-intelligence',async(req,res)=>{try{const d=await getOverview();res.json({success:true,available:true,source:d.source||'market-intelligence',market:d.market||null,regime:d.regime||null,breadth:d.breadth||null,sectors:d.indices?.sectors||{},drivers:d.indices?.drivers||null,options:d.options||null,signals:d.signals||[],participants:{available:false,reason:'Verified FII/DII participant feed is not connected'},delivery:{available:false,reason:'Verified delivery data feed is not connected'},generatedAt:d.generatedAt||new Date().toISOString()});}catch(e){res.status(502).json(unavailable('trading-intelligence',e.message));}});
+ app.get(config.apiBase+'/backtest',async(req,res)=>{try{const symbol=safeSymbol(req.query.symbol),range=String(req.query.range||'1y'),interval=String(req.query.interval||'1d'),fast=Number(req.query.fast||10),slow=Number(req.query.slow||20),stop=req.query.stop===''?null:Number(req.query.stop||0),target=req.query.target===''?null:Number(req.query.target||0),fee=Number(req.query.feeBps||0),slippage=Number(req.query.slippageBps||0);const d=await getChart(symbol,range,interval),bt=runEmaCrossover(d.candles,fast,slow,{stopLossPct:stop>0?stop:null,targetPct:target>0?target:null,feeBps:fee,slippageBps:slippage}),returns=bt.trades.map(t=>t.returnPercent);res.json({success:true,available:true,symbol,source:d.source,range,interval,...bt,statistics:summarizeReturns(returns),generatedAt:new Date().toISOString()});}catch(e){res.status(400).json(unavailable('backtesting',e.message));}});
+ app.get(config.apiBase+'/research/:module',async(req,res)=>{const m=req.params.module;try{
+  if(m==='volume'){const d=await getChart(req.query.symbol,'3mo','1d'),v=d.candles.map(x=>x.volume).filter(x=>x!=null),last=v.at(-1),recent=v.slice(-20),avg=recent.length?recent.reduce((a,b)=>a+b,0)/recent.length:null;return res.json({success:true,available:v.length>0,module:m,symbol:d.symbol,latestVolume:last,averageVolume20:avg,relativeVolume:avg>0?last/avg:null,observations:v.length,source:d.source,generatedAt:new Date().toISOString()});}
+  if(m==='correlation'){const a=safeSymbol(req.query.symbolA||'NIFTY'),b=safeSymbol(req.query.symbolB||'BANKNIFTY'),[x,y]=await Promise.all([getChart(a,'6mo','1d'),getChart(b,'6mo','1d')]),z=aligned(x,y),value=correlation(z.a,z.b);if(value==null)throw Error('At least 3 matched daily returns are required');return res.json({success:true,available:true,module:m,symbolA:a,symbolB:b,correlation:value,observations:z.a.length,interpretation:value>=.7?'Strong positive':value>=.3?'Moderate positive':value<=-.7?'Strong negative':value<=-.3?'Moderate negative':'Weak relationship',source:'yahoo-finance',generatedAt:new Date().toISOString()});}
+  if(m==='relative-strength'){const a=safeSymbol(req.query.symbol||'RELIANCE'),b=safeSymbol(req.query.benchmark||'NIFTY'),[x,y]=await Promise.all([getChart(a,'6mo','1d'),getChart(b,'6mo','1d')]),z=aligned(x,y);if(z.a.length<2)throw Error('Insufficient matched daily candles');const assetReturn=(x.candles.at(-1).close/x.candles[0].close-1)*100,benchmarkReturn=(y.candles.at(-1).close/y.candles[0].close-1)*100;return res.json({success:true,available:true,module:m,symbol:a,benchmark:b,...relativeStrength(1,1+assetReturn/100,1,1+benchmarkReturn/100),observations:z.a.length,source:'yahoo-finance',generatedAt:new Date().toISOString()});}
+  if(m==='historical-patterns'){const s=safeSymbol(req.query.symbol),d=await getChart(s,'1y','1d'),c=d.candles,ret=[];for(let i=1;i<c.length;i++)ret.push((c[i].close/c[i-1].close-1)*100);const up=ret.filter(x=>x>0).length,down=ret.filter(x=>x<0).length,avg=ret.length?ret.reduce((a,b)=>a+b,0)/ret.length:null,range=c.map(x=>(x.high-x.low)/x.close*100),body=c.map(x=>Math.abs(x.close-x.open)/x.close*100);return res.json({success:true,available:true,module:m,symbol:s,candles:c.length,positiveSessions:up,negativeSessions:down,flatSessions:ret.length-up-down,positiveSessionRate:ret.length?up/ret.length*100:null,averageDailyReturn:avg,averageIntradayRange:range.reduce((a,b)=>a+b,0)/Math.max(1,range.length),averageCandleBody:body.reduce((a,b)=>a+b,0)/Math.max(1,body.length),bestSession:ret.length?Math.max(...ret):null,worstSession:ret.length?Math.min(...ret):null,source:d.source,generatedAt:new Date().toISOString()});}
+  if(m==='market-regime'){const d=await getOverview();return res.json({success:true,available:true,module:m,regime:d.regime||null,breadth:d.breadth||null,indices:d.indices||null,signals:d.signals||[],source:d.source,generatedAt:d.generatedAt||new Date().toISOString()});}
+  if(m==='statistics'){const s=safeSymbol(req.query.symbol),b=safeSymbol(req.query.benchmark||'NIFTY'),[x,y]=await Promise.all([getChart(s,'1y','1d'),getChart(b,'1y','1d')]),z=aligned(x,y),base=stats(z.a);let beta=null,alpha=null;if(z.a.length>2){const mb=z.b.reduce((a,v)=>a+v,0)/z.b.length,ma=z.a.reduce((a,v)=>a+v,0)/z.a.length;let cov=0,varb=0;for(let i=0;i<z.a.length;i++){cov+=(z.a[i]-ma)*(z.b[i]-mb);varb+=(z.b[i]-mb)**2;}if(varb){beta=cov/varb;alpha=(ma-beta*mb)*252;}}return res.json({success:true,available:true,module:m,symbol:s,benchmark:b,...base,beta,annualizedAlpha:alpha,source:'yahoo-finance',generatedAt:new Date().toISOString()});}
+  return res.status(404).json(unavailable('research','Unknown research module'));
+ }catch(e){return res.status(502).json(unavailable(m,e.message));}});
+ console.log('[MARKET ANALYSIS] complete research routes registered');
 };

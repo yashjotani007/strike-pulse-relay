@@ -5,6 +5,8 @@ async function getOptionChain(input,expiry){
  const chain=await load(symbol,expiry?String(expiry):null,true);
  if(!chain||chain.success!==true)throw Error('Option-chain provider returned no verified data');
  if(String(chain.symbol||'').toUpperCase()!==symbol)throw Error('Option-chain underlying mismatch');
+ const date=chain.expiry&&Date.parse(chain.expiry),today=Date.now();
+ if(date&&date<new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'})).setHours(0,0,0,0))throw Error('NSE returned an expired option contract. Select a future expiry; stale expiry is not displayed as current.');
  return{...chain,module:'market-analysis-option-chain',generatedAt:new Date().toISOString()};
 }
 module.exports={getOptionChain};
