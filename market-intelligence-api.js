@@ -211,22 +211,36 @@ async function getDealType(optionType, from, to) {
   })).filter(x=>x.symbol && x.clientName && ['BUY','SELL'].includes(x.side) && x.quantity!=null && x.averagePrice!=null);
   return {available:true,rows:rows.slice(0,100),totalRows:rows.length};
 }
+async function getShortSelling(from, to) {
+  const raw = await nse('/api/historicalOR/bulk-block-short-deals?optionType=short_selling&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to));
+  const sourceRows = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.data?.data) ? raw.data.data : null;
+  if (!sourceRows) throw Error('NSE short-selling response did not contain a recognized data array');
+  const rows = sourceRows.map(x=>({
+    date:String(x.SS_DATE||x.date||''),
+    symbol:String(x.SS_SYMBOL||x.symbol||'').trim().toUpperCase(),
+    securityName:String(x.SS_NAME||x.securityName||x.name||''),
+    quantity:num(x.SS_QTY??x.quantity??x.shortSellQuantity)
+  })).filter(x=>x.symbol && x.quantity!=null);
+  return {available:true,rows:rows.slice(0,100),totalRows:rows.length};
+}
 async function getLargeDeals() {
   if (largeDealsCache && Date.now()-largeDealsAt<300000) return largeDealsCache;
   const toDate=new Date(), fromDate=new Date(toDate.getTime()-6*86400000);
   const from=dealDate(fromDate), to=dealDate(toDate);
-  const [bulk,block]=await Promise.allSettled([
+  const [bulk,block,shortSelling]=await Promise.allSettled([
     getDealType('bulk_deals',from,to),
-    getDealType('block_deals',from,to)
+    getDealType('block_deals',from,to),
+    getShortSelling(from,to)
   ]);
   const result={
-    available:bulk.status==='fulfilled'||block.status==='fulfilled',
-    source:'NSE India · Historical Bulk / Block Deals',
+    available:bulk.status==='fulfilled'||block.status==='fulfilled'||shortSelling.status==='fulfilled',
+    source:'NSE India · Historical Bulk / Block / Short Selling Disclosures',
     from,to,
     bulk:bulk.status==='fulfilled'?bulk.value:{available:false,rows:[],reason:bulk.reason?.message||'NSE bulk deals unavailable'},
-    block:block.status==='fulfilled'?block.value:{available:false,rows:[],reason:block.reason?.message||'NSE block deals unavailable'}
+    block:block.status==='fulfilled'?block.value:{available:false,rows:[],reason:block.reason?.message||'NSE block deals unavailable'},
+    shortSelling:shortSelling.status==='fulfilled'?shortSelling.value:{available:false,rows:[],reason:shortSelling.reason?.message||'NSE short-selling report unavailable'}
   };
-  if(!result.available) result.reason='Bulk: '+result.bulk.reason+' · Block: '+result.block.reason;
+  if(!result.available) result.reason='Bulk: '+result.bulk.reason+' · Block: '+result.block.reason+' · Short selling: '+result.shortSelling.reason;
   largeDealsCache=result; largeDealsAt=Date.now(); return result;
 }
 
