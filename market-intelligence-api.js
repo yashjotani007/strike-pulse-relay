@@ -173,9 +173,14 @@ async function getDelivery() {
       })).filter(x=>x.symbol && Number.isFinite(x.deliveryQty) && Number.isFinite(x.deliveryPercent));
       if(!rows.length){lastError='NSE CSV contained no valid EQ delivery rows';continue;}
       const reportDate=rows[0].date || dateKey;
-      deliveryCache={available:true,source:'NSE India · Full Bhavcopy and Security Deliverable data',date:reportDate,rows:rows.length,
-        topByDeliveryQty:[...rows].sort((a,b)=>b.deliveryQty-a.deliveryQty).slice(0,10),
-        topByDeliveryPercent:[...rows].sort((a,b)=>b.deliveryPercent-a.deliveryPercent).slice(0,10)};
+      // Exclude thinly traded securities from both rankings to avoid misleading
+      // 100% delivery readings on tiny traded quantities.
+      const minTradedQty = 100000;
+      const qualifiedRows = rows.filter(x => x.tradedQty >= minTradedQty && x.deliveryQty >= 0 && x.deliveryPercent >= 0);
+      deliveryCache={available:true,source:'NSE India · Full Bhavcopy and Security Deliverable data',date:reportDate,
+        rows:rows.length,qualifiedRows:qualifiedRows.length,minTradedQty,
+        topByDeliveryQty:[...qualifiedRows].sort((a,b)=>b.deliveryQty-a.deliveryQty).slice(0,10),
+        topByDeliveryPercent:[...qualifiedRows].sort((a,b)=>b.deliveryPercent-a.deliveryPercent).slice(0,10)};
       deliveryAt=Date.now(); return deliveryCache;
     }catch(e){lastError=e.message||lastError;}
   }
