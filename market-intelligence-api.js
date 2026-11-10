@@ -136,6 +136,39 @@ function buildRegime(m) {
   return { label, score: Number(score.toFixed(1)), averageChange: Number(avg.toFixed(3)) };
 }
 
+let participantCache = null, participantAt = 0;
+async function getParticipants() {
+  if (participantCache && Date.now() - participantAt < 300000) return participantCache;
+  try {
+    const raw = await nse('/api/fiidiiTradeReact');
+    if (!Array.isArray(raw) || !raw.length) throw Error('NSE returned no FII/DII rows');
+    const rows = raw.map(row => ({
+      date: String(row?.date || ''),
+      category: String(row?.category || '').trim(),
+      buyValue: num(row?.buyValue),
+      sellValue: num(row?.sellValue),
+      netValue: num(row?.netValue)
+    })).filter(row => row.category && (row.buyValue != null || row.sellValue != null || row.netValue != null));
+    if (!rows.length) throw Error('NSE FII/DII response had no recognized values');
+    participantCache = {
+      available: true,
+      source: 'NSE India · fiidiiTradeReact',
+      date: rows[0].date || null,
+      provisional: true,
+      rows
+    };
+  } catch (e) {
+    participantCache = {
+      available: false,
+      source: 'NSE India · fiidiiTradeReact',
+      reason: e.message || 'NSE FII/DII feed unavailable',
+      rows: []
+    };
+  }
+  participantAt = Date.now();
+  return participantCache;
+}
+
 async function intelligence() {
   const status = marketStatus();
   if (last && Date.now() - lastAt < 10000) return { ...last, cached: true };
@@ -339,7 +372,7 @@ async function intelligence() {
   if (data.drivers?.strongest?.name) signals.push(data.drivers.strongest.name + ' is showing the strongest sector momentum');
   if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
-  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, signals, generatedAt: new Date().toISOString(), cached: false };
+  const participants = await getParticipants();\n  const delivery = { available: false, source: 'NSE security-wise delivery report', reason: 'Daily exchange report is published as a downloadable DAT/CSV file; automated parsing is not yet connected.' };\n  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
 }
