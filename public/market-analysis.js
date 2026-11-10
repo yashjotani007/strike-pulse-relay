@@ -75,6 +75,46 @@ if(!document.getElementById('sp-ma-bridge-css')){const st=document.createElement
 async function overview(){const d=await get('/overview'),i=d.indices||{};[['sp-nifty-value','nifty'],['sp-banknifty-value','banknifty'],['sp-finnifty-value','finnifty'],['sp-vix-value','vix']].forEach(([id,k])=>{if($(id))$(id).textContent=fmt(i[k]?.price)});[['sp-nifty-change','nifty'],['sp-banknifty-change','banknifty'],['sp-finnifty-change','finnifty'],['sp-vix-change','vix']].forEach(([id,k])=>{if($(id))$(id).textContent=pct(i[k]?.change)});set('sp-market-breadth',cards([['Advances',d.breadth?.advances??'—'],['Declines',d.breadth?.declines??'—'],['Unchanged',d.breadth?.unchanged??'—'],['Total',d.breadth?.total??'—']]));set('sp-sector-performance',table(['Sector','Value','Change'],Object.entries(i.sectors||{}).map(([k,v])=>[v.name||k,fmt(v.price),pct(v.change)])));if($('sp-data-source'))$('sp-data-source').textContent=d.source||'—';if($('sp-data-timestamp'))$('sp-data-timestamp').textContent=d.generatedAt||'—';if($('sp-feed-status'))$('sp-feed-status').textContent='Connected';if($('sp-data-quality-status'))$('sp-data-quality-status').textContent='Live API response received';}
 async function stock(){const raw=String($('sp-stock-universe')?.value||'RELIANCE,TCS,INFY').trim().toUpperCase();const key=raw.replace(/[\s_-]+/g,'');const universes={NIFTY50:['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','ITC','LT','SBIN','BHARTIARTL','AXISBANK'],NIFTYBANK:['HDFCBANK','ICICIBANK','SBIN','AXISBANK','KOTAKBANK','INDUSINDBK','BANKBARODA','PNB'],NIFTYNEXT50:['ADANIENT','ADANIPORTS','BAJFINANCE','BAJAJFINSV','HINDALCO','JSWSTEEL','TRENT','BEL']};const symbols=universes[key]||raw.split(/[,\s]+/).map(x=>x.trim().toUpperCase()).filter(valid).slice(0,20);if(!symbols.length)throw Error('Choose a stock universe or enter valid NSE symbols.');const d=await get('/stock-scan-batch',{symbols:symbols.join(',')}),all=d.results||[],ok=all.filter(x=>x.success&&x.available);set('sp-stock-results',cards([['Requested',symbols.length],['Matched',ok.length],['Unavailable',all.length-ok.length]])+table(['Symbol','Last','Change','RSI','EMA 20','EMA 50','Rel. Vol'],ok.map(x=>[x.symbol,fmt(x.price),pct(x.changePercent),fmt(x.indicators?.rsi14),fmt(x.indicators?.ema20),fmt(x.indicators?.ema50),x.indicators?.volumeRatio==null?'—':fmt(x.indicators.volumeRatio)+'×']))+table(['Unavailable symbol','Reason'],all.filter(x=>!x.success||!x.available).map(x=>[x.symbol,x.error||'No data'])));}
 async function options(scan){const s=sym('sp-option-underlying')||'NIFTY',expiry=$('sp-option-expiry')?.value||'';if(!valid(s))throw Error('Enter a valid option underlying.');let d=await get(scan?'/option-scan':'/option-chain',{symbol:s,expiry}),rows=d.rows||[];if(scan&&rows.length&&!rows.some(x=>num(x.ce?.oi)!=null||num(x.pe?.oi)!=null)){const fallback=await get('/option-chain',{symbol:s,expiry});if((fallback.rows||[]).length){d=fallback;rows=d.rows||[];}}if($('sp-option-spot'))$('sp-option-spot').textContent=fmt(d.spot);if($('sp-option-pcr'))$('sp-option-pcr').textContent=fmt(d.pcr,3);if($('sp-option-max-pain'))$('sp-option-max-pain').textContent=fmt(d.maxPain,0);if($('sp-option-expiry-value'))$('sp-option-expiry-value').textContent=d.expiry||'—';set('sp-option-results',cards([['Spot',fmt(d.spot)],['Expiry',d.expiry||'—'],['PCR',fmt(d.pcr,3)],['Max Pain',fmt(d.maxPain,0)],['Call OI',fmt(d.callOI,0)],['Put OI',fmt(d.putOI,0)]])+table(['Strike','CE OI','CE ΔOI','CE Vol','CE LTP','PE LTP','PE Vol','PE ΔOI','PE OI'],rows.map(x=>[fmt(x.strike,0),fmt(x.ce?.oi,0),fmt(x.ce?.oiChange,0),fmt(x.ce?.volume,0),fmt(x.ce?.ltp),fmt(x.pe?.ltp),fmt(x.pe?.volume,0),fmt(x.pe?.oiChange,0),fmt(x.pe?.oi,0)]))+'<p class="sp-ma-bridge-message">Source: '+esc(d.source||'—')+' · Updated: '+esc(d.updated||d.generatedAt||'—')+' · Research only.</p>');if($('sp-option-status'))$('sp-option-status').textContent='Connected · '+rows.length+' strikes';}
+async function oiAnalysis(){
+const s=sym('sp-option-underlying')||'NIFTY',expiry=$('sp-option-expiry')?.value||'';
+if(!valid(s))throw Error('Enter a valid option underlying.');
+const d=await get('/option-chain',{symbol:s,expiry}),rows=(d.rows||[]).filter(x=>num(x.strike)!=null);
+if(!rows.length)throw Error('No verified option-chain rows are available for OI analysis.');
+const value=(x,k)=>{const v=num(x?.[k]);return v==null?0:v};
+const maxBy=(a,fn)=>a.reduce((best,x)=>best==null||fn(x)>fn(best)?x:best,null);
+const ceResistance=maxBy(rows,x=>value(x.ce,'oi'));
+const peSupport=maxBy(rows,x=>value(x.pe,'oi'));
+const ceBuild=maxBy(rows,x=>value(x.ce,'oiChange'));
+const peBuild=maxBy(rows,x=>value(x.pe,'oiChange'));
+const pcr=num(d.pcr);
+const callOI=num(d.callOI),putOI=num(d.putOI);
+const fmtStrike=x=>x?fmt(x.strike,0):'—';
+const pcrView=pcr==null?'—':fmt(pcr,3);
+let sentiment='Mixed / neutral positioning';
+if(pcr!=null){if(pcr>=1.3)sentiment='Put OI relatively stronger';else if(pcr<=0.7)sentiment='Call OI relatively stronger';else sentiment='PCR indicates broadly balanced positioning';}
+const summary='OI-based positioning snapshot only. PCR and strike concentrations are contextual measures, not a directional prediction.';
+set('sp-options-positioning',
+cards([
+['Underlying',s],
+['Spot',fmt(d.spot)],
+['PCR',pcrView],
+['Max Pain',fmt(d.maxPain,0)],
+['Call OI',fmt(callOI,0)],
+['Put OI',fmt(putOI,0)],
+['Highest Call OI',fmtStrike(ceResistance)],
+['Highest Put OI',fmtStrike(peSupport)],
+['Positioning',sentiment]
+])+
+table(['Metric','Strike','OI / Change'],[
+['Highest Call OI (potential resistance)',fmtStrike(ceResistance),ceResistance?fmt(value(ceResistance.ce,'oi'),0):'—'],
+['Highest Put OI (potential support)',fmtStrike(peSupport),peSupport?fmt(value(peSupport.pe,'oi'),0):'—'],
+['Largest positive Call OI change',fmtStrike(ceBuild),ceBuild?fmt(value(ceBuild.ce,'oiChange'),0):'—'],
+['Largest positive Put OI change',fmtStrike(peBuild),peBuild?fmt(value(peBuild.pe,'oiChange'),0):'—']
+])+
+'<p class="sp-ma-bridge-message">'+esc(summary)+' Source: '+esc(d.source||'—')+' · Expiry: '+esc(d.expiry||'—')+' · Updated: '+esc(d.updated||d.generatedAt||'—')+' · Research only.</p>'
+);
+if($('sp-option-status'))$('sp-option-status').textContent='OI analysis updated · '+rows.length+' strikes';
+}
 async function intel(){const d=await get('/trading-intelligence'),b=d.breadth||{};set('sp-institutional-activity',cards([['FII / DII','Unavailable'],['Provider',d.participants?.reason||'No verified feed connected']]));set('sp-delivery-activity',cards([['Delivery data','Unavailable'],['Provider',d.delivery?.reason||'No verified feed connected']]));set('sp-intraday-intelligence',cards([['Market regime',d.regime?.label||'—'],['Regime score',d.regime?.score??'—'],['Advances',b.advances??'—'],['Declines',b.declines??'—'],['PCR',fmt(d.options?.pcr,3)],['Max Pain',fmt(d.options?.maxPain,0)]]));set('sp-market-risk-warnings',table(['Feed','Status','Details'],[['Bulk / block deals','Not connected','No verified provider'],['Short selling','Not connected','No verified provider'],['FII / DII','Unavailable',d.participants?.reason||'—'],['Delivery','Unavailable',d.delivery?.reason||'—']]));set('sp-options-positioning',cards([['PCR',fmt(d.options?.pcr,3)],['Max Pain',fmt(d.options?.maxPain,0)],['Call OI',fmt(d.options?.callOI,0)],['Put OI',fmt(d.options?.putOI,0)]]));set('sp-market-structure',table(['Sector','Value','Change'],Object.entries(d.sectors||{}).map(([k,v])=>[v.name||k,fmt(v.price),pct(v.change)])));}
 async function chart(){const s=sym('sp-chart-symbol')||'NIFTY',range=$('sp-chart-timeframe')?.value||'3mo',indicator=$('sp-chart-indicator')?.value||'none';if(!valid(s))throw Error('Enter a valid symbol.');const d=await get('/chart',{symbol:s,range,interval:range==='1d'?'5m':'1d'}),c=d.candles||[];set('sp-chart-container',cards([['Symbol',d.symbol],['Candles',c.length],['Latest close',fmt(c.at(-1)?.close)],['Source',d.source||'—']])+table(['Date','Open','High','Low','Close','Volume'],c.slice(-20).reverse().map(x=>[x.timestamp?new Date(x.timestamp).toLocaleDateString('en-IN'):'—',fmt(x.open),fmt(x.high),fmt(x.low),fmt(x.close),fmt(x.volume,0)]))+'<p class="sp-ma-bridge-message">Indicator selection: '+esc(indicator)+' · Historical price data, not a signal.</p>');if($('sp-chart-status'))$('sp-chart-status').textContent='Loaded '+c.length+' candles';}
 async function research(module,params,out){const d=await get('/research/'+module,params);let a=[];if(module==='volume')a=[['Latest volume',fmt(d.latestVolume,0)],['Average volume 20',fmt(d.averageVolume20,0)],['Relative volume',d.relativeVolume==null?'—':fmt(d.relativeVolume)+'×'],['Observations',d.observations]];else if(module==='correlation')a=[['Correlation',fmt(d.correlation,3)],['Interpretation',d.interpretation||'—'],['Observations',d.observations]];else if(module==='relative-strength')a=[['Asset return',pct(d.assetReturn)],['Benchmark return',pct(d.benchmarkReturn)],['Relative return',pct(d.relativeReturn)],['Observations',d.observations]];else a=[['Candles',d.candles],['Positive sessions',d.positiveSessions],['Negative sessions',d.negativeSessions],['Positive rate',pct(d.positiveSessionRate)],['Average daily return',pct(d.averageDailyReturn)],['Best session',pct(d.bestSession)],['Worst session',pct(d.worstSession)]];set(out,cards(a));}
@@ -90,7 +130,7 @@ function notes(){const t=$('sp-research-notes')?.value||'';localStorage.setItem(
 function bind(id,out,fn){const b=$(id);if(b)b.addEventListener('click',e=>{e.preventDefault();run(b,out,fn)})}
 bind('sp-run-stock-scan','sp-stock-results',stock);
 bind('sp-run-option-scan','sp-option-results',()=>options(true));
-bind('sp-run-oi-analysis','sp-option-results',()=>options(false));
+bind('sp-run-oi-analysis','sp-options-positioning',oiAnalysis);
 bind('sp-load-chart','sp-chart-container',chart);
 bind('sp-analyze-volume','sp-volume-lab',volume);
 bind('sp-calculate-correlation','sp-correlation-result',correlation);
