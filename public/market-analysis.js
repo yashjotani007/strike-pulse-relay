@@ -53,7 +53,7 @@ if(window.__SP_MA_COMPLETE_UI__)return;window.__SP_MA_COMPLETE_UI__=true;
 const API='https://strike-pulse-relay.onrender.com/api/market-analysis',BASE='https://strike-pulse-relay.onrender.com/api';
 const $=s=>document.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const n=v=>v==null||v===''||!Number.isFinite(Number(v))?null:Number(v),f=(v,d=2)=>n(v)==null?'—':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d}),p=v=>n(v)==null?'—':(v>0?'+':'')+Number(v).toFixed(2)+'%',sym=v=>String(v||'').trim().toUpperCase().replace(/\.NS$/,'').replace(/\s+/g,'');
+const n=v=>v==null||v===''||!Number.isFinite(Number(v))?null:Number(v),f=(v,d=2)=>n(v)==null?'—':Number(v).toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d}),p=v=>n(v)==null?'—':(v>0?'+':'')+Number(v).toFixed(2)+'%',sym=v=>String(v||'').trim().toUpperCase().replace(/\.NS$/,'').replace(/\s+/g,'');const q=(v,d=2)=>n(v)==null||Number(v)<=0?'—':f(v,d);
 async function get(url,q={}){const u=new URL(url);Object.entries(q).forEach(([k,v])=>{if(v!==''&&v!=null)u.searchParams.set(k,String(v))});const r=await fetch(u,{cache:'no-store',headers:{Accept:'application/json'}}),d=await r.json().catch(()=>({success:false,error:'Invalid JSON'}));if(!r.ok||d.success===false)throw Error(d.error||('HTTP '+r.status));return d}
 const api=(path,q)=>get(API+path,q),direct=(path,q)=>get(BASE+path,q);
 const root=document.querySelector('#sp-market-analysis,.sp-terminal[data-sp-market-analysis],.sp-terminal')||document.querySelector('main')||document.body;
