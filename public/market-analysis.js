@@ -241,9 +241,9 @@ function mount(){
  const expiryState={dates:[],rawByIso:new Map(),month:null,year:null};
  function parseExpiry(value){
   const raw=String(value||'').trim();
-  let m=raw.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+  let m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if(m)return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
-  m=raw.match(/^(\\d{1,2})[- /]([A-Za-z]{3,})[- /](\\d{4})$/);
+  m=raw.match(/^(\d{1,2})[- /]([A-Za-z]{3,})[- /](\d{4})$/);
   if(m){const months=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];const mo=months.indexOf(m[2].slice(0,3).toLowerCase());if(mo>=0)return new Date(Number(m[3]),mo,Number(m[1]));}
   const d=new Date(raw);return Number.isNaN(d.getTime())?null:new Date(d.getFullYear(),d.getMonth(),d.getDate());
  }
