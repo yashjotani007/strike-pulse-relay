@@ -203,7 +203,7 @@ function style(){
 function mount(){
  const underlying=$('sp-option-underlying');
  if(!underlying||underlying.dataset.spOptionSearchReady)return;
- underlying.dataset.spOptionSearchReady='1';style();setupExpiryCalendar();
+ underlying.dataset.spOptionSearchReady='1';style();
  const shell=document.createElement('div');shell.className='sp-option-search-shell';
  shell.innerHTML='<label class="sp-option-search-label" for="sp-option-stock-search">Search index or F&O stock</label><input id="sp-option-stock-search" class="sp-option-search-input" type="search" autocomplete="off" placeholder="Search e.g. RELIANCE, SBIN, INFY, NIFTY"><div class="sp-option-search-hint">Search NSE option-enabled instruments by symbol or company name</div><div class="sp-option-search-list" id="sp-option-stock-search-list" hidden></div><div class="sp-option-search-status" id="sp-option-stock-search-status" aria-live="polite">Choose an instrument to load its available expiry dates and option chain.</div>';
  underlying.parentNode.insertBefore(shell,underlying);
@@ -290,6 +290,7 @@ function mount(){
   };
   expiryState.month=new Date().getMonth();expiryState.year=new Date().getFullYear();draw();
  }
+  setupExpiryCalendar();
  async function loadExpiries(symbol){
   message('Checking available NSE expiries for '+symbol+'…','');
   const d=await json('/api/option-expiries?symbol='+encodeURIComponent(symbol));
