@@ -155,5 +155,6 @@ setInterval(()=>{if(document.visibilityState==='visible'&&readList('sp_ma_alerts
 
 get('/health').then(h=>{const r=document.querySelector('#sp-market-analysis');if(r){r.dataset.spMaBridge='connected';r.dataset.spMaBridgeVersion=h.version||'2.0.0'}if($('sp-feed-status'))$('sp-feed-status').textContent='Connected · '+(h.version||'API')}).catch(e=>{const r=document.querySelector('#sp-market-analysis');if(r)r.dataset.spMaBridge='error';console.warn('[Strike Pulse] original UI bridge health check failed',e.message)});
 overview().catch(e=>console.warn('[Strike Pulse] overview refresh failed',e.message));
+intel().catch(e=>console.warn('[Strike Pulse] trading intelligence refresh failed',e.message));
 console.info('[Strike Pulse] Original UI bridge initialized · nine research modules');
 })();
