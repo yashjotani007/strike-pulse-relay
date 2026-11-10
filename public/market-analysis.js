@@ -197,6 +197,7 @@ function style(){
  if($('sp-option-search-css'))return;
  const s=document.createElement('style');s.id='sp-option-search-css';
  s.textContent='.sp-option-search-shell{position:relative;margin:0 0 12px;width:100%;max-width:560px}.sp-option-search-label{display:block;margin:0 0 6px;color:#526579;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.sp-option-search-input{box-sizing:border-box;width:100%;min-height:42px;padding:10px 13px;border:1px solid #cfdbe7;border-radius:9px;background:#fff;color:#18324b;font:inherit;font-size:13px;outline:none}.sp-option-search-input:focus{border-color:#4b83bd;box-shadow:0 0 0 3px #4b83bd1c}.sp-option-search-hint{margin-top:5px;color:#718096;font-size:10px}.sp-option-search-list{position:absolute;z-index:9999;top:100%;left:0;right:0;max-height:280px;overflow:auto;margin-top:4px;border:1px solid #dce5ee;border-radius:9px;background:#fff;box-shadow:0 10px 26px #19375520}.sp-option-search-list[hidden]{display:none}.sp-option-search-item{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:0;border-bottom:1px solid #edf1f5;background:#fff;color:#24364b;text-align:left;cursor:pointer;font:inherit}.sp-option-search-item:last-child{border-bottom:0}.sp-option-search-item:hover,.sp-option-search-item:focus{background:#f2f7fc}.sp-option-search-item strong{font-size:12px}.sp-option-search-item small{display:block;margin-top:2px;color:#748397;font-size:10px}.sp-option-search-status{margin-top:7px;color:#64748b;font-size:11px}.sp-option-search-status[data-state=error]{color:#b42318}.sp-option-search-status[data-state=ok]{color:#167044}';
+ s.textContent+='.sp-expiry-calendar-wrap{position:relative;display:inline-block;width:100%;max-width:260px;margin:0 0 10px}.sp-expiry-calendar-label{display:block;margin:0 0 6px;color:#526579;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.sp-expiry-calendar-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:10px 13px;border:1px solid #cfdbe7;border-radius:10px;background:#fff;color:#18324b;font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer;box-shadow:0 1px 2px #19375508}.sp-expiry-calendar-trigger:hover{border-color:#8da9c5;background:#fbfdff}.sp-expiry-calendar-trigger:focus-visible{outline:3px solid #4b83bd30;border-color:#4b83bd}.sp-expiry-calendar-trigger span{display:flex;align-items:center;gap:9px}.sp-expiry-calendar-trigger svg{width:17px;height:17px;color:#52789e}.sp-expiry-calendar-pop{position:absolute;z-index:10000;top:calc(100% + 7px);left:0;width:min(310px,calc(100vw - 36px));padding:13px;border:1px solid #dce5ee;border-radius:13px;background:#fff;box-shadow:0 16px 40px #17324d24}.sp-expiry-calendar-pop[hidden]{display:none}.sp-expiry-calendar-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}.sp-expiry-calendar-month{color:#18324b;font-size:13px;font-weight:750}.sp-expiry-calendar-nav{display:flex;gap:5px}.sp-expiry-calendar-nav button{width:29px;height:29px;border:1px solid #e1e8ef;border-radius:7px;background:#f8fafc;color:#38536e;cursor:pointer;font-size:16px}.sp-expiry-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.sp-expiry-calendar-week{padding:5px 0;color:#8291a2;text-align:center;font-size:10px;font-weight:700}.sp-expiry-calendar-day{height:34px;border:1px solid transparent;border-radius:8px;background:#fff;color:#334b63;font-size:11px;cursor:pointer}.sp-expiry-calendar-day:hover:not(:disabled){border-color:#b8cde0;background:#f1f7fc}.sp-expiry-calendar-day:disabled{color:#c2cbd5;cursor:not-allowed}.sp-expiry-calendar-day.is-selected{border-color:#285f91;background:#285f91;color:#fff;font-weight:750}.sp-expiry-calendar-day.is-today{box-shadow:inset 0 0 0 1px #8ba9c7}.sp-expiry-calendar-foot{margin-top:10px;padding-top:9px;border-top:1px solid #edf1f5;color:#718096;font-size:10px}.sp-expiry-native-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}';
  document.head.appendChild(s);
 }
 function mount(){
@@ -237,6 +238,58 @@ function mount(){
   if(request!==seq)return;
   render((d.symbols||[]).slice(0,18));
  }
+ const expiryState={dates:[],rawByIso:new Map(),month:null,year:null};
+ function parseExpiry(value){
+  const raw=String(value||'').trim();
+  let m=raw.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+  if(m)return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
+  m=raw.match(/^(\\d{1,2})[- /]([A-Za-z]{3,})[- /](\\d{4})$/);
+  if(m){const months=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];const mo=months.indexOf(m[2].slice(0,3).toLowerCase());if(mo>=0)return new Date(Number(m[3]),mo,Number(m[1]));}
+  const d=new Date(raw);return Number.isNaN(d.getTime())?null:new Date(d.getFullYear(),d.getMonth(),d.getDate());
+ }
+ function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+ function prettyDate(raw){const d=parseExpiry(raw);return d?d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):String(raw);}
+ function setupExpiryCalendar(){
+  const native=$('sp-option-expiry');if(!native||native.dataset.spCalendarReady)return;
+  native.dataset.spCalendarReady='1';native.classList.add('sp-expiry-native-hidden');
+  const wrap=document.createElement('div');wrap.className='sp-expiry-calendar-wrap';
+  wrap.innerHTML='<label class="sp-expiry-calendar-label">Expiry date</label><button type="button" class="sp-expiry-calendar-trigger" id="sp-expiry-calendar-trigger" aria-haspopup="dialog" aria-expanded="false"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><span id="sp-expiry-calendar-value">Select expiry</span></span><span aria-hidden="true">⌄</span></button><div class="sp-expiry-calendar-pop" id="sp-expiry-calendar-pop" role="dialog" aria-label="Choose option expiry" hidden><div class="sp-expiry-calendar-head"><div class="sp-expiry-calendar-month" id="sp-expiry-calendar-month"></div><div class="sp-expiry-calendar-nav"><button type="button" id="sp-expiry-calendar-prev" aria-label="Previous month">‹</button><button type="button" id="sp-expiry-calendar-next" aria-label="Next month">›</button></div></div><div class="sp-expiry-calendar-grid" id="sp-expiry-calendar-grid"></div><div class="sp-expiry-calendar-foot">Only active NSE expiry dates can be selected</div></div>';
+  native.parentNode.insertBefore(wrap,native);
+  const trigger=$('sp-expiry-calendar-trigger'),pop=$('sp-expiry-calendar-pop'),grid=$('sp-expiry-calendar-grid');
+  const close=()=>{pop.hidden=true;trigger.setAttribute('aria-expanded','false')};
+  const draw=()=>{
+   if(expiryState.month==null)return;
+   const first=new Date(expiryState.year,expiryState.month,1),start=first.getDay(),days=new Date(expiryState.year,expiryState.month+1,0).getDate();
+   $('sp-expiry-calendar-month').textContent=first.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+   const prev=$('sp-expiry-calendar-prev'),next=$('sp-expiry-calendar-next');
+   const keys=expiryState.dates.map(x=>parseExpiry(x)).filter(Boolean).map(isoDate);
+   const min=keys.length?Math.min(...keys.map(x=>Date.parse(x+'T00:00:00'))):0,max=keys.length?Math.max(...keys.map(x=>Date.parse(x+'T00:00:00'))):0;
+   const current=Date.parse(new Date(expiryState.year,expiryState.month,1).toISOString().slice(0,10)+'T00:00:00');
+   prev.disabled=!keys.length||current<=new Date(new Date(min).getFullYear(),new Date(min).getMonth(),1).getTime();
+   next.disabled=!keys.length||current>=new Date(new Date(max).getFullYear(),new Date(max).getMonth(),1).getTime();
+   grid.innerHTML=['Su','Mo','Tu','We','Th','Fr','Sa'].map(x=>'<div class="sp-expiry-calendar-week">'+x+'</div>').join('');
+   for(let n=0;n<start;n++)grid.insertAdjacentHTML('beforeend','<span></span>');
+   const selected=native.value, today=isoDate(new Date());
+   for(let day=1;day<=days;day++){
+    const d=new Date(expiryState.year,expiryState.month,day),iso=isoDate(d),raw=expiryState.rawByIso.get(iso),b=document.createElement('button');
+    b.type='button';b.className='sp-expiry-calendar-day'+(raw&&raw===selected?' is-selected':'')+(iso===today?' is-today':'');b.textContent=String(day);b.disabled=!raw;b.title=raw?prettyDate(raw):'No option expiry';if(raw)b.addEventListener('click',()=>choose(raw));grid.appendChild(b);
+   }
+  };
+  const choose=raw=>{native.value=raw;native.dispatchEvent(new Event('change',{bubbles:true}));$('sp-expiry-calendar-value').textContent=prettyDate(raw);close();const run=$('sp-run-option-scan');if(run)run.click();};
+  trigger.addEventListener('click',()=>{if(!expiryState.dates.length)return;pop.hidden=!pop.hidden;trigger.setAttribute('aria-expanded',String(!pop.hidden));if(!pop.hidden)draw();});
+  $('sp-expiry-calendar-prev').addEventListener('click',()=>{expiryState.month--;if(expiryState.month<0){expiryState.month=11;expiryState.year--;}draw();});
+  $('sp-expiry-calendar-next').addEventListener('click',()=>{expiryState.month++;if(expiryState.month>11){expiryState.month=0;expiryState.year++;}draw();});
+  document.addEventListener('click',e=>{if(!wrap.contains(e.target))close();});
+  native.addEventListener('change',()=>{$('sp-expiry-calendar-value').textContent=native.value?prettyDate(native.value):'Select expiry';draw();});
+  native._spCalendarSetDates=dates=>{
+   expiryState.dates=dates.slice();expiryState.rawByIso.clear();
+   dates.forEach(raw=>{const d=parseExpiry(raw);if(d)expiryState.rawByIso.set(isoDate(d),raw)});
+   const selected=parseExpiry(native.value)||parseExpiry(dates[0]);
+   if(selected){expiryState.month=selected.getMonth();expiryState.year=selected.getFullYear();}
+   $('sp-expiry-calendar-value').textContent=native.value?prettyDate(native.value):'Select expiry';
+   draw();
+  };
+ }
  async function loadExpiries(symbol){
   message('Checking available NSE expiries for '+symbol+'…','');
   const d=await json('/api/option-expiries?symbol='+encodeURIComponent(symbol));
@@ -247,9 +300,11 @@ function mount(){
    const old=expiry.value;
    if(expiry.tagName==='SELECT'){
     expiry.innerHTML='';
-    expiries.forEach(value=>{const o=document.createElement('option');o.value=value;o.textContent=value;expiry.add(o)});
-    expiry.value=expiries.includes(old)?old:expiries[0];
-   }else expiry.value=expiries.includes(old)?old:expiries[0];
+    expiries.forEach(value=>{const o=document.createElement('option');o.value=value;o.textContent=prettyDate(value);expiry.add(o)});
+   }
+   expiry.value=expiries.includes(old)?old:expiries[0];
+   setupExpiryCalendar();
+   if(expiry._spCalendarSetDates)expiry._spCalendarSetDates(expiries);
    expiry.dispatchEvent(new Event('change',{bubbles:true}));
   }
   message(expiries.length+' active expiry date(s) found for '+symbol+'. Loading option chain…','ok');
