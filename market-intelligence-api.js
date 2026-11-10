@@ -136,6 +136,53 @@ function buildRegime(m) {
   return { label, score: Number(score.toFixed(1)), averageChange: Number(avg.toFixed(3)) };
 }
 
+let deliveryCache = null, deliveryAt = 0;
+function parseCsvLine(line) {
+  const out=[]; let value='', quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"' && quoted && line[i+1]==='"'){value+='"';i++;}
+    else if(ch==='"') quoted=!quoted;
+    else if(ch===',' && !quoted){out.push(value.trim());value='';}
+    else value+=ch;
+  }
+  out.push(value.trim()); return out;
+}
+async function getDelivery() {
+  if(deliveryCache && Date.now()-deliveryAt<900000) return deliveryCache;
+  let lastError='NSE delivery report unavailable';
+  for(let back=0;back<5;back++){
+    const day=new Date(); day.setDate(day.getDate()-back);
+    const dd=String(day.getDate()).padStart(2,'0'), mm=String(day.getMonth()+1).padStart(2,'0'), yyyy=day.getFullYear();
+    const dateKey=dd+mm+yyyy;
+    const url='https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_'+dateKey+'.csv';
+    try{
+      const response=await fetch(url,{headers:{'User-Agent':HEADERS['User-Agent'],Accept:'text/csv,text/plain,*/*'},redirect:'follow'});
+      if(!response.ok){lastError='NSE report HTTP '+response.status+' for '+dateKey;continue;}
+      const raw=await response.text();
+      if(!raw || raw.length<100 || /^</.test(raw.trim())){lastError='NSE returned an empty or non-CSV report';continue;}
+      const lines=raw.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());
+      const headers=parseCsvLine(lines.shift()).map(x=>x.toUpperCase().replace(/[^A-Z0-9]/g,''));
+      const col=name=>headers.indexOf(name);
+      const ix={symbol:col('SYMBOL'),series:col('SERIES'),date:col('DATE1'),qty:col('TTLTRDQNTY'),delivery:col('DELIVQTY'),percent:col('DELIVPER')};
+      if(Object.values(ix).some(v=>v<0)) {lastError='NSE CSV schema did not contain expected delivery columns';continue;}
+      const rows=lines.map(line=>parseCsvLine(line)).filter(c=>c.length>=headers.length && c[ix.series]==='EQ').map(c=>({
+        symbol:c[ix.symbol],date:c[ix.date],tradedQty:Number(String(c[ix.qty]).replace(/,/g,'')),
+        deliveryQty:Number(String(c[ix.delivery]).replace(/,/g,'')),
+        deliveryPercent:Number(String(c[ix.percent]).replace(/,/g,''))
+      })).filter(x=>x.symbol && Number.isFinite(x.deliveryQty) && Number.isFinite(x.deliveryPercent));
+      if(!rows.length){lastError='NSE CSV contained no valid EQ delivery rows';continue;}
+      const reportDate=rows[0].date || dateKey;
+      deliveryCache={available:true,source:'NSE India · Full Bhavcopy and Security Deliverable data',date:reportDate,rows:rows.length,
+        topByDeliveryQty:[...rows].sort((a,b)=>b.deliveryQty-a.deliveryQty).slice(0,10),
+        topByDeliveryPercent:[...rows].sort((a,b)=>b.deliveryPercent-a.deliveryPercent).slice(0,10)};
+      deliveryAt=Date.now(); return deliveryCache;
+    }catch(e){lastError=e.message||lastError;}
+  }
+  deliveryCache={available:false,source:'NSE India · Full Bhavcopy and Security Deliverable data',reason:lastError};
+  deliveryAt=Date.now(); return deliveryCache;
+}
+
 let participantCache = null, participantAt = 0;
 async function getParticipants() {
   if (participantCache && Date.now() - participantAt < 300000) return participantCache;
@@ -373,7 +420,7 @@ async function intelligence() {
   if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
   const participants = await getParticipants();
-  const delivery = { available: false, source: 'NSE security-wise delivery report', reason: 'Daily exchange report is published as a downloadable DAT/CSV file; automated parsing is not yet connected.' };
+  const delivery = await getDelivery();
   last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
