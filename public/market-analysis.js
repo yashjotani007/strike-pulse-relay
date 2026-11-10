@@ -264,7 +264,7 @@ function mount(){
    const prev=$('sp-expiry-calendar-prev'),next=$('sp-expiry-calendar-next');
    const keys=expiryState.dates.map(x=>parseExpiry(x)).filter(Boolean).map(isoDate);
    const min=keys.length?Math.min(...keys.map(x=>Date.parse(x+'T00:00:00'))):0,max=keys.length?Math.max(...keys.map(x=>Date.parse(x+'T00:00:00'))):0;
-   const current=Date.parse(new Date(expiryState.year,expiryState.month,1).toISOString().slice(0,10)+'T00:00:00');
+   const current=new Date(expiryState.year,expiryState.month,1).getTime();
    prev.disabled=!keys.length||current<=new Date(new Date(min).getFullYear(),new Date(min).getMonth(),1).getTime();
    next.disabled=!keys.length||current>=new Date(new Date(max).getFullYear(),new Date(max).getMonth(),1).getTime();
    grid.innerHTML=['Su','Mo','Tu','We','Th','Fr','Sa'].map(x=>'<div class="sp-expiry-calendar-week">'+x+'</div>').join('');
