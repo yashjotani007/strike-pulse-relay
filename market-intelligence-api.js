@@ -189,6 +189,47 @@ async function getDelivery() {
 }
 
 let participantCache = null, participantAt = 0;
+let largeDealsCache = null, largeDealsAt = 0;
+function dealDate(d) {
+  const p = new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(d);
+  const v = Object.fromEntries(p.map(x=>[x.type,x.value]));
+  return v.day+'-'+v.month+'-'+v.year;
+}
+async function getDealType(optionType, from, to) {
+  const raw = await nse('/api/historicalOR/bulk-block-short-deals?optionType='+encodeURIComponent(optionType)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to));
+  const sourceRows = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.data?.data) ? raw.data.data : null;
+  if (!sourceRows) throw Error('NSE '+optionType+' response did not contain a recognized data array');
+  const rows = sourceRows.map(x=>({
+    date:String(x.BD_DT_DATE||x.tradeDate||x.date||''),
+    symbol:String(x.BD_SYMBOL||x.symbol||'').trim().toUpperCase(),
+    securityName:String(x.BD_SCRIP_NAME||x.securityName||''),
+    clientName:String(x.BD_CLIENT_NAME||x.clientName||''),
+    side:String(x.BD_BUY_SELL||x.buySell||x.side||'').trim().toUpperCase(),
+    quantity:num(x.BD_QTY_TRD??x.quantityTraded??x.quantity),
+    averagePrice:num(x.BD_TP_WATP??x.tradePrice??x.weightedAveragePrice),
+    remarks:String(x.BD_REMARKS||x.remarks||'')
+  })).filter(x=>x.symbol && x.clientName && ['BUY','SELL'].includes(x.side) && x.quantity!=null && x.averagePrice!=null);
+  return {available:true,rows:rows.slice(0,100),totalRows:rows.length};
+}
+async function getLargeDeals() {
+  if (largeDealsCache && Date.now()-largeDealsAt<300000) return largeDealsCache;
+  const toDate=new Date(), fromDate=new Date(toDate.getTime()-6*86400000);
+  const from=dealDate(fromDate), to=dealDate(toDate);
+  const [bulk,block]=await Promise.allSettled([
+    getDealType('bulk_deals',from,to),
+    getDealType('block_deals',from,to)
+  ]);
+  const result={
+    available:bulk.status==='fulfilled'||block.status==='fulfilled',
+    source:'NSE India · Historical Bulk / Block Deals',
+    from,to,
+    bulk:bulk.status==='fulfilled'?bulk.value:{available:false,rows:[],reason:bulk.reason?.message||'NSE bulk deals unavailable'},
+    block:block.status==='fulfilled'?block.value:{available:false,rows:[],reason:block.reason?.message||'NSE block deals unavailable'}
+  };
+  if(!result.available) result.reason='Bulk: '+result.bulk.reason+' · Block: '+result.block.reason;
+  largeDealsCache=result; largeDealsAt=Date.now(); return result;
+}
+
 async function getParticipants() {
   if (participantCache && Date.now() - participantAt < 300000) return participantCache;
   try {
@@ -426,7 +467,8 @@ async function intelligence() {
 
   const participants = await getParticipants();
   const delivery = await getDelivery();
-  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, signals, generatedAt: new Date().toISOString(), cached: false };
+  const largeDeals = await getLargeDeals();
+  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, largeDeals, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
 }
