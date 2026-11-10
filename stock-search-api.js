@@ -45,9 +45,22 @@ async function search(q){
  if(term.length<1)return[];
  let universe=await nseStocks();
  if(universe.length){
-  const exact=universe.filter(x=>x.symbol===term);
-  const prefix=universe.filter(x=>x.symbol.startsWith(term)&&x.symbol!==term);
-  return [...exact,...prefix].slice(0,25);
+  const normalize=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const needle=normalize(term);
+  const ranked=universe.map(x=>{
+   const symbol=normalize(x.symbol),name=normalize(x.name);
+   let rank=99;
+   if(symbol===needle)rank=0;
+   else if(symbol.startsWith(needle))rank=1;
+   else if(name.startsWith(needle))rank=2;
+   else if(symbol.includes(needle))rank=3;
+   else if(name.includes(needle))rank=4;
+   return {...x,_rank:rank};
+  }).filter(x=>x._rank<99)
+    .sort((a,b)=>a._rank-b._rank||a.symbol.localeCompare(b.symbol))
+    .slice(0,25)
+    .map(({_rank,...x})=>x);
+  return ranked;
  }
  const common=['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','ITC','BHARTIARTL','LT','WIPRO','AXISBANK','KOTAKBANK','HINDUNILVR','BAJFINANCE','MARUTI','TATAMOTORS','TATASTEEL','ADANIENT','SUNPHARMA','NTPC','POWERGRID','ONGC','HCLTECH','TECHM','TITAN','ULTRACEMCO','ASIANPAINT','NESTLEIND','JSWSTEEL','M&M'];
  return common.filter(s=>s.startsWith(term)).map(symbol=>({symbol,name:symbol,exchange:'NSE'})).slice(0,25);
