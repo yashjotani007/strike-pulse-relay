@@ -176,3 +176,109 @@ overview().catch(e=>console.warn('[Strike Pulse] overview refresh failed',e.mess
 intel().catch(e=>console.warn('[Strike Pulse] trading intelligence refresh failed',e.message));
 console.info('[Strike Pulse] Original UI bridge initialized · nine research modules');
 })();
+
+
+/* OPTION CHAIN — dynamic NSE F&O stock search (HTML-free injection) */
+(()=>{'use strict';
+if(window.__SP_OPTION_CHAIN_STOCK_SEARCH_V1__)return;
+window.__SP_OPTION_CHAIN_STOCK_SEARCH_V1__=true;
+const API='https://strike-pulse-relay.onrender.com';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clean=s=>String(s||'').trim().toUpperCase().replace(/\.NS$/,'').replace(/\s+/g,'');
+const valid=s=>/^[A-Z0-9][A-Z0-9&-]{0,24}$/.test(s);
+async function json(path){
+ const r=await fetch(API+path,{cache:'no-store',headers:{Accept:'application/json'}});
+ const d=await r.json().catch(()=>({success:false,error:'Invalid JSON response'}));
+ if(!r.ok||d.success===false)throw Error(d.error||('HTTP '+r.status));
+ return d;
+}
+function style(){
+ if($('sp-option-search-css'))return;
+ const s=document.createElement('style');s.id='sp-option-search-css';
+ s.textContent='.sp-option-search-shell{position:relative;margin:0 0 12px;width:100%;max-width:560px}.sp-option-search-label{display:block;margin:0 0 6px;color:#526579;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.sp-option-search-input{box-sizing:border-box;width:100%;min-height:42px;padding:10px 13px;border:1px solid #cfdbe7;border-radius:9px;background:#fff;color:#18324b;font:inherit;font-size:13px;outline:none}.sp-option-search-input:focus{border-color:#4b83bd;box-shadow:0 0 0 3px #4b83bd1c}.sp-option-search-hint{margin-top:5px;color:#718096;font-size:10px}.sp-option-search-list{position:absolute;z-index:9999;top:100%;left:0;right:0;max-height:280px;overflow:auto;margin-top:4px;border:1px solid #dce5ee;border-radius:9px;background:#fff;box-shadow:0 10px 26px #19375520}.sp-option-search-list[hidden]{display:none}.sp-option-search-item{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:0;border-bottom:1px solid #edf1f5;background:#fff;color:#24364b;text-align:left;cursor:pointer;font:inherit}.sp-option-search-item:last-child{border-bottom:0}.sp-option-search-item:hover,.sp-option-search-item:focus{background:#f2f7fc}.sp-option-search-item strong{font-size:12px}.sp-option-search-item small{display:block;margin-top:2px;color:#748397;font-size:10px}.sp-option-search-status{margin-top:7px;color:#64748b;font-size:11px}.sp-option-search-status[data-state=error]{color:#b42318}.sp-option-search-status[data-state=ok]{color:#167044}';
+ document.head.appendChild(s);
+}
+function mount(){
+ const underlying=$('sp-option-underlying');
+ if(!underlying||underlying.dataset.spOptionSearchReady)return;
+ underlying.dataset.spOptionSearchReady='1';style();
+ const shell=document.createElement('div');shell.className='sp-option-search-shell';
+ shell.innerHTML='<label class="sp-option-search-label" for="sp-option-stock-search">Search index or F&O stock</label><input id="sp-option-stock-search" class="sp-option-search-input" type="search" autocomplete="off" placeholder="Search e.g. RELIANCE, SBIN, INFY, NIFTY"><div class="sp-option-search-hint">Search NSE option-enabled instruments by symbol or company name</div><div class="sp-option-search-list" id="sp-option-stock-search-list" hidden></div><div class="sp-option-search-status" id="sp-option-stock-search-status" aria-live="polite">Choose an instrument to load its available expiry dates and option chain.</div>';
+ underlying.parentNode.insertBefore(shell,underlying);
+ const input=$('sp-option-stock-search'),list=$('sp-option-stock-search-list'),status=$('sp-option-stock-search-status');
+ let timer=0,seq=0;
+ function message(t,state){status.textContent=t;status.dataset.state=state||'';}
+ function ensureUnderlyingOption(symbol,name){
+  if(underlying.tagName==='SELECT'){
+   let opt=[...underlying.options].find(x=>clean(x.value)===symbol);
+   if(!opt){opt=document.createElement('option');opt.value=symbol;opt.textContent=(name||symbol)+' ('+symbol+')';underlying.add(opt);}
+   underlying.value=symbol;
+  }else underlying.value=symbol;
+  underlying.dispatchEvent(new Event('input',{bubbles:true}));
+  underlying.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+ function render(rows){
+  list.innerHTML='';
+  rows.forEach(row=>{
+   const symbol=clean(row.symbol);if(!valid(symbol))return;
+   const b=document.createElement('button');b.type='button';b.className='sp-option-search-item';
+   b.innerHTML='<span><strong>'+esc(symbol)+'</strong><small>'+esc(row.name||symbol)+'</small></span><small>NSE · Options</small>';
+   b.addEventListener('click',()=>select(row));
+   list.appendChild(b);
+  });
+  list.hidden=!list.children.length;
+  if(!list.children.length)message('No matching F&O instruments found in the available list.','error');
+ }
+ async function search(term,request){
+  const d=await json('/api/option-symbols?q='+encodeURIComponent(term));
+  if(request!==seq)return;
+  render((d.symbols||[]).slice(0,18));
+ }
+ async function loadExpiries(symbol){
+  message('Checking available NSE expiries for '+symbol+'…','');
+  const d=await json('/api/option-expiries?symbol='+encodeURIComponent(symbol));
+  const expiries=(d.expiries||[]).map(x=>typeof x==='string'?x:(x.date||x.expiry||x.value)).filter(Boolean);
+  if(!expiries.length)throw Error('No active option expiry is available for '+symbol+'.');
+  const expiry=$('sp-option-expiry');
+  if(expiry){
+   const old=expiry.value;
+   if(expiry.tagName==='SELECT'){
+    expiry.innerHTML='';
+    expiries.forEach(value=>{const o=document.createElement('option');o.value=value;o.textContent=value;expiry.add(o)});
+    expiry.value=expiries.includes(old)?old:expiries[0];
+   }else expiry.value=expiries.includes(old)?old:expiries[0];
+   expiry.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  message(expiries.length+' active expiry date(s) found for '+symbol+'. Loading option chain…','ok');
+  const run=$('sp-run-option-scan');
+  if(run)run.click();
+ }
+ async function select(row){
+  const symbol=clean(row.symbol);if(!valid(symbol))return;
+  input.value=(row.name&&row.name!==symbol)?row.name+' ('+symbol+')':symbol;
+  list.hidden=true;ensureUnderlyingOption(symbol,row.name);
+  try{await loadExpiries(symbol);}
+  catch(e){message(e.message,'error');const out=$('sp-option-results');if(out)out.innerHTML='<div class="sp-ma-bridge-error">'+esc(e.message)+'</div>';}
+ }
+ input.addEventListener('input',()=>{
+  clearTimeout(timer);const term=input.value.trim();seq++;
+  if(!term){list.hidden=true;return;}
+  const request=seq;message('Searching available option instruments…','');
+  timer=setTimeout(()=>search(term,request).catch(e=>{if(request===seq)message('Search unavailable: '+e.message,'error')}),220);
+ });
+ input.addEventListener('keydown',e=>{if(e.key==='Escape')list.hidden=true;if(e.key==='Enter'&&!list.hidden){const first=list.querySelector('button');if(first){e.preventDefault();first.click();}}});
+ document.addEventListener('click',e=>{if(!shell.contains(e.target))list.hidden=true;});
+ underlying.addEventListener('change',()=>{
+  const symbol=clean(underlying.value);if(!valid(symbol))return;
+  if(input.value!==symbol&&!input.value.endsWith('('+symbol+')'))input.value=symbol;
+  loadExpiries(symbol).catch(e=>message(e.message,'error'));
+ });
+ window.addEventListener('sp-global-instrument-change',e=>{
+  const symbol=clean(e.detail?.symbol);if(!valid(symbol))return;
+  ensureUnderlyingOption(symbol,symbol);input.value=symbol;
+  loadExpiries(symbol).catch(e=>message(e.message,'error'));
+ });
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+})();
