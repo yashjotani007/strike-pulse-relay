@@ -372,7 +372,8 @@ async function intelligence() {
   if (data.drivers?.strongest?.name) signals.push(data.drivers.strongest.name + ' is showing the strongest sector momentum');
   if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
-  const participants = await getParticipants();\n  const delivery = { available: false, source: 'NSE security-wise delivery report', reason: 'Daily exchange report is published as a downloadable DAT/CSV file; automated parsing is not yet connected.' };\n  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, signals, generatedAt: new Date().toISOString(), cached: false };
+  const participants = await getParticipants();
+  const delivery = { available: false, source: 'NSE security-wise delivery report', reason: 'Daily exchange report is published as a downloadable DAT/CSV file; automated parsing is not yet connected.' };\n  last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
 }
