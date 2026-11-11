@@ -10,7 +10,7 @@ const FILES = {
 const LOADER = String.raw`(function(){
 'use strict';
 if(window.__SP_TRADING_INTELLIGENCE_LOADER_V1__)return;
-var root=document.getElementById('sp-trading-intelligence-root');
+var root=document.getElementById('sp-ti-page');
 if(!root){console.warn('[Strike Pulse] Trading Intelligence embed root is missing.');return;}
 window.__SP_TRADING_INTELLIGENCE_LOADER_V1__=true;
 var base='https://strike-pulse-relay.onrender.com/';
