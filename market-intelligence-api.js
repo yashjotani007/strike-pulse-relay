@@ -134,6 +134,78 @@ function marketStatus() {
   return { open, preOpen: pre, session: open ? 'LIVE' : pre ? 'PRE-OPEN' : 'CLOSED', ist: now.toISOString() };
 }
 
+
+let livePressureCache = null, livePressureAt = 0;
+function marketNumber(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(String(value).replace(/,/g, '').replace(/%/g, '').trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+async function getLivePressure(force = false) {
+  if (!force && livePressureCache && Date.now() - livePressureAt < 15000) {
+    return { ...livePressureCache, cached: true };
+  }
+  const market = marketStatus();
+  try {
+    const raw = await nse('/api/equity-stockIndices?index=NIFTY%2050');
+    const sourceRows = Array.isArray(raw?.data) ? raw.data : [];
+    const stocks = sourceRows.map(row => {
+      const symbol = String(row?.symbol || row?.meta?.symbol || '').trim().toUpperCase();
+      const change = marketNumber(row?.pChange ?? row?.percentChange ?? row?.change);
+      const price = marketNumber(row?.lastPrice ?? row?.last ?? row?.ltp);
+      const volume = marketNumber(row?.totalTradedVolume ?? row?.totalTradedQty ?? row?.volume);
+      let turnover = marketNumber(row?.totalTradedValue ?? row?.turnover ?? row?.valueTraded);
+      if (turnover == null && price != null && volume != null) turnover = price * volume;
+      return { symbol, change, price, volume, turnover };
+    }).filter(row => row.symbol && row.symbol !== 'NIFTY 50' && row.change != null && row.turnover != null && row.turnover > 0);
+    if (stocks.length < 40) throw Error('NSE returned only ' + stocks.length + ' usable NIFTY 50 constituent rows');
+    const totalTurnover = stocks.reduce((sum, row) => sum + row.turnover, 0);
+    const up = stocks.filter(row => row.change > 0.05);
+    const down = stocks.filter(row => row.change < -0.05);
+    const flat = stocks.filter(row => Math.abs(row.change) <= 0.05);
+    const upTurnover = up.reduce((sum, row) => sum + row.turnover, 0);
+    const downTurnover = down.reduce((sum, row) => sum + row.turnover, 0);
+    const flatTurnover = flat.reduce((sum, row) => sum + row.turnover, 0);
+    const weightedPressure = stocks.reduce((sum, row) => {
+      const cappedChange = Math.max(-2, Math.min(2, row.change));
+      return sum + row.turnover * cappedChange / 2;
+    }, 0) / totalTurnover * 100;
+    const pressure = Number(Math.max(-100, Math.min(100, weightedPressure)).toFixed(2));
+    const top = rows => rows.sort((x, y) => (y.turnover * Math.abs(y.change)) - (x.turnover * Math.abs(x.change))).slice(0, 5)
+      .map(row => ({ symbol: row.symbol, change: Number(row.change.toFixed(2)), price: row.price,
+        volume: row.volume, turnoverCr: Number((row.turnover / 10000000).toFixed(2)),
+        pressureContribution: Number((row.turnover * row.change / totalTurnover).toFixed(3)) }));
+    const result = {
+      available: true,
+      source: 'NSE India · NIFTY 50 constituent market snapshot',
+      session: market.session,
+      marketOpen: market.open,
+      reportDate: new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
+      updatedAt: new Date().toISOString(),
+      symbols: stocks.length,
+      pressure,
+      bias: pressure >= 8 ? 'POSITIVE' : pressure <= -8 ? 'NEGATIVE' : 'BALANCED',
+      totalTurnoverCr: Number((totalTurnover / 10000000).toFixed(2)),
+      upTurnoverCr: Number((upTurnover / 10000000).toFixed(2)),
+      downTurnoverCr: Number((downTurnover / 10000000).toFixed(2)),
+      flatTurnoverCr: Number((flatTurnover / 10000000).toFixed(2)),
+      advances: up.length, declines: down.length, unchanged: flat.length,
+      topPositive: top(stocks.filter(row => row.change > 0)),
+      topNegative: top(stocks.filter(row => row.change < 0)),
+      method: 'Turnover-weighted price momentum proxy',
+      disclaimer: 'Estimated market-pressure indicator only. It does not identify FII/DII trades or prove institutional participation.',
+      cached: false
+    };
+    livePressureCache = result;
+    livePressureAt = Date.now();
+    return result;
+  } catch (error) {
+    return { available: false, source: 'NSE India · NIFTY 50 constituent market snapshot',
+      session: market.session, reason: error.message || 'Live market snapshot unavailable',
+      updatedAt: new Date().toISOString(), cached: false };
+  }
+}
+
 function classify(change) {
   if (change == null) return 'UNKNOWN';
   if (change >= 0.50) return 'STRONG_BULLISH';
@@ -518,6 +590,15 @@ global.__SP_MARKET_INTELLIGENCE_HANDLER__ = intelligence;
 
 express.application.use = function(...args) {
   const middleware = async function(req, res, next) {
+    if (req?.path === '/api/live-market-pressure' || req?.originalUrl?.split('?')[0] === '/api/live-market-pressure') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      if (req.method === 'OPTIONS') return res.sendStatus(204);
+      try { return res.json({ success: true, data: await getLivePressure(String(req.query?.refresh || '') === '1') }); }
+      catch (e) { return res.status(502).json({ success: false, error: e.message, source: 'strike-pulse-live-market-pressure' }); }
+    }
     if (req?.path === '/api/market-intelligence' || req?.originalUrl?.split('?')[0] === '/api/market-intelligence') {
       // This middleware runs before the original server's CORS middleware,
       // so the isolated endpoint must provide its own CORS headers.
