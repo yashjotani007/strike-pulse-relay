@@ -241,6 +241,7 @@ function mount(){
   render((d.symbols||[]).slice(0,18));
  }
  const expiryState={dates:[],rawByIso:new Map(),month:null,year:null};
+ let expiryRequest=0,activeExpirySymbol='';
  function parseExpiry(value){
   const raw=String(value||'').trim();
   let m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -301,23 +302,37 @@ function mount(){
  }
   setupExpiryCalendar();
  async function loadExpiries(symbol){
-  message('Checking available NSE expiries for '+symbol+'…','');
+  const request=++expiryRequest;
+  activeExpirySymbol=symbol;
+  const expiry=$('sp-option-expiry'),trigger=$('sp-expiry-calendar-trigger');
+  message('Checking original NSE expiry dates for '+symbol+'…','');
+  // Clear the previous instrument's expiry immediately; never show its dates while the new request is pending.
+  if(expiry){expiry.value='';if(expiry.tagName==='SELECT')expiry.innerHTML='';}
+  if(trigger)trigger.value='';
+  expiryState.dates=[];expiryState.rawByIso.clear();
+  if(expiry?._spCalendarSetDates)expiry._spCalendarSetDates([]);
   const d=await json('/api/option-expiries?symbol='+encodeURIComponent(symbol));
+  if(request!==expiryRequest||activeExpirySymbol!==symbol)return;
+  if(d.symbol&&clean(d.symbol)!==symbol)throw Error('Expiry source returned '+d.symbol+' instead of '+symbol+'.');
+  const today=new Date();today.setHours(0,0,0,0);
   const expiries=(d.expiries||[]).map(x=>typeof x==='string'?x:(x.date||x.expiry||x.value)).filter(Boolean);
-  if(!expiries.length)throw Error('No active option expiry is available for '+symbol+'.');
-  const expiry=$('sp-option-expiry');
+  const dated=expiries.map(raw=>({raw,date:parseExpiry(raw)})).filter(x=>x.date);
+  const future=dated.filter(x=>{const date=new Date(x.date);date.setHours(0,0,0,0);return date>=today;}).sort((a,b)=>a.date-b.date);
+  const available=future.map(x=>x.raw);
+  if(!available.length)throw Error('No upcoming original expiry date is available for '+symbol+'. No other instrument expiry will be used.');
+  if(request!==expiryRequest||activeExpirySymbol!==symbol)return;
   if(expiry){
-   const old=expiry.value;
    if(expiry.tagName==='SELECT'){
     expiry.innerHTML='';
-    expiries.forEach(value=>{const o=document.createElement('option');o.value=value;o.textContent=prettyDate(value);expiry.add(o)});
+    available.forEach(value=>{const o=document.createElement('option');o.value=value;o.textContent=prettyDate(value);expiry.add(o)});
    }
-   expiry.value=expiries.includes(old)?old:expiries[0];
+   expiry.value=available[0];
    setupExpiryCalendar();
-   if(expiry._spCalendarSetDates)expiry._spCalendarSetDates(expiries);
+   if(expiry._spCalendarSetDates)expiry._spCalendarSetDates(available);
+   if(trigger)trigger.value=prettyDate(available[0]);
    expiry.dispatchEvent(new Event('change',{bubbles:true}));
   }
-  message(expiries.length+' active expiry date(s) found for '+symbol+'. Loading option chain…','ok');
+  message(available.length+' original expiry date(s) found for '+symbol+'. Nearest upcoming expiry selected.','ok');
   const run=$('sp-run-option-scan');
   if(run)run.click();
  }
