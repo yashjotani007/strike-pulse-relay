@@ -385,22 +385,5 @@ function mount(){
  });
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-/* Load Trading Intelligence through the existing WordPress script tag. */
-(function(){
- 'use strict';
- function startMarketIntelligence(){
-  if(window.__SP_MI_LOADER_STARTED__)return;
-  window.__SP_MI_LOADER_STARTED__=true;
-  if(document.querySelector('script[data-sp-mi-loader]'))return;
-  var s=document.createElement('script');
-  s.src='https://strike-pulse-relay.onrender.com/market-intelligence-loader.js?v=2';
-  s.async=true;
-  s.dataset.spMiLoader='1';
-  s.onerror=function(){console.error('[StrikePulse] Trading Intelligence loader failed to load');};
-  (document.head||document.documentElement).appendChild(s);
- }
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startMarketIntelligence,{once:true});
- else startMarketIntelligence();
-})();
 
 })();
