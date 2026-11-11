@@ -1,0 +1,42 @@
+/* Strike Pulse — Trading Intelligence page only */
+#sp-ti-page{--ti-ink:#172b43;--ti-muted:#64748b;--ti-line:#e3eaf1;--ti-soft:#f7f9fc;--ti-blue:#1769d2;max-width:1480px;margin:0 auto;padding:clamp(12px,2.2vw,28px);color:var(--ti-ink);font:inherit;box-sizing:border-box}
+#sp-ti-page *{box-sizing:border-box}
+#sp-ti-page .ti-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:clamp(18px,2.6vw,30px);border:1px solid var(--ti-line);border-radius:18px;background:linear-gradient(135deg,#fff 0%,#f5f9ff 100%);box-shadow:0 8px 28px rgba(25,55,85,.05)}
+#sp-ti-page .ti-eyebrow{margin:0 0 8px;color:#3974b7;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+#sp-ti-page h1{margin:0;color:#142b44;font-size:clamp(25px,4vw,36px);line-height:1.12;font-weight:800}
+#sp-ti-page .ti-lead{max-width:720px;margin:9px 0 0;color:var(--ti-muted);font-size:13px;line-height:1.65}
+#sp-ti-page .ti-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#sp-ti-page .ti-status{color:var(--ti-muted);font-size:11px}
+#sp-ti-page .ti-refresh{border:0;border-radius:9px;padding:11px 15px;background:var(--ti-blue);color:#fff;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+#sp-ti-page .ti-refresh:disabled{opacity:.6;cursor:wait}
+#sp-ti-page .ti-nav{display:flex;gap:8px;overflow:auto;padding:14px 0 4px;scrollbar-width:thin}
+#sp-ti-page .ti-nav a{flex:0 0 auto;padding:8px 11px;border:1px solid var(--ti-line);border-radius:999px;background:#fff;color:#40556c;text-decoration:none;font-size:11px;font-weight:700}
+#sp-ti-page .ti-section{margin-top:18px;padding:clamp(14px,2vw,22px);border:1px solid var(--ti-line);border-radius:15px;background:#fff;box-shadow:0 4px 16px rgba(25,55,85,.035);scroll-margin-top:18px}
+#sp-ti-page .ti-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:13px}
+#sp-ti-page h2{margin:0;color:#1a324c;font-size:clamp(16px,2vw,19px);font-weight:800}
+#sp-ti-page h3{margin:0;color:#233b55;font-size:13px;font-weight:800}
+#sp-ti-page .ti-desc{margin:5px 0 0;color:var(--ti-muted);font-size:11px;line-height:1.55}
+#sp-ti-page .ti-meta{color:var(--ti-muted);font-size:10px;line-height:1.5}
+#sp-ti-page .ti-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}
+#sp-ti-page .ti-kpi{min-width:0;padding:15px;border:1px solid var(--ti-line);border-radius:12px;background:var(--ti-soft)}
+#sp-ti-page .ti-kpi small{display:block;color:var(--ti-muted);font-size:10px;font-weight:800;letter-spacing:.07em}
+#sp-ti-page .ti-kpi strong{display:block;margin:7px 0 3px;font-size:clamp(22px,3vw,29px);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#sp-ti-page .ti-kpi span{color:var(--ti-muted);font-size:10px}
+#sp-ti-page .ti-positive{color:#16834c!important}#sp-ti-page .ti-negative{color:#c43b42!important}
+#sp-ti-page .ti-table-wrap{width:100%;overflow:auto;border:1px solid var(--ti-line);border-radius:10px}
+#sp-ti-page table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:11px}
+#sp-ti-page th,#sp-ti-page td{padding:10px 12px;border-bottom:1px solid #edf1f5;text-align:right}
+#sp-ti-page th:first-child,#sp-ti-page td:first-child{text-align:left}
+#sp-ti-page th{background:#f5f8fb;color:#526579;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+#sp-ti-page tbody tr:last-child td{border-bottom:0}
+#sp-ti-page .ti-empty{text-align:center!important;padding:18px;color:#8290a1}
+#sp-ti-page .ti-note{margin-top:10px;padding:11px 13px;border-radius:9px;background:#f6f9fc;color:#64748b;font-size:10px;line-height:1.6}
+#sp-ti-page .ti-warning{background:#fff8e8;color:#8a5a12}
+#sp-ti-page .ti-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+#sp-ti-page .ti-search{width:min(100%,290px);padding:9px 11px;border:1px solid #dce4ed;border-radius:9px;background:#fff;color:var(--ti-ink);font:inherit;font-size:11px}
+#sp-ti-page .ti-placeholder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+#sp-ti-page .ti-placeholder{padding:14px;border:1px solid var(--ti-line);border-radius:10px;background:#fafbfd}
+#sp-ti-page .ti-placeholder strong{display:block;font-size:12px}
+#sp-ti-page .ti-placeholder span{display:block;margin-top:6px;color:var(--ti-muted);font-size:10px;line-height:1.55}
+#sp-ti-page .ti-footer{padding:16px 4px 4px;color:#7b8797;font-size:10px;line-height:1.6}
+@media(max-width:560px){#sp-ti-page .ti-kpis{gap:8px}#sp-ti-page .ti-kpi{padding:11px}#sp-ti-page th,#sp-ti-page td{padding:8px;font-size:10px}#sp-ti-page .ti-hero{border-radius:14px}}
