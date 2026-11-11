@@ -48,3 +48,9 @@
 #sp-ti-page .ti-live-tables>div{min-width:0}
 #sp-ti-page .ti-live-tables h3{margin:0 0 8px}
 @media(max-width:720px){#sp-ti-page .ti-live-kpis{grid-template-columns:1fr 1fr}#sp-ti-page .ti-live-tables{grid-template-columns:1fr}}
+
+/* Delivery rankings: side-by-side on desktop, stacked on mobile */
+#sp-ti-page .ti-delivery-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:12px}
+#sp-ti-page .ti-delivery-grid>div{min-width:0}
+#sp-ti-page .ti-delivery-grid h3{font-size:14px;font-weight:700;margin:0 0 9px;color:var(--ti-ink)}
+@media(max-width:720px){#sp-ti-page .ti-delivery-grid{grid-template-columns:1fr}}
