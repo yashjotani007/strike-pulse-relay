@@ -57,16 +57,35 @@ async function warm() {
 }
 
 async function nse(path) {
-  let c = await warm();
-  let r = await fetch(NSE + path, { headers: { ...HEADERS, ...(c ? { Cookie: c } : {}), 'X-Requested-With': 'XMLHttpRequest' } });
-  if ([401, 403].includes(r.status)) {
-    cookies = '';
-    c = await warm();
-    r = await fetch(NSE + path, { headers: { ...HEADERS, ...(c ? { Cookie: c } : {}), 'X-Requested-With': 'XMLHttpRequest' } });
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) {
+        cookies = '';
+        cookieAt = 0;
+      }
+      const c = await warm();
+      const r = await fetch(NSE + path, {
+        headers: { ...HEADERS, ...(c ? { Cookie: c } : {}), 'X-Requested-With': 'XMLHttpRequest' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(12000)
+      });
+      if ([401, 403, 429, 500, 502, 503, 504].includes(r.status)) {
+        throw Error('NSE HTTP ' + r.status);
+      }
+      const text = await r.text();
+      if (!r.ok) throw Error('NSE HTTP ' + r.status);
+      try {
+        return JSON.parse(text);
+      } catch (_) {
+        throw Error('NSE returned non-JSON response');
+      }
+    } catch (e) {
+      lastError = e;
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
+    }
   }
-  const text = await r.text();
-  if (!r.ok) throw Error('NSE HTTP ' + r.status);
-  return JSON.parse(text);
+  throw lastError || Error('NSE request failed');
 }
 
 async function yahoo(symbol) {
@@ -241,7 +260,13 @@ async function getLargeDeals(force = false) {
     shortSelling:shortSelling.status==='fulfilled'?shortSelling.value:{available:false,rows:[],reason:shortSelling.reason?.message||'NSE short-selling report unavailable'}
   };
   if(!result.available) result.reason='Bulk: '+result.bulk.reason+' · Block: '+result.block.reason+' · Short selling: '+result.shortSelling.reason;
-  largeDealsCache=result; largeDealsAt=Date.now(); return result;
+  // Cache only successful source responses. A transient NSE failure must not
+  // poison the normal page load for the full five-minute cache window.
+  if (result.available) {
+    largeDealsCache=result;
+    largeDealsAt=Date.now();
+  }
+  return result;
 }
 
 async function getParticipants(force = false) {
@@ -272,7 +297,9 @@ async function getParticipants(force = false) {
       rows: []
     };
   }
-  participantAt = Date.now();
+  // Do not cache unavailable responses: NSE blocks are often transient.
+  if (participantCache.available) participantAt = Date.now();
+  else participantAt = 0;
   return participantCache;
 }
 
