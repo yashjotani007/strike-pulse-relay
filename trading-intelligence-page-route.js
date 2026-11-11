@@ -28,6 +28,11 @@ express.application.use = function(...args) {
   if (!installed) {
     installed = true;
     ORIGINAL_USE.call(this, function(req, res, next) {
+      if (req.method === 'GET' && (req.path === '/trading-intelligence' || req.path === '/trading-intelligence/')) {
+        return res.status(200).type('html').set('Cache-Control', 'no-store').send(
+          '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trading Intelligence · Strike Pulse</title></head><body style="margin:0;background:#f6f8fb;font-family:Arial,sans-serif"><div id="sp-ti-page"></div><script defer src="https://strike-pulse-relay.onrender.com/trading-intelligence-loader.js?v=1"></script></body></html>'
+        );
+      }
       if (req.method === 'GET' && req.path === '/trading-intelligence-loader.js') {
         return res.status(200).type('application/javascript')
           .set('Access-Control-Allow-Origin', '*')
