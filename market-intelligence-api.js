@@ -56,7 +56,7 @@ async function warm() {
   return cookies;
 }
 
-async function nse(path) {
+async function nse(path, referer = HEADERS.Referer) {
   let lastError = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -66,7 +66,7 @@ async function nse(path) {
       }
       const c = await warm();
       const r = await fetch(NSE + path, {
-        headers: { ...HEADERS, ...(c ? { Cookie: c } : {}), 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { ...HEADERS, Referer: referer, ...(c ? { Cookie: c } : {}), 'X-Requested-With': 'XMLHttpRequest' },
         redirect: 'follow',
         signal: AbortSignal.timeout(12000)
       });
@@ -147,7 +147,7 @@ async function getLivePressure(force = false) {
   }
   const market = marketStatus();
   try {
-    const raw = await nse('/api/equity-stockIndices?index=NIFTY%2050');
+    const raw = await nse('/api/equity-stock-indices?index=NIFTY%2050', 'https://www.nseindia.com/market-data/live-equity-market?symbol=NIFTY%2050');
     const sourceRows = Array.isArray(raw?.data) ? raw.data : [];
     const stocks = sourceRows.map(row => {
       const symbol = String(row?.symbol || row?.meta?.symbol || '').trim().toUpperCase();
