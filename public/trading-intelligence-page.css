@@ -40,3 +40,11 @@
 #sp-ti-page .ti-placeholder span{display:block;margin-top:6px;color:var(--ti-muted);font-size:10px;line-height:1.55}
 #sp-ti-page .ti-footer{padding:16px 4px 4px;color:#7b8797;font-size:10px;line-height:1.6}
 @media(max-width:560px){#sp-ti-page .ti-kpis{gap:8px}#sp-ti-page .ti-kpi{padding:11px}#sp-ti-page th,#sp-ti-page td{padding:8px;font-size:10px}#sp-ti-page .ti-hero{border-radius:14px}}
+
+
+#sp-ti-page .ti-live-disclaimer{padding:9px 12px;border:1px solid #f1dfb8;border-radius:9px;background:#fff8e8;color:#855b18;font-size:10px;font-weight:800;letter-spacing:.035em;line-height:1.5}
+#sp-ti-page .ti-live-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}
+#sp-ti-page .ti-live-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+#sp-ti-page .ti-live-tables>div{min-width:0}
+#sp-ti-page .ti-live-tables h3{margin:0 0 8px}
+@media(max-width:720px){#sp-ti-page .ti-live-kpis{grid-template-columns:1fr 1fr}#sp-ti-page .ti-live-tables{grid-template-columns:1fr}}
