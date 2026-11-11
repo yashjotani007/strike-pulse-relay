@@ -148,8 +148,8 @@ function parseCsvLine(line) {
   }
   out.push(value.trim()); return out;
 }
-async function getDelivery() {
-  if(deliveryCache && Date.now()-deliveryAt<900000) return deliveryCache;
+async function getDelivery(force = false) {
+  if(!force && deliveryCache && Date.now()-deliveryAt<900000) return deliveryCache;
   let lastError='NSE delivery report unavailable';
   for(let back=0;back<5;back++){
     const day=new Date(); day.setDate(day.getDate()-back);
@@ -223,8 +223,8 @@ async function getShortSelling(from, to) {
   })).filter(x=>x.symbol && x.quantity!=null);
   return {available:true,rows:rows.slice(0,100),totalRows:rows.length};
 }
-async function getLargeDeals() {
-  if (largeDealsCache && Date.now()-largeDealsAt<300000) return largeDealsCache;
+async function getLargeDeals(force = false) {
+  if (!force && largeDealsCache && Date.now()-largeDealsAt<300000) return largeDealsCache;
   const toDate=new Date(), fromDate=new Date(toDate.getTime()-6*86400000);
   const from=dealDate(fromDate), to=dealDate(toDate);
   const [bulk,block,shortSelling]=await Promise.allSettled([
@@ -244,8 +244,8 @@ async function getLargeDeals() {
   largeDealsCache=result; largeDealsAt=Date.now(); return result;
 }
 
-async function getParticipants() {
-  if (participantCache && Date.now() - participantAt < 300000) return participantCache;
+async function getParticipants(force = false) {
+  if (!force && participantCache && Date.now() - participantAt < 300000) return participantCache;
   try {
     const raw = await nse('/api/fiidiiTradeReact');
     if (!Array.isArray(raw) || !raw.length) throw Error('NSE returned no FII/DII rows');
@@ -276,9 +276,9 @@ async function getParticipants() {
   return participantCache;
 }
 
-async function intelligence() {
+async function intelligence(force = false) {
   const status = marketStatus();
-  if (last && Date.now() - lastAt < 10000) return { ...last, cached: true };
+  if (!force && last && Date.now() - lastAt < 10000) return { ...last, cached: true };
 
   const data = {};
   let list = [];
@@ -479,9 +479,9 @@ async function intelligence() {
   if (data.drivers?.strongest?.name) signals.push(data.drivers.strongest.name + ' is showing the strongest sector momentum');
   if (data.drivers?.weakest?.name && data.drivers.weakest.key !== data.drivers?.strongest?.key) signals.push(data.drivers.weakest.name + ' is showing the weakest sector momentum');
 
-  const participants = await getParticipants();
-  const delivery = await getDelivery();
-  const largeDeals = await getLargeDeals();
+  const participants = await getParticipants(force);
+  const delivery = await getDelivery(force);
+  const largeDeals = await getLargeDeals(force);
   last = { success: true, source: 'strike-pulse-market-intelligence', market: status, regime, breadth, options, intraday, indices: data, participants, delivery, largeDeals, signals, generatedAt: new Date().toISOString(), cached: false };
   lastAt = Date.now();
   return last;
@@ -499,7 +499,7 @@ express.application.use = function(...args) {
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       if (req.method === 'OPTIONS') return res.sendStatus(204);
-      try { return res.json(await intelligence()); }
+      try { return res.json(await intelligence(String(req.query?.refresh || '') === '1')); }
       catch (e) { return res.status(502).json({ success: false, error: e.message, source: 'strike-pulse-market-intelligence' }); }
     }
     return next();
